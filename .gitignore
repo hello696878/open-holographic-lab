@@ -1,0 +1,42 @@
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# --- Packaging / build ----------------------------------------------------
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- Virtual environments -------------------------------------------------
+.venv/
+venv/
+env/
+
+# --- Testing / tooling caches ---------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Simulation output ----------------------------------------------------
+# Everything in runs/ must be regenerable from a saved config. Never commit it.
+runs/
+
+# --- Large numerical artifacts --------------------------------------------
+# Committed figures under docs/handoffs/**/figures/ are deliberate exceptions
+# and are small PNGs; raw arrays are not committed.
+*.npy
+*.npz
+
+# --- Editors / OS ---------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+Thumbs.db
+desktop.ini
+.DS_Store

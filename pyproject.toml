@@ -1,0 +1,91 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# ---------------------------------------------------------------------------
+# Project metadata
+# ---------------------------------------------------------------------------
+# NOTE: `license` and `authors` are deliberately omitted. Both would be
+# published verbatim if this repository is ever made public, and neither has
+# been decided yet. See docs/milestones.md -> "Open project decisions".
+# ---------------------------------------------------------------------------
+[project]
+name = "ohlab"
+dynamic = ["version"]
+description = "Open Holographic Lab - a reproducible computer-generated holography simulator"
+readme = "README.md"
+requires-python = ">=3.11"
+keywords = [
+    "holography",
+    "computer-generated-holography",
+    "fourier-optics",
+    "angular-spectrum",
+    "gerchberg-saxton",
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Typing :: Typed",
+]
+
+# ---------------------------------------------------------------------------
+# Runtime dependencies.
+#
+# ARCHITECTURAL CONSTRAINT, ENFORCED HERE:
+# The numerical optics core must not depend on UI, plotting, or file-I/O
+# libraries. That rule is enforced by this dependency list, not by convention:
+# a clean runtime install of `ohlab` provides NumPy and SciPy and nothing else,
+# so `import matplotlib` or `import PIL` inside src/ohlab/ would fail outright.
+#
+# matplotlib and pillow live in the [dev] extra because they are needed only by
+# figure-generation scripts and (from Milestone 2) image loading in ohlab.io,
+# which are outside the numerical core.
+# ---------------------------------------------------------------------------
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "matplotlib>=3.8",
+    "pillow>=10.0",
+]
+
+# ---------------------------------------------------------------------------
+# Packaging: src/ layout
+# ---------------------------------------------------------------------------
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# Single source of truth for the version string: src/ohlab/__init__.py.
+# Keeping it in exactly one place removes any possibility of drift between
+# the installed metadata and the importable package.
+[tool.setuptools.dynamic]
+version = { attr = "ohlab.__version__" }
+
+[tool.setuptools.package-data]
+ohlab = ["py.typed"]
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+# filterwarnings = ["error"]:
+#   NumPy reports divide-by-zero, overflow, underflow and "invalid value
+#   encountered" as RuntimeWarnings. In a passing suite those scroll past
+#   unread. Promoting every warning to an error means a silent NaN or a
+#   numerically degenerate branch in a propagation kernel fails the build
+#   instead of quietly producing plausible-looking output.
+#
+#   If a warning is genuinely expected in a test, suppress it narrowly at the
+#   test with @pytest.mark.filterwarnings or pytest.warns(...) - never by
+#   weakening this global setting.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = ["error"]
