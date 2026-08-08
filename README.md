@@ -28,10 +28,39 @@ A CGH simulator that can:
 
 ## Status
 
-**Scaffolding complete. Milestone 0 not started.**
+**Milestone 0 complete — 188 tests passing.** Milestone 1 not started.
 
-The package currently exposes only `ohlab.__version__`. See
-[`docs/milestones.md`](docs/milestones.md) for the full ledger.
+The package provides `SamplingGrid` (coordinate and frequency grids) and
+`ComplexField` (a sampled complex optical field). There is no propagation, no
+phase retrieval, and no file or plotting support yet.
+
+See [`docs/milestones.md`](docs/milestones.md) for the full ledger and
+[`docs/handoffs/milestone_0/`](docs/handoffs/milestone_0/) for the Milestone 0
+handoff package — implementation summary, code map, mathematics, test evidence,
+known limitations, and figures.
+
+```python
+from ohlab import ComplexField, SamplingGrid
+from ohlab.units import NM, UM
+
+grid = SamplingGrid(ny=256, nx=256, dy=3.74 * UM, dx=3.74 * UM)
+
+field = ComplexField.random_phase(
+    grid=grid, wavelength_m=633 * NM, seed=0
+)
+
+field.amplitude     # |U|,   (256, 256) float64, >= 0
+field.phase         # arg U, (256, 256) float64, in (-pi, +pi]
+field.intensity     # |U|^2, (256, 256) float64  <- what a camera would see
+field.power         # total power, a.u. * m^2
+
+grid.x              # x coordinates in metres, x[nx // 2] == 0.0 exactly
+grid.fx_fft         # spatial frequencies, FFT order, cycles/m
+grid.fx_centered    # spatial frequencies, centred order
+
+import math
+math.degrees(grid.max_diffraction_angle_rad(633 * NM, axis="x"))  # 4.855
+```
 
 ---
 

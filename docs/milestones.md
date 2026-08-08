@@ -14,7 +14,7 @@ tested, its limitations recorded here, and its handoff package written to
 | # | Milestone | Status | Handoff package |
 |---|---|---|---|
 | — | Scaffolding + normative documentation | **complete** (2026-08-08) | n/a |
-| 0 | Field and grid representation | not started | — |
+| 0 | Field and grid representation | **complete** (2026-08-08) | [`milestone_0/`](handoffs/milestone_0/) |
 | 1 | Angular Spectrum propagation | not started | — |
 | 2 | Target image loading | not started | — |
 | 3 | Gerchberg–Saxton phase retrieval | not started | — |
@@ -53,7 +53,7 @@ the repository; `pytest` green; runtime dependency set is NumPy + SciPy only.
 
 ## Milestone 0 — Field and grid representation
 
-**Status:** not started.
+**Status: complete** (2026-08-08). **188 tests passing.**
 
 **Scope.** An exactly-specified, exactly-tested representation of a sampled
 complex optical field and its coordinate and frequency grids. No physics
@@ -66,25 +66,52 @@ beyond definitions.
 | `src/ohlab/grid.py` | `SamplingGrid` — frozen; spatial and frequency grids, Nyquist limits, serialization |
 | `src/ohlab/field.py` | `ComplexField` — frozen; amplitude / phase / intensity / power, constructors, derived-field operations |
 
-**Acceptance criteria.**
+**Acceptance criteria — all met.**
 
-- [ ] `pytest` fully green; exact output recorded in the handoff package
-- [ ] `x[nx//2] == 0.0` exactly, for even and odd `nx`
-- [ ] `fx_fft` equals `np.fft.fftfreq(nx, dx)` bit-for-bit
-- [ ] `ifftshift(fx_centered) == fx_fft` exactly
-- [ ] An on-grid plane wave lands in the single predicted FFT bin, with the
+- [x] `pytest` fully green; exact output recorded in the handoff package
+- [x] `x[nx//2] == 0.0` exactly, for even and odd `nx`
+- [x] `fx_fft` equals `np.fft.fftfreq(nx, dx)` bit-for-bit
+- [x] `ifftshift(fx_centered) == fx_fft` exactly
+- [x] An on-grid plane wave lands in the single predicted FFT bin, with the
       predicted sign, for all four `(±fx₀, ±fy₀)` quadrants
-- [ ] Parseval holds in the `norm="backward"` form of `math_conventions.md` §3.7
-- [ ] Multiplying by `exp(iψ)` leaves `intensity` and `power` unchanged
-- [ ] Every public function carries a full type hint and a docstring naming units
-- [ ] No import of matplotlib, PIL, or any I/O library anywhere in `src/ohlab/`
-- [ ] Each of `math_conventions.md` §3.2–§3.8 maps to at least one named test
+- [x] Parseval holds in the `norm="backward"` form of `math_conventions.md` §3.7
+- [x] Multiplying by `exp(iψ)` leaves `intensity` and `power` unchanged
+- [x] Every public function carries a full type hint and a docstring naming units
+- [x] No import of matplotlib, PIL, or any I/O library anywhere in `src/ohlab/`
+- [x] Each of `math_conventions.md` §3.2–§3.8 maps to at least one named test
 
 **Explicitly out of scope.** Propagation; FFT of a field outside the
 convention tests; image loading; plotting; lenses, apertures, or any optical
 element; configuration files; CLI.
 
-**Recorded limitations.** *(to be filled at completion)*
+**Recorded limitations.** Full detail in
+[`handoffs/milestone_0/known_limitations.md`](handoffs/milestone_0/known_limitations.md).
+Summary:
+
+1. **Verified against NumPy 2.4.6 only.** The bit-for-bit frequency-axis tests
+   depend on `numpy.fft.fftfreq`'s internal evaluation order, which is not a
+   documented API guarantee. A future NumPy could break G-10/G-11 without
+   being wrong. NumPy is deliberately left unpinned; the tests will fail
+   loudly if this happens.
+2. **Milestone 0 is bookkeeping, not physics.** Nothing here can be
+   "physically correct" — there is no propagation to be right or wrong about.
+3. **No sampling-adequacy check.** `SamplingGrid` will build a grid far too
+   coarse for a given problem without complaint. Adequacy criteria are
+   Milestone 1.
+4. **`intensity` uses `Re² + Im²`**, which overflows for amplitudes beyond
+   about `1e154`. Chosen deliberately so that `intensity == amplitude**2` is a
+   genuine cross-check between two code paths rather than a tautology.
+5. **No caching.** Every derived array is recomputed on access. Safe, but a
+   propagation loop should hoist grid arrays out. Deferred to Milestone 1
+   where there is a hot path to profile.
+6. **Conventions are internally consistent, not externally verified.** The
+   claim that these match Goodman is a citation, not a test.
+
+**Negative controls performed.** Three deliberate mutations of the
+implementation were injected and confirmed to fail the suite: the division
+form of the frequency axis (fails G-10/G-11, *only* at realistic pitch), a
+one-pixel spatial origin shift (fails G-07/G-08/G-09), and a flipped FFT
+kernel sign (fails C-04). Recorded in `tests_and_evidence.md`.
 
 ---
 
@@ -171,4 +198,4 @@ Deferred, non-blocking. Each needs a decision before the corresponding event.
 | D-1 | Software licence (`license` field in `pyproject.toml`) | Making the repository public |
 | D-2 | `authors` metadata — what name/email, if any, appears in published package metadata | Making the repository public |
 | D-3 | Continuous integration (GitHub Actions?) | Any external contribution |
-| D-4 | Whether `figures/` PNGs are committed or regenerated on demand | Milestone 0 handoff |
+| ~~D-4~~ | ~~Whether `figures/` PNGs are committed or regenerated on demand~~ | **Resolved 2026-08-08: committed.** The tutoring session reads this repository through its public URL and cannot execute code, so the figures must be present as files. They are small PNGs (~815 KB total) and are regenerable at any time via `scripts/make_m0_figures.py`. |

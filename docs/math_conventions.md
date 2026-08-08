@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.1 — 2026-08-08
+**Version:** 0.2 — 2026-08-08
 
 ---
 
@@ -154,6 +154,12 @@ the distance between the first and last sample centres.
 `X.shape == Y.shape == (Ny, Nx)`, with `X` varying along axis 1 and `Y` along
 axis 0.
 
+**Return order of `SamplingGrid.meshgrid()`.** The method returns
+`(x_grid, y_grid)` — matching `numpy.meshgrid`'s own convention, **not** axis
+order. Likewise `freq_meshgrid()` returns `(fx_grid, fy_grid)`. Array *shapes*
+are `(Ny, Nx)` (rows first, §3.3); the *return tuple* is x-then-y. These two
+orders are different things and both are deliberate.
+
 ### 3.5 Vertical axis direction
 
 `y` **increases with row index `i`**. When displayed with
@@ -227,8 +233,44 @@ kind of code, so the ordering is always part of the name.**
 
 Definitions (centered form; the `_fft` form is the `ifftshift` of it):
 
-    fx_centered[m] = (m − Nx//2) / (Nx · dx)        [cycles/m]
-    fy_centered[l] = (l − Ny//2) / (Ny · dy)        [cycles/m]
+    fx_centered[m] = (m − Nx//2) · (1 / (Nx · dx))        [cycles/m]
+    fy_centered[l] = (l − Ny//2) · (1 / (Ny · dy))        [cycles/m]
+
+#### 3.8.1 Required evaluation order (v0.2)
+
+**The expression above must be evaluated as written: compute the reciprocal
+`1 / (N·d)` once, then multiply by the integer offset. Do not write it as the
+division `(m − N//2) / (N·d)`.**
+
+The two forms are mathematically identical. They are *not* numerically
+identical. `numpy.fft.fftfreq` computes `val = 1.0 / (n * d)` once and then
+multiplies an integer array by `val`; writing a division instead reassociates
+the floating-point operations and differs by roughly one unit in the last
+place.
+
+This project guarantees bit-for-bit agreement between `SamplingGrid.fx_fft`
+and `numpy.fft.fftfreq`, so the reciprocal-multiply form is mandatory.
+
+Measured discrepancy of the division form against `fftshift(fftfreq(...))`
+(NumPy 2.4.6):
+
+| `n` | `d` | bit-identical? | max abs diff | max rel diff |
+|---|---|---|---|---|
+| 8 | 1.0 | yes | — | — |
+| 7 | 3.74e-6 | yes | — | — |
+| 1024 | 6.4e-6 | yes | — | — |
+| **512** | **3.74e-6** | **no** | `2.910e-11` | `2.177e-16` |
+| **480** | **8e-6** | **no** | `7.276e-12` | `1.164e-16` |
+
+Note that the discrepancy vanishes at `d = 1.0` and at some size/pitch
+combinations. Any test of this property must therefore be parametrized over a
+**realistic** pitch; a round-number-only test passes under the wrong
+implementation. Verified by
+`tests/test_grid.py::test_g10_fft_ordered_axis_matches_numpy_bit_for_bit`,
+which was confirmed against a deliberately mutated implementation.
+
+This subsection specifies floating-point evaluation order only. **No
+mathematical convention is changed by v0.2.**
 
 **Nyquist frequency:** `f_nyq_x = 1/(2·dx)`. For even `Nx`, `fx_centered[0]`
 equals exactly `−f_nyq_x`, and the maximum value is `+f_nyq_x − 1/(Nx·dx)`.
@@ -329,4 +371,5 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.2 | 2026-08-08 | **§3.8.1 added** — mandates the reciprocal-multiply evaluation order for frequency axes, with measured ULP-level evidence. **§3.4** — documents that `meshgrid()` returns `(x_grid, y_grid)`, matching `numpy.meshgrid` order rather than axis order. Both are clarifications; no mathematical convention changed. | Milestone 0. The literal division form in v0.1 §3.8 was inconsistent with the bit-for-bit agreement with `numpy.fft.fftfreq` required by `milestones.md`; the conflict was raised and approved before implementation. |
 | 0.1 | 2026-08-08 | Initial version. Establishes §1–§5: scalar monochromatic model at `n = 1`; SI units with `I ≡ \|U\|²`; `exp(−iωt)` time convention with forward propagation `exp(+i·kz·z)`; `(Ny, Nx)` array layout with `+y` downward; `N//2`-centred space and frequency grids; `numpy.fft` `norm="backward"`; `*_fft` / `*_centered` ordering discipline; Angular Spectrum transfer function; determinism and precision rules. | Scaffolding, prior to Milestone 0. |
