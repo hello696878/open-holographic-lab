@@ -329,15 +329,20 @@ def test_c07_numerical_core_uses_only_the_modern_rng() -> None:
 
 
 def test_c08_every_public_module_is_importable_without_optional_deps() -> None:
-    """C-08: the core imports cleanly and exposes the Milestone 0 API."""
+    """C-08: the core imports cleanly and exposes the documented public API.
+
+    Updated in Milestone 1 to include the two propagation entry points. The
+    assertion is deliberately an exact set comparison rather than a subset
+    check, so that adding a name to ``__all__`` is a conscious act recorded in
+    a milestone rather than something that drifts in unnoticed.
+    """
     import ohlab
 
-    assert hasattr(ohlab, "SamplingGrid")
-    assert hasattr(ohlab, "ComplexField")
-    assert hasattr(ohlab, "units")
-    assert set(ohlab.__all__) == {
-        "ComplexField",
-        "SamplingGrid",
-        "units",
-        "__version__",
+    milestone_0_api = {"ComplexField", "SamplingGrid", "units", "__version__"}
+    milestone_1_api = {
+        "angular_spectrum_transfer_function",
+        "propagate_angular_spectrum",
     }
+    for name in milestone_0_api | milestone_1_api:
+        assert hasattr(ohlab, name), f"ohlab.{name} is missing"
+    assert set(ohlab.__all__) == milestone_0_api | milestone_1_api

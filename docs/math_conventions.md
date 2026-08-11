@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.2 — 2026-08-08
+**Version:** 0.3 — 2026-08-11
 
 ---
 
@@ -82,8 +82,24 @@ The physical real field is recovered as
 
     E(x, y, t) = Re{ U(x, y) · exp(−i·ω·t) }
 
-**We use the `exp(−iωt)` time convention** (Goodman, *Introduction to Fourier
-Optics*; the standard optics/"engineering" convention).
+**We use the `exp(−iωt)` time convention.**
+
+**External verification (v0.3).** This convention, together with the
+forward-propagation sign of §3.9, was independently checked against
+Konijnenberg, Adam & Urbach, *BSc Optics* (TU Delft), §6.3 "Angular Spectrum
+Method", which states that its time dependence is `e^(−iωt)` with `ω > 0`,
+gives the propagator as `e^(+i·k_z·z)`, defines
+`k_z = √((2π/λ)² − k_x² − k_y²)`, and selects the `+` branch of the square
+root. All four items match this document exactly.
+
+Goodman's *Introduction to Fourier Optics* is the usual citation for this
+convention and is believed to agree, but **it has not been checked directly**
+and is recorded here as a secondary, unverified attribution.
+
+Note on terminology: `exp(−iωt)` is commonly called the *physicists'*
+convention and `exp(+iωt)` the *engineering* convention. Version 0.1 of this
+document labelled ours "engineering", which was wrong; the label is corrected
+here. The mathematics is unchanged.
 
 Direct consequences, all of which follow from this one choice:
 
@@ -98,6 +114,22 @@ The opposite convention (`exp(+iωt)`, common in electrical engineering) flips
 the sign of every phase in the codebase. **Do not mix them.** A field computed
 under one convention is the complex conjugate of the same field under the
 other.
+
+**On NumPy's role.** `numpy.fft` fixes only the *discrete Fourier transform
+kernel* used by `fft2` (§3.6). It does **not** fix the time-harmonic
+convention — that is a physical modelling choice made here. What matters is
+that the three choices form a mutually consistent set:
+
+| Choice | Value | Where |
+|---|---|---|
+| Time dependence | `exp(−iωt)` | §3.1 |
+| Forward Fourier kernel | `exp(−i2π(f·r))` | §3.6 |
+| Forward propagation | `exp(+i·kz·z)` | §3.9 |
+
+Any one of the three may be flipped only if the other two are flipped with it.
+The set has been **selected and verified together**, both against the external
+reference above and by the test suite (`test_c04` for the kernel sign,
+`test_a02`/`test_a05`/`test_a06` for the propagation sign).
 
 ### 3.2 Complex field
 
@@ -285,13 +317,12 @@ not of any algorithm.
 
 **Implicit periodicity.** The DFT treats the field as periodic with period
 `(Ly, Lx)`. Light diffracting past the window edge **wraps around** to the
-opposite edge instead of leaving. Mitigation (zero-padding, or a band-limited
-transfer function) is specified in Milestone 1 and is **not** yet implemented.
+opposite edge instead of leaving. Zero-padding is implemented in Milestone 1
+and is specified in §3.9.4; band-limiting is deferred.
 
 ### 3.9 Angular Spectrum Method — transfer function
 
-*Specified here so that Milestone 0's grid conventions are already correct for
-it. Implemented in Milestone 1.*
+*Implemented in Milestone 1 as `ohlab.propagation`.*
 
 Propagation by distance `z` through a homogeneous medium (`n = 1`):
 
@@ -299,21 +330,129 @@ Propagation by distance `z` through a homogeneous medium (`n = 1`):
     2.  A'     = A · H(fx, fy; z)
     3.  U_dest = IFFT2{ A' }
 
-with the exact (non-paraxial) transfer function
+#### 3.9.1 One expression for all distances
+
+**The transfer function is written once, and only once:**
+
+    H(fx, fy; z) = exp( +i · kz · z )        kz = 2π·√( 1/λ² − fx² − fy² )
+
+with the **principal complex square root**, i.e. the branch satisfying
+**`Im{kz} ≥ 0`**. Equivalently `kz = √(k² − kx² − ky²)` with `k = 2π/λ`.
+
+This single expression covers propagating and evanescent samples and **both
+signs of `z`**. For `z < 0` it becomes the conjugate propagator automatically,
+since `H(−z) = conj(H(z))`.
+
+**Do not write a separate expression for negative `z`.** A second formula such
+as `exp(−i·|kz|·z)` is easy to misread and easy to sign incorrectly, and there
+is no need for it. Versions 0.1–0.2 presented `H` as a two-branch piecewise
+definition; that presentation is **withdrawn** in favour of the single
+expression above, which is what the code implements. The mathematics is
+identical — the piecewise form is reproduced below only to show the
+correspondence:
 
                    ┌ exp( +i·2π·z·√( 1/λ² − fx² − fy² ) )   if fx² + fy² <  1/λ²   (propagating)
     H(fx,fy;z) =  ─┤
                    └ exp( −2π·z·√( fx² + fy² − 1/λ² ) )     if fx² + fy² ≥ 1/λ²   (evanescent)
 
-Equivalently `H = exp(i·kz·z)` with `kz = √(k² − kx² − ky²)` and `k = 2π/λ`,
-taking the branch with `Im{kz} ≥ 0` so that evanescent components decay for
-`z > 0`.
+In code the single expression is one line with no branch logic: casting the
+radicand to `complex128` before `np.sqrt` selects the required branch
+automatically.
 
-**Sign check that must hold in the implementation:** for `z > 0`, `|H| ≤ 1`
-everywhere. `|H| > 1` anywhere means the evanescent branch has the wrong sign.
+| Regime | Condition | `kz` | `\|H\|` for `z > 0` |
+|---|---|---|---|
+| Propagating | `fx² + fy² < 1/λ²` | real, `> 0` | 1 |
+| Grazing | `fx² + fy² = 1/λ²` | 0 | 1 |
+| Evanescent | `fx² + fy² > 1/λ²` | purely imaginary, `Im > 0` | `< 1`, decaying |
+
+**Sign check:** for `z > 0`, `|H| ≤ 1` everywhere. `|H| > 1` anywhere means the
+square-root branch is wrong.
+
+**`|H| = 1` is a mathematical statement, not a bitwise one.** The measured
+worst-case deviation of `abs(exp(i·θ))` from 1 is `2.220e-16` — exactly one
+float64 epsilon. Tests must use an explicit machine-precision tolerance, never
+an exact comparison.
 
 `H` is evaluated on the **`_fft`-ordered** frequency grids, so no `fftshift` of
 a full-size array is needed in the propagation hot path.
+
+#### 3.9.2 Determining whether a grid carries evanescent samples
+
+**Use the actual discrete frequency mesh. There is no valid scalar pitch
+threshold.**
+
+    evanescent(grid) := any( fx_fft² + fy_fft² > 1/λ² )   over the 2-D mesh
+
+The tempting shortcut `d < λ/2` is **wrong**: that is the condition for the
+frequency *axis* to reach the cutoff. The extreme sample of a square grid is
+the **corner** of the Nyquist square, at radius `√2/(2d)`, so evanescent
+samples first appear at
+
+    d < λ/√2      (≈ 447.6 nm at λ = 633 nm)
+
+not at `d < λ/2` (≈ 316.5 nm). **Between those two pitches the evanescent
+region is populated only near the four corners of the mesh** — 97 samples of
+4096 at `d = 400 nm`, with neither axis reaching the cutoff. For an anisotropic
+grid there is no single `d` and no scalar threshold exists at all.
+
+Pinned by `test_m08_evanescent_detection_uses_the_discrete_mesh_not_a_pitch_rule`.
+
+#### 3.9.3 Evanescent policy
+
+| Case | Behaviour |
+|---|---|
+| `z > 0`, evanescent samples present | Computed normally; they decay, underflowing silently to `0.0` |
+| `z = 0` | `H ≡ 1 + 0j` exactly |
+| `z < 0`, **no** evanescent samples on the mesh | Allowed. This is every realistic configuration |
+| `z < 0`, evanescent samples present | **`ValueError`** |
+
+Backward propagation of evanescent components is an ill-posed inverse problem:
+it amplifies arbitrarily small numerical noise, reaching `4×10⁸` after one
+micrometre and overflowing to `inf` within a hundred on a sub-wavelength grid.
+Zeroing those samples would misreport what was computed; clamping would invent
+a number with no physical meaning. The request is refused instead.
+
+#### 3.9.4 Boundary conditions: the periodic window and zero padding
+
+The DFT treats the field as periodic with period `(Ly, Lx)`, so light
+diffracting past an edge **re-enters from the opposite edge**. Two boundary
+conditions are available, and neither is universally correct:
+
+| `pad_factor` | Boundary condition |
+|---|---|
+| `1` | The original **periodic** DFT window. Circular wrap-around occurs |
+| `> 1` | The field is embedded in a larger **zero-valued** window, then the result is cropped back |
+
+Padding **reduces** circular wrap-around; it is **not** a guarantee of physical
+correctness. Once light reaches the edge of the padded window it wraps again,
+and embedding a field that fills its window imposes a hard aperture that the
+periodic problem did not have. Measured against an analytic Gaussian at
+`z = 100 mm`: `pad_factor=1` gives relative error `4.98e-01`, `pad_factor=2`
+gives `3.04e-04`.
+
+**Consequence for exact tests:** a plane wave or a uniform field is an
+eigenfunction of the *periodic* problem, not of the zero-embedded one. Tests
+asserting an exact analytic identity must use `pad_factor=1`.
+
+**Padding alignment.** Padding must preserve the §3.4 origin convention. For
+each axis:
+
+    pad_before = N_padded//2 − N//2
+    pad_after  = N_padded − N − pad_before
+
+so that original index `N//2` maps to padded index `N_padded//2`, and every
+physical coordinate is preserved **bit-exactly** at both parities. Cropping is
+the exact inverse. `numpy.pad`'s default placement is deliberately **not**
+used: it would define the physical alignment implicitly and disagrees with this
+rule for odd sizes.
+
+#### 3.9.5 Deferred: band-limited ASM
+
+The transfer function itself becomes undersampled at long range, which motivates
+the band-limited ASM of Matsushima & Shimobaba (*Opt. Express* **17**, 19662,
+2009). It is **not implemented**; see
+`docs/handoffs/milestone_1/known_limitations.md` for the measured evidence
+behind that decision.
 
 ### 3.10 Determinism
 
@@ -371,5 +510,6 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.3 | 2026-08-11 | **§3.1** — records the external verification of the time convention and propagation sign against Konijnenberg/Adam/Urbach; downgrades the Goodman citation to an unverified secondary attribution; corrects the mislabelling of `exp(−iωt)` as the "engineering" convention (it is the *physicists'* convention); states that NumPy fixes the DFT kernel only, not the time convention, and that the three sign choices form a mutually verified set. **§3.9 rewritten** — §3.9.1 mandates the single expression `H = exp(+i·kz·z)` with `Im{kz} ≥ 0` and withdraws the piecewise presentation; §3.9.2 requires evanescence to be determined from the discrete mesh and corrects the threshold from `d < λ/2` to the corner condition `d < λ/√2`; §3.9.3 states the evanescent policy; §3.9.4 specifies the padding/cropping alignment rule and the boundary-condition semantics; §3.9.5 defers band-limited ASM. **§3.8** — periodicity note updated. No mathematical convention changed. | Milestone 1. The `d < λ/2` threshold in the M1 plan was an error (axis-only reasoning); the corner of the 2-D Nyquist square reaches the cutoff first. Raised and corrected before implementation. |
 | 0.2 | 2026-08-08 | **§3.8.1 added** — mandates the reciprocal-multiply evaluation order for frequency axes, with measured ULP-level evidence. **§3.4** — documents that `meshgrid()` returns `(x_grid, y_grid)`, matching `numpy.meshgrid` order rather than axis order. Both are clarifications; no mathematical convention changed. | Milestone 0. The literal division form in v0.1 §3.8 was inconsistent with the bit-for-bit agreement with `numpy.fft.fftfreq` required by `milestones.md`; the conflict was raised and approved before implementation. |
 | 0.1 | 2026-08-08 | Initial version. Establishes §1–§5: scalar monochromatic model at `n = 1`; SI units with `I ≡ \|U\|²`; `exp(−iωt)` time convention with forward propagation `exp(+i·kz·z)`; `(Ny, Nx)` array layout with `+y` downward; `N//2`-centred space and frequency grids; `numpy.fft` `norm="backward"`; `*_fft` / `*_centered` ordering discipline; Angular Spectrum transfer function; determinism and precision rules. | Scaffolding, prior to Milestone 0. |

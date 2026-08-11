@@ -15,7 +15,8 @@ tested, its limitations recorded here, and its handoff package written to
 |---|---|---|---|
 | — | Scaffolding + normative documentation | **complete** (2026-08-08) | n/a |
 | 0 | Field and grid representation | **complete** (2026-08-08) | [`milestone_0/`](handoffs/milestone_0/) |
-| 1 | Angular Spectrum propagation | not started | — |
+| 1.x | *Candidate:* band-limited ASM (deferred from M1) | not started | — |
+| 1 | Angular Spectrum propagation | **complete** (2026-08-11) | [`milestone_1/`](handoffs/milestone_1/) |
 | 2 | Target image loading | not started | — |
 | 3 | Gerchberg–Saxton phase retrieval | not started | — |
 | 4 | Reconstruction quality metrics | not started | — |
@@ -117,26 +118,66 @@ kernel sign (fails C-04). Recorded in `tests_and_evidence.md`.
 
 ## Milestone 1 — Angular Spectrum propagation
 
-**Status:** not started.
+**Status: complete** (2026-08-11). **291 tests passing** (188 from M0, 103 new).
 
-**Scope.** `src/ohlab/propagation.py` implementing
-`math_conventions.md` §3.9, plus validation against analytic ground truth.
+**Scope.** `src/ohlab/propagation.py` implementing `math_conventions.md` §3.9,
+validated against analytic ground truth.
 
-**Planned acceptance criteria.**
+**Public API.** Two functions, no class — a propagation is a pure function of
+`(field, distance)` with no state to carry.
 
-- Zero-distance propagation is the identity to within a stated tolerance
-- Round trip `z` then `−z` recovers the source field to a stated tolerance
-- Energy is conserved for propagating components; evanescent components decay
-- `|H| ≤ 1` everywhere for `z > 0`
-- Agreement with an analytic case (e.g. Fresnel diffraction from a slit or a
-  circular aperture) within a stated tolerance
-- Sampling-adequacy guidance and/or an explicit warning for undersampled
-  configurations
-- Wrap-around behaviour characterized, and zero-padding or a band-limited
-  transfer function specified
+| Function | Purpose |
+|---|---|
+| `propagate_angular_spectrum(field, *, distance_m, pad_factor=2)` | Propagate a `ComplexField` by a signed distance |
+| `angular_spectrum_transfer_function(grid, *, wavelength_m, distance_m)` | The transfer function `H` on the FFT-ordered mesh |
 
-**Known risk carried in.** DFT implicit periodicity (§3.8). Must be addressed
-here, not deferred.
+**Acceptance criteria — all met.**
+
+- [x] All 188 M0 tests still green
+- [x] Zero distance returns the input object itself (documented contract)
+- [x] On-grid plane wave acquires exactly `exp(i·kz·z)` — worst relative error `1.93e-14`
+- [x] Three-component superposition — `5.21e-15`
+- [x] Uniform field acquires `exp(i·k·z)`, error `0.52–0.83 ×` the `k·z·ε` floor
+- [x] Power conserved exactly on the periodic window — `≤ 3.5e-16`
+- [x] `|H| = 1` on the propagating branch to `2.22e-16`; evanescent decay tested separately
+- [x] Evanescent detection from the discrete mesh, with a corner-only regression test
+- [x] Backward propagation refused when evanescent samples exist
+- [x] Padding/crop alignment bit-exact at all parities
+- [x] Wrap-around characterised; padding improves agreement `1381×`–`1634×`
+- [x] Gaussian beam vs analytic — `8.1e-7` to `1.0e-6`, floor set by the paraxial model
+- [x] Gouy phase at `z = z_R` measured as `0.785398` rad (`π/4`), error `4.0e-11`
+- [x] **10 of 10 negative controls caught; 0 test gaps**
+- [x] Sign convention externally verified (§3.1)
+- [x] No UI/plotting/I-O import in `src/ohlab/`
+
+**Explicitly out of scope, and not implemented.** Fresnel or Fraunhofer
+propagation; band-limited ASM; target image loading; Gerchberg–Saxton; metrics;
+CLI; hardware.
+
+**Recorded limitations.** Full detail in
+[`handoffs/milestone_1/known_limitations.md`](handoffs/milestone_1/known_limitations.md).
+Summary:
+
+1. **Band-limited ASM is not implemented.** Probes showed zero-padding
+   dominates it for every case tested, and that band-limiting can *worsen*
+   agreement when combined with padding by truncating genuine signal. Recorded
+   as a candidate M1.x enhancement with the evidence preserved.
+2. **Padding is not a correctness guarantee.** It exchanges a periodic
+   boundary for a zero-embedded one. Light reaching the padded edge wraps
+   again.
+3. **No sampling-adequacy check is enforced.** The transfer function can be
+   undersampled at long range with no diagnostic raised.
+4. **The Gaussian comparison floor is the paraxial model**, ~`4e-6`, not
+   float64. Its tolerance must not be tightened.
+5. **Peak working memory is 4.5× (unpadded) or 22× (2× padded) a single field
+   array** — 352 MB at 1024², where one call takes 1.9 s. Relevant to M3.
+6. Verified on NumPy 2.4.6 / Windows only.
+
+**Negative controls performed.** Ten deliberate mutations injected and all ten
+caught: propagation sign flip, `fy` dropped, centred-vs-FFT ordering, wrong
+`kz` sign, evanescent branch flip, omitted inverse FFT, distance unit error,
+crop misalignment, `pad_factor` ignored, and `numpy.pad`-style centring.
+Recorded verbatim in `tests_and_evidence.md`.
 
 ---
 

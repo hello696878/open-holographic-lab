@@ -28,16 +28,17 @@ A CGH simulator that can:
 
 ## Status
 
-**Milestone 0 complete — 188 tests passing.** Milestone 1 not started.
+**Milestones 0 and 1 complete — 291 tests passing.** Milestone 2 not started.
 
-The package provides `SamplingGrid` (coordinate and frequency grids) and
-`ComplexField` (a sampled complex optical field). There is no propagation, no
-phase retrieval, and no file or plotting support yet.
+The package provides `SamplingGrid` (coordinate and frequency grids),
+`ComplexField` (a sampled complex optical field), and free-space propagation by
+the **Angular Spectrum Method**. There is no phase retrieval, and no file or
+plotting support yet.
 
-See [`docs/milestones.md`](docs/milestones.md) for the full ledger and
-[`docs/handoffs/milestone_0/`](docs/handoffs/milestone_0/) for the Milestone 0
-handoff package — implementation summary, code map, mathematics, test evidence,
-known limitations, and figures.
+See [`docs/milestones.md`](docs/milestones.md) for the full ledger, and the
+handoff packages for [Milestone 0](docs/handoffs/milestone_0/) and
+[Milestone 1](docs/handoffs/milestone_1/) — implementation summary, code map,
+mathematics, test evidence, known limitations, and figures.
 
 ```python
 from ohlab import ComplexField, SamplingGrid
@@ -61,6 +62,28 @@ grid.fx_centered    # spatial frequencies, centred order
 import math
 math.degrees(grid.max_diffraction_angle_rad(633 * NM, axis="x"))  # 4.855
 ```
+
+Propagating a field through free space:
+
+```python
+from ohlab import ComplexField, SamplingGrid, propagate_angular_spectrum
+from ohlab.units import MM, NM, UM
+
+grid = SamplingGrid.square(n=512, pitch=4 * UM)
+source = ComplexField.uniform(grid=grid, wavelength_m=633 * NM)
+
+out = propagate_angular_spectrum(source, distance_m=50 * MM)
+
+out.intensity          # what a camera at z = 50 mm would record
+out.phase              # the phase there
+```
+
+`propagate_angular_spectrum` takes a signed `distance_m` in metres. It defaults
+to `pad_factor=2`, which embeds the field in a larger zero-valued window to
+reduce circular wrap-around; pass `pad_factor=1` to propagate on the original
+periodic DFT window instead. Neither is universally correct — they are
+different boundary conditions, and the trade-off is documented in
+[`docs/math_conventions.md`](docs/math_conventions.md) §3.9.4.
 
 ---
 

@@ -2,11 +2,12 @@
 
 A reproducible computer-generated holography (CGH) simulator.
 
-Milestone 0 is complete: this package provides an exactly-specified,
+Milestones 0 and 1 are complete: this package provides an exactly-specified,
 exactly-tested representation of a sampled complex optical field
 (:class:`~ohlab.field.ComplexField`) and its coordinate and frequency grids
-(:class:`~ohlab.grid.SamplingGrid`). There is no propagation, no phase
-retrieval, and no file or plotting support yet.
+(:class:`~ohlab.grid.SamplingGrid`), and free-space propagation by the Angular
+Spectrum Method (:func:`~ohlab.propagation.propagate_angular_spectrum`). There
+is no phase retrieval, and no file or plotting support yet.
 
 Normative references
 --------------------
@@ -41,10 +42,16 @@ __version__: str = "0.1.0.dev0"
 from . import units
 from .field import ComplexField
 from .grid import SamplingGrid
+from .propagation import (
+    angular_spectrum_transfer_function,
+    propagate_angular_spectrum,
+)
 
 __all__ = [
     "ComplexField",
     "SamplingGrid",
+    "angular_spectrum_transfer_function",
+    "propagate_angular_spectrum",
     "units",
     "__version__",
 ]
