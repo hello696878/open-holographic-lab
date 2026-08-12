@@ -105,24 +105,56 @@ introduce exactly such fields when it loads target images.
 
 ### 1.6 Performance and memory
 
-Measured, complete propagation path (`fft2`, `H`, multiply, `ifft2`, crop):
+Measured on the complete shipped propagation path (`_zero_pad`, `fft2`, `H`,
+multiply, `ifft2`, `_crop`, `with_data`), each configuration in a **fresh
+process**, after one warm-up call.
 
-| `N` | `pad_factor` | one field array | **measured peak working set** | ratio | ms/call |
-|---|---|---|---|---|---|
-| 128 | 1 | 0.25 MB | 1.13 MB | 4.5× | 2.3 |
-| 128 | 2 | 0.25 MB | 5.50 MB | 22× | 12.5 |
-| 256 | 1 | 1.00 MB | 4.50 MB | 4.5× | 13.5 |
-| 256 | 2 | 1.00 MB | 22.00 MB | 22× | 53.8 |
-| 512 | 1 | 4.00 MB | 18.00 MB | 4.5× | 59.7 |
-| 512 | 2 | 4.00 MB | 88.00 MB | 22× | 258.3 |
-| 1024 | 1 | 16.00 MB | 72.00 MB | 4.5× | 237.2 |
-| **1024** | **2** | **16.00 MB** | **352.00 MB** | **22×** | **1874.9** |
+**Two different quantities are reported, and they must not be conflated:**
 
-The peak is **not** one padded array: the path holds the padded field, its
-spectrum, the transfer function, the product, and the inverse-FFT output
-simultaneously, plus NumPy's internal FFT workspace. An earlier estimate in the
-Approval C plan quoted a single padded array as "peak memory"; that was wrong
-by roughly 5×.
+- **Peak Python-visible allocation** — `tracemalloc` high-water mark for the
+  call. This is the sum of NumPy arrays and temporaries allocated through
+  Python. It does *not* include allocations made inside NumPy's C code.
+- **Process working set** — the operating system's view (`WorkingSetSize` /
+  `PeakWorkingSetSize` via `K32GetProcessMemoryInfo`). This includes the
+  interpreter, NumPy itself, and any C-level FFT workspace.
+
+| `N` | `pad_factor` | source array | computational array | peak Python alloc | ÷ source | ÷ computational | proc. WS delta | proc. WS peak | ms/call |
+|---|---|---|---|---|---|---|---|---|---|
+| 128 | 1 | 0.25 MB | 0.25 MB | 1.13 MB | 4.5× | 4.5× | 1.48 MB | 29.81 MB | 2.4 |
+| 128 | 2 | 0.25 MB | 1.00 MB | 5.50 MB | 22.0× | 5.5× | 4.95 MB | 33.62 MB | 11.2 |
+| 256 | 1 | 1.00 MB | 1.00 MB | 4.50 MB | 4.5× | 4.5× | 4.61 MB | 33.73 MB | 10.5 |
+| 256 | 2 | 1.00 MB | 4.00 MB | 22.00 MB | 22.0× | 5.5× | 20.04 MB | 49.42 MB | 60.4 |
+| 512 | 1 | 4.00 MB | 4.00 MB | 18.00 MB | 4.5× | 4.5× | 18.04 MB | 50.53 MB | 56.0 |
+| 512 | 2 | 4.00 MB | 16.00 MB | 88.00 MB | 22.0× | 5.5× | 80.04 MB | 112.64 MB | 211.3 |
+| 1024 | 1 | 16.00 MB | 16.00 MB | 72.00 MB | 4.5× | 4.5× | 72.04 MB | 116.39 MB | 223.0 |
+| **1024** | **2** | **16.00 MB** | **64.00 MB** | **352.00 MB** | **22.0×** | **5.5×** | **320.05 MB** | **364.55 MB** | **1209.7** |
+
+Notes on reading the table:
+
+- **`source array`** is one `complex128` array of the caller's grid,
+  `N²·16` bytes. **`computational array`** is one `complex128` array of the
+  padded grid actually transformed, `(p·N)²·16` bytes. The `22×` and `5.5×`
+  columns are the *same measurement* against these two different denominators —
+  `22 = 5.5 × p²` with `p = 2`. Quoting a ratio without naming its denominator
+  is meaningless, which is why both are shown.
+- **The process working-set delta is slightly below the Python-visible peak**
+  (e.g. 320 MB vs 352 MB at 1024²/2) because the warm-up call had already
+  faulted those pages in, so they were resident at the baseline.
+- **The process working-set peak includes a ~28–29 MB floor** for the
+  interpreter plus NumPy, independent of problem size.
+
+**Where the peak comes from.** Not one padded array. With `pad_factor=2` the
+path holds, simultaneously, the padded source, the transfer function,
+`fft2(source)`, the product, and the `ifft2` output — five arrays of the
+computational grid — plus the cropped output copy. That is 5 computational
+units ≈ 5.5× measured, or 22× a source array.
+
+The ordering matters and was measured: `angular_spectrum_transfer_function` is
+called **before** `fft2`, so its internal temporaries (`fx`, `fy`, `radial`,
+`kz`) are freed on return while only the padded source is alive. Computing the
+transfer function *after* the forward FFT — as a throwaway planning probe did —
+keeps one extra computational unit live and raises the peak to 26× a source
+array. The shipped ordering is the leaner of the two.
 
 Nothing is cached and nothing is optimised. `H` is recomputed on every call
 even though it is constant for fixed `(grid, λ, z)`.

@@ -271,5 +271,6 @@ POST-RESTORE SUITE     : 291 passed in 3.43s
 6. **Correctness on any NumPy other than 2.4.6**, or on any non-Windows
    platform.
 7. **Performance adequacy for Milestone 3.** One 1024² propagation with
-   `pad_factor=2` takes **1.87 s**; a 200-iteration Gerchberg–Saxton loop would
-   need roughly 12 minutes of propagation alone.
+   `pad_factor=2` takes **1.2 s** and peaks at 352 MB of NumPy allocation; a
+   200-iteration Gerchberg–Saxton loop would need roughly 8 minutes of
+   propagation alone. See `known_limitations.md` §1.6 for the full table.

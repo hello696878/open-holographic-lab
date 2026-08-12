@@ -258,9 +258,12 @@ def propagate_angular_spectrum(
           have. Neither choice is universally right; they are different
           boundary conditions.
 
-        Default ``2``. Measured cost versus ``1``: about 5x the time and 4x
-        the array size, with peak working memory rising from about 5.5x to
-        about 26x a single field array.
+        Default ``2``. Measured cost versus ``1``: roughly 4x to 6x the time,
+        and a 4x larger computational array. Peak Python-visible allocation
+        rises from about 4.5x to about 22x a single *source* field array --
+        equivalently, about 4.5x to 5.5x a single array of the *computational*
+        grid. See ``docs/handoffs/milestone_1/known_limitations.md`` section
+        1.6 for the full table and the process working-set figures.
 
     Returns
     -------

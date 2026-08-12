@@ -169,8 +169,11 @@ Summary:
    undersampled at long range with no diagnostic raised.
 4. **The Gaussian comparison floor is the paraxial model**, ~`4e-6`, not
    float64. Its tolerance must not be tightened.
-5. **Peak working memory is 4.5× (unpadded) or 22× (2× padded) a single field
-   array** — 352 MB at 1024², where one call takes 1.9 s. Relevant to M3.
+5. **Peak Python-visible allocation is 4.5× (unpadded) or 22× (2× padded) a
+   single *source* field array** — equivalently 4.5×–5.5× a single array of the
+   *computational* grid. At 1024² with `pad_factor=2` that is 352 MB of NumPy
+   allocation and a 364 MB process working-set peak, for a 1.2 s call. Relevant
+   to M3.
 6. Verified on NumPy 2.4.6 / Windows only.
 
 **Negative controls performed.** Ten deliberate mutations injected and all ten
