@@ -1,7 +1,7 @@
 # Milestone Ledger
 
 Authoritative status for Open Holographic Lab. Updated at the end of every
-milestone (step 9 of the workflow in `CLAUDE.md` §4).
+milestone according to the workflow in [`AGENTS.md`](../AGENTS.md).
 
 **Rule:** do not begin a milestone before the previous one is implemented,
 tested, its limitations recorded here, and its handoff package written to

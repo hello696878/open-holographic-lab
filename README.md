@@ -8,6 +8,10 @@ a CGH compiler, a calibration engine, a fixed phase-only SLM optical system,
 and a device service. **This repository is currently pure software** — there is
 no hardware component, and none is being designed yet.
 
+Engineering work starts with [`AGENTS.md`](AGENTS.md), the active engineering
+entry point for scope approval, environment safeguards, validation, and Git
+workflow. `CLAUDE.md` is retained as legacy reference material.
+
 ---
 
 ## Current goal
@@ -156,7 +160,8 @@ unambiguous.
 ## Layout
 
 ```
-CLAUDE.md                   working model and engineering rules
+AGENTS.md                   active engineering entry point and workflow
+CLAUDE.md                   legacy reference material
 README.md                   this file
 pyproject.toml              packaging, dependencies, pytest configuration
 docs/
