@@ -142,12 +142,12 @@ def test_m03_propagating_branch_has_unit_modulus(
 def test_m04_transfer_function_conjugates_under_distance_reversal(
     prop_grid: SamplingGrid, wavelength: float
 ) -> None:
-    """M-04: ``H(-z) == conj(H(z))``.
+    """M-04: ``H(-z) == conj(H(z))`` on this all-propagating mesh.
 
-    This is the content of the single-expression rule: there is no separate
-    backward formula, so reversing the distance must conjugate the propagator
-    automatically. Tolerance 1e-12; a hand-written second expression with a
-    sign slip would be O(1) wrong.
+    The identity requires real kz; it is not true for evanescent components.
+    M-11/M-12 separately check forward evanescent decay and refusal to reverse
+    it. Existing tolerances rtol=1e-12, atol=1e-14 absorb unit-scale roundoff;
+    a second expression with a sign slip would be O(1) wrong.
     """
     z = 12.0 * MM
     forward = angular_spectrum_transfer_function(
@@ -610,9 +610,10 @@ def test_m29_two_hops_equal_one_long_hop(
 ) -> None:
     """M-29: propagating z1 then z2 equals propagating z1+z2 (pad_factor=1).
 
-    The field-level counterpart of M-05. Unlike the round trip, this does NOT
-    cancel a sign error: with a flipped sign both sides flip together, but a
-    non-linear distance dependence or a per-call constant would break it.
+    The field-level counterpart of M-05. Like the round trip, it cannot detect
+    a global sign reversal: exp(-i*kz*z) also composes over distance. It checks
+    composition, which non-linear distance dependence or a per-call constant
+    can break. The independent analytic tests carry the propagation-sign claim.
     """
     data = rng.standard_normal(prop_grid.shape) + 1j * rng.standard_normal(
         prop_grid.shape

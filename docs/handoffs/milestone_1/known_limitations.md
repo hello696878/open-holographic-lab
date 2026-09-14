@@ -46,6 +46,18 @@ measured evidence**.
 
 Judged against the analytic Gaussian (256², 3.74 µm, `w₀ = 40 µm`):
 
+**Historical provenance correction — 2026-09-14.** The heading above does
+not describe every row of the original table below. Recovered planning-probe
+source and output show that its 5 mm and 20 mm values match comparison
+against a **4×-padded, band-limited numerical reference**, not an analytic
+Gaussian. A later analytic probe gives the approximately `1e-6` values in
+`tests_and_evidence.md` §2.4. At 100 mm the padded value instead agrees with
+the later analytic result, so this table cannot be treated as one consistent
+analytic benchmark. The original numbers remain untouched. Exact assembly
+and rounding of every cell are not fully recorded. See the
+[recovered provenance and separate current probe](../../corrections/m0_m1_contract_and_evidence.md).
+No band-limited implementation has been added or rerun by this maintenance.
+
 | `z` | plain | 2× padded | band-limited | BL + 2× padded |
 |---|---|---|---|---|
 | 5 mm | `9.1e-13` | `6.2e-13` | `9.1e-13` | `6.2e-13` |

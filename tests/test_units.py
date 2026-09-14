@@ -40,8 +40,10 @@ def test_u03_wavelength_expression_round_trips(
     rounding steps (multiply then divide) without being loose enough to hide a
     wrong constant, which would be off by a factor of 1000 or more.
     """
-    assert (633 * units.NM) / units.NM == pytest.approx(633.0, rel=1e-15)
-    assert (3.74 * units.UM) / units.UM == pytest.approx(3.74, rel=1e-15)
+    # Both nonzero ratios have zero measured baseline error. Their stated
+    # relative threshold covers arithmetic rounding; no absolute floor is needed.
+    assert (633 * units.NM) / units.NM == pytest.approx(633.0, rel=1e-15, abs=0.0)
+    assert (3.74 * units.UM) / units.UM == pytest.approx(3.74, rel=1e-15, abs=0.0)
 
 
 def test_u04_module_exports_only_multipliers() -> None:

@@ -19,7 +19,7 @@ __all__ = [
 def wrapped_phase_difference(
     actual: np.ndarray | float, expected: np.ndarray | float
 ) -> np.ndarray:
-    """Return ``actual - expected`` wrapped into the canonical branch.
+    """Return a modulo-``2*pi`` phase residual for approximate comparison.
 
     Phase is only ever defined modulo ``2*pi``, so a naive subtraction can
     report a difference of nearly ``2*pi`` for two phases that are physically
@@ -28,13 +28,15 @@ def wrapped_phase_difference(
 
     Wrapping through the unit circle,
     ``angle(exp(i * (actual - expected)))``, maps any such difference back
-    into ``(-pi, +pi]`` and returns ``0`` for physically equal phases
-    regardless of branch.
+    into ``[-pi, +pi]``. Physically equal phases have a residual near zero
+    within floating-point error, regardless of their branch representation.
+    This residual is independent of the canonical output contract of
+    ``ComplexField.phase``; it does not normalize that property's output.
 
     Returns
     -------
     ndarray
-        The wrapped difference, in radians, in ``(-pi, +pi]``.
+        The wrapped difference, in radians, in ``[-pi, +pi]``.
     """
     return np.angle(np.exp(1j * (np.asarray(actual) - np.asarray(expected))))
 
@@ -77,13 +79,24 @@ def assert_phase_allclose(
 
 
 def assert_bit_identical(actual: np.ndarray, desired: np.ndarray) -> None:
-    """Assert two float arrays are identical bit for bit.
+    """Assert equal shape, dtype representation, and logical element bytes.
+
+    Dtypes must agree, including byte order where applicable. Element bytes
+    are compared in logical C traversal order, so different strides or memory
+    layouts are allowed. No values are cast and signed zeros are preserved.
+    This is a literal representation check, independent of phase equivalence
+    and numerical tolerances.
 
     Used only where exactness is the property under test -- agreement with
     ``numpy.fft.fftfreq``, coordinate centring, and immutability. Every such
     call site carries a comment saying why exactness is required.
     """
-    np.testing.assert_array_equal(actual, desired)
-    assert actual.dtype == desired.dtype, (
+    assert actual.shape == desired.shape, (
+        f"shape mismatch: {actual.shape} vs {desired.shape}"
+    )
+    assert actual.dtype == desired.dtype and actual.dtype.str == desired.dtype.str, (
         f"dtype mismatch: {actual.dtype} vs {desired.dtype}"
+    )
+    assert actual.tobytes(order="C") == desired.tobytes(order="C"), (
+        "element bytes differ in logical C traversal order"
     )

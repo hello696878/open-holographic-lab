@@ -20,8 +20,15 @@ Transfer function (section 3.9), a **single expression for every distance**::
 
 There is deliberately no second expression for negative ``z``. Writing the
 backward case separately -- as ``exp(-i*|kz|*z)`` or similar -- invites a sign
-error, because the same formula already produces the conjugate propagator when
-``z < 0``. One expression, one sign, all distances.
+error. For real ``kz`` the same formula produces the conjugate propagator when
+``z < 0``. For evanescent ``kz = 1j*kappa`` it instead reverses decay into
+growth; backward requests on a mesh carrying such samples are refused. The
+single mathematical expression and the public rejection policy are distinct.
+
+The pipeline's ``A`` denotes raw DFT coefficients. A physical-coordinate
+spectrum also carries sample-area and centered-origin phase factors (section
+3.7). They cancel between the same-grid forward and inverse transforms, so
+the production pipeline needs no additional shifts or factors.
 
 The three conventions that must agree -- the ``exp(-i*omega*t)`` time
 dependence (section 3.1), the ``-i`` forward Fourier kernel (section 3.6), and

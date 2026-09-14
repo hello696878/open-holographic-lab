@@ -6,6 +6,12 @@ units, conventions, and the corresponding Python name.
 Technically precise, not a beginner tutorial. Normative source:
 `docs/math_conventions.md` v0.2.
 
+**Correction notes added 2026-09-14.** This is the historical M0 mathematics
+record. Original equations and claims below are preserved; labeled notes in
+§3.2, §5.1, and §5.5 supply the current corrections. The current normative
+source is v0.4; see also the
+[consolidated correction record](../../corrections/m0_m1_contract_and_evidence.md).
+
 ---
 
 ## 1. Symbol table
@@ -97,6 +103,17 @@ overflow). Range `[0, ∞)`.
 ```
 
 **Python:** `np.angle(self.data)`.
+
+**Correction (2026-09-14).** The original implementation statement above
+omits the now-required canonical-endpoint step. `ComplexField.phase` evaluates
+`np.angle(self.data)` and maps outputs exactly equal to `−π` to `+π`.
+NumPy alone can return `−π` for negative-real values with negative signed-zero
+imaginary parts. Nearby negative angles and stored field bits are unchanged.
+The original zero-amplitude discussion below applies to ordinary `0+0j`;
+signed-zero combinations can yield other raw angles, with `−π` subject to the
+same endpoint rule. Phase is physically undefined for every zero-amplitude
+combination. These corrections do not change equation (3)'s modulo-`2π`
+mathematical meaning.
 
 **Convention:** the canonical branch is the half-open interval **`(−π, +π]`**.
 Note `np.angle(-1.0) = +π`, not `−π`.
@@ -240,6 +257,15 @@ component of the inverse transform is then a plane wave
 forward-travelling wave. **The three sign choices are mutually consistent and
 cannot be changed independently.** Verified by `test_c04` (shift theorem).
 
+**Correction (2026-09-14).** The preceding sign-coupling claim is overstated.
+The chosen signs are consistent, but the Fourier analysis/inverse pair can be
+chosen independently of the time convention, with a consistent transverse
+wavevector interpretation. An analysis kernel `exp(s·i·2πf·r)` has inverse
+kernel `exp(−s·i·2πf·r)` and synthesis wavevector `k_perp = −s·2πf`.
+The project continues to use `s = −1`; no production sign changes.
+`test_c04` checks the chosen Fourier kernel, not the temporal convention.
+Current C-09/C-10 independently check both transform pairs.
+
 ### 5.2 Frequency axes
 
 ```
@@ -309,6 +335,26 @@ A(fx[m], fy[l]) ≈ dx · dy · fft2(U)[l, m]                             (19)
 Milestone 0 never applies the `dx·dy` factor (nothing here reports a physical
 spectral amplitude). Propagation will not apply it either, because forward and
 inverse transforms contribute reciprocal factors that cancel.
+
+**Correction (2026-09-14) to equation (19).** The physical-coordinate
+spectrum requires the origin phase as well as sample area. With
+`x0 = −(Nx//2)·dx`, `y0 = −(Ny//2)·dy`, and FFT-ordered frequencies:
+
+```
+C[l,m] = exp(−i·2π·(fx[m]·x0 + fy[l]·y0))
+A_d[l,m] = dx·dy · Σ_ij U[i,j] exp(−i·2π·(fx[m]·x[j] + fy[l]·y[i]))
+         = dx·dy · C[l,m] · FFT2(U)[l,m]                            (19-c)
+U = IFFT2{ A_d / (dx·dy·C) }
+```
+
+`A_d` is the rectangular-sum approximation to the continuous `A`, in a.u.·m².
+Factoring `x[j] = x0+j·dx`, `y[i] = y0+i·dy` gives (19-c); the remaining sum
+is the index-based DFT. Equivalently, `A_d = dx·dy·FFT2(ifftshift(U))` in
+FFT frequency order, at both parities. In same-grid propagation the pointwise
+`C` and area factors cancel through `H`, leaving the existing
+`IFFT2{H·FFT2(U)}` unchanged. C-09 compares with independent coordinate sums
+and a center impulse; C-11 checks that cancellation. The original equation
+(19) and historical measurements remain above as the record being corrected.
 
 ---
 

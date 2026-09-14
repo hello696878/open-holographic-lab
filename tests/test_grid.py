@@ -379,19 +379,27 @@ def test_g22_diffraction_angle_spot_check_against_hand_calculation() -> None:
     theta_deg = math.degrees(
         grid.max_diffraction_angle_rad(633 * NM, axis="x")
     )
-    assert theta_deg == pytest.approx(4.855, abs=0.01)
+    assert theta_deg == pytest.approx(4.855, rel=0.0, abs=0.01)
 
 
-def test_g23_diffraction_angle_rejects_impossible_configurations() -> None:
-    """G-23: an unsatisfiable geometry raises rather than returning NaN.
+def test_g23_diffraction_angle_rejects_nyquist_beyond_propagating_cutoff() -> None:
+    """G-23: fine sampling is valid, but its Nyquist may have no real angle.
 
     With ``lambda/(2d) > 1`` no such angle exists; ``math.asin`` would raise a
     domain error and ``np.arcsin`` would return NaN with a warning. Neither is
-    acceptable as a public API behaviour.
+    acceptable as a public API behaviour. The grid itself remains valid.
     """
     grid = SamplingGrid.square(n=8, pitch=100 * NM)
-    with pytest.raises(ValueError, match="too coarse"):
+    with pytest.raises(ValueError, match="Nyquist frequency exceeds the propagating-wave cutoff"):
         grid.max_diffraction_angle_rad(633 * NM, axis="x")
+    # The same fine grid has a real angle for a shorter wavelength. The exact
+    # value pi/6 is checked with rel=1e-15 for asin rounding, abs=0 at nonzero scale.
+    np.testing.assert_allclose(
+        grid.max_diffraction_angle_rad(100 * NM, axis="x"),
+        math.pi / 6.0,
+        rtol=1e-15,
+        atol=0.0,
+    )
     with pytest.raises(ValueError, match="axis must be"):
         grid.max_diffraction_angle_rad(50 * NM, axis="z")  # type: ignore[arg-type]
 

@@ -348,7 +348,8 @@ class SamplingGrid:
                 f"no diffraction angle exists: wavelength {lam!r} m with "
                 f"pitch {pitch!r} m along {axis!r} gives "
                 f"sin(theta) = lambda / (2 * d) = {sin_theta!r} > 1; "
-                f"the sampling is too coarse for this wavelength"
+                f"the Nyquist frequency exceeds the propagating-wave cutoff; "
+                f"no real diffraction angle corresponds to that frequency"
             )
         return math.asin(sin_theta)
 

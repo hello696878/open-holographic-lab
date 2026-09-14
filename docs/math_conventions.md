@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.3 — 2026-08-11
+**Version:** 0.4 — 2026-09-14
 
 ---
 
@@ -126,10 +126,13 @@ that the three choices form a mutually consistent set:
 | Forward Fourier kernel | `exp(−i2π(f·r))` | §3.6 |
 | Forward propagation | `exp(+i·kz·z)` | §3.9 |
 
-Any one of the three may be flipped only if the other two are flipped with it.
-The set has been **selected and verified together**, both against the external
-reference above and by the test suite (`test_c04` for the kernel sign,
-`test_a02`/`test_a05`/`test_a06` for the propagation sign).
+These are the project's selected conventions; they remain unchanged. The time
+convention fixes which longitudinal phase describes forward travel. The sign
+of the Fourier **analysis/synthesis pair** is a separate representational
+choice, provided the inverse kernel and transverse-wavevector interpretation
+are consistent (§3.6). It need not flip when the time convention changes.
+NumPy does not impose a time convention. `test_c04` pins the selected Fourier
+kernel; `test_a02`/`test_a05`/`test_a06` independently check propagation signs.
 
 ### 3.2 Complex field
 
@@ -138,18 +141,26 @@ reference above and by the test suite (`test_c04` for the kernel sign,
 | Quantity | Definition | NumPy | Range |
 |---|---|---|---|
 | Amplitude | `A = \|U\|` | `np.abs(U)` | `[0, ∞)` |
-| Phase | `φ = arg(U)` | `np.angle(U)` | `(−π, +π]` |
+| Phase | `φ = arg(U)` | `np.angle(U)`, then replace exactly `−π` by `+π` | `(−π, +π]` |
 | Intensity | `I = \|U\|² = U·conj(U)` | `np.abs(U)**2` | `[0, ∞)` |
 
 **Phase wrapping.** Phase is only ever defined modulo 2π. The canonical branch
-in this repository is `np.angle`'s: the half-open interval **`(−π, +π]`**. Any
-function returning a phase **must** return it on this branch unless its name
-says otherwise (e.g. a future `unwrapped_phase`). Note that `np.angle(-1.0)`
-returns `+π`, not `−π`.
+in this repository is the half-open interval **`(−π, +π]`**. Any function
+returning a phase **must** return it on this branch unless its name says
+otherwise (e.g. a future `unwrapped_phase`). Raw `np.angle` can return `−π`
+for a negative-real value with a negative signed-zero imaginary component.
+`ComplexField.phase` therefore computes `np.angle(U)` and changes only outputs
+**exactly equal to `−π`** into `+π`. Nearby representable angles are unchanged;
+there is no tolerance-based remapping, broad modulo operation, or unwrapping.
+The returned array remains `float64` with the field's shape; the stored
+`complex128` array, including its signed-zero bits, is never mutated.
 
-**Phase of zero amplitude is undefined.** `np.angle(0+0j)` returns `0.0`. That
-is a convention of NumPy, not a physical fact. Code must not attach meaning to
-the phase where the amplitude is zero (or within machine epsilon of zero).
+**Phase of zero amplitude is undefined.** Ordinary `0+0j` still yields `0.0`.
+Other signed-zero combinations follow NumPy, subject to the same exact endpoint
+rule: for example, `complex(-0.0, -0.0)` has raw angle `−π` and canonical output
+`+π`. That representation change has no physical phase meaning. Code must not
+attach meaning to the phase where the amplitude is zero (or within machine
+epsilon of zero).
 
 ### 3.3 Array layout
 
@@ -222,9 +233,20 @@ inverse transform is a plane wave `exp(+i·(kx·x + ky·y))`, which combined wit
 the `exp(+i·kz·z)` of §3.1 gives a physically forward-travelling plane wave
 `exp(i·(kx·x + ky·y + kz·z))`.
 
-**The three sign choices — time convention (§3.1), forward-propagation sign
-(§3.1), and FFT direction (§3.6) — are mutually consistent and cannot be
-changed independently.**
+**The selected signs are consistent, but the Fourier pair is not forced by
+the time convention.** More generally, for an analysis-kernel sign
+`s ∈ {−1, +1}`:
+
+    A_s(f) = ∬ U(r) · exp(s·i·2π·f·r) dr
+    U(r)   = ∬ A_s(f) · exp(−s·i·2π·f·r) df
+
+The synthesis wave then has transverse wavevector `k_perp = −s·2π·f` when
+written as `exp(+i·k_perp·r)`. Both transform pairs describe the same field;
+the opposite analysis sign relabels the spectrum by `f → −f`. This does not
+change the time dependence or force a longitudinal propagation-sign change.
+The project keeps `s = −1`, hence `kx = 2πfx`, `ky = 2πfy`, and all production
+FFT calls unchanged. C-09/C-10 check both sign pairs against independent sums;
+they do not introduce an alternate production convention.
 
 `fx` and `fy` are in **cycles per metre**. The angular versions are
 `kx = 2π·fx` and `ky = 2π·fy`, in rad/m. Names must make clear which is meant:
@@ -243,15 +265,44 @@ normalization:
 
 Any energy-conservation test must use this exact form.
 
-**Physical spectrum vs. DFT output.** The DFT output approximates the
-continuous spectrum only up to the sample area:
+**Physical spectrum vs. DFT output.** The array's first sample is at
+`x0 = −(Nx//2)·dx`, `y0 = −(Ny//2)·dy`, not at `(0,0)`. At FFT-ordered
+frequencies define the physical-coordinate rectangular sum `A_d`:
 
-    A(fx[m], fy[l])  ≈  dx · dy · np.fft.fft2(U)[l, m]
+    A(fx[m], fy[l]) ≈ A_d[l,m]
+    A_d[l,m] = dx·dy · Σ_ij U[i,j] · exp(−i·2π·(fx[m]·x[j] + fy[l]·y[i]))
 
-Propagation does **not** apply the `dx·dy` factor, because the forward and
-inverse transforms contribute reciprocal factors that cancel exactly. Any code
-reporting a *physical* spectral amplitude **must** apply it explicitly and say
-so in its docstring.
+Insert `x[j] = x0 + j·dx`, `y[i] = y0 + i·dy`. The origin-dependent part is
+constant within each sum, and the remaining kernel is NumPy's index-based DFT:
+
+    D = np.fft.fft2(U)
+    C[l,m] = exp(−i·2π·(fx[m]·x0 + fy[l]·y0))
+    A_d = dx·dy · C · D
+
+Thus both **sample area and origin phase** are required. Equivalently,
+`A_d = dx·dy·fft2(ifftshift(U))`, with the result in FFT frequency order.
+This equivalence holds at both parities under the §3.4 origin rule. `A_d` has
+units a.u.·m²; `D` contains raw DFT coefficients. The sum is exactly defined;
+its approximation to a continuous integral still depends on sampling and the
+finite window. C-09 uses independent physical-coordinate sums and a center
+impulse to check the formula, without deriving its reference from an FFT.
+
+The inverse sum uses `Δfx·Δfy = 1/(Nx·Ny·dx·dy)` and the opposite kernel:
+
+    U[i,j] = Δfx·Δfy · Σ_lm A_d[l,m] · exp(+i·2π·(fx[m]·x[j] + fy[l]·y[i]))
+           = IFFT2{ A_d / (dx·dy·C) }[i,j]
+
+For **same-grid** ASM, multiplication by `H` is pointwise on this same
+frequency mesh, so the factors cancel algebraically:
+
+    U_z = IFFT2{ (H · dx·dy·C·FFT2(U_0)) / (dx·dy·C) }
+        = IFFT2{ H · FFT2(U_0) }
+
+This is why production propagation needs neither new shifts nor explicit area
+or origin factors. C-11 compares it with direct physical-coordinate analysis
+and synthesis for the same sampled `H`; it isolates this cancellation, not
+the physical accuracy of `H`. Any future physical-spectrum export must include
+the area and origin factors and state its frequency ordering.
 
 ### 3.8 Frequency grids and array ordering
 
@@ -339,9 +390,14 @@ Propagation by distance `z` through a homogeneous medium (`n = 1`):
 with the **principal complex square root**, i.e. the branch satisfying
 **`Im{kz} ≥ 0`**. Equivalently `kz = √(k² − kx² − ky²)` with `k = 2π/λ`.
 
-This single expression covers propagating and evanescent samples and **both
-signs of `z`**. For `z < 0` it becomes the conjugate propagator automatically,
-since `H(−z) = conj(H(z))`.
+This single mathematical expression covers propagating and evanescent samples
+and **both signs of `z`**. For **real `kz`**, including the grazing value zero,
+`H(−z) = conj(H(z))`. This identity does not hold for evanescent samples:
+if `kz = i·κ`, `κ > 0`, and `z > 0`, then `H(z) = exp(−κz)` while
+`H(−z) = exp(+κz)`, not `conj(H(z))`. The formula describes growth in that
+inverse direction; the public API refuses backward propagation whenever the
+computational mesh contains evanescent samples (§3.9.3). The existing forward
+decay and backward-rejection policies are unchanged.
 
 **Do not write a separate expression for negative `z`.** A second formula such
 as `exp(−i·|kz|·z)` is easy to misread and easy to sign incorrectly, and there
@@ -510,6 +566,7 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.4 | 2026-09-14 | **§3.1/§3.6** — distinguish the selected Fourier pair from the physical time/propagation convention; remove the claim that all three signs must flip together. **§3.2** — specify exact `−π` to `+π` endpoint normalization after `np.angle`, including signed-zero handling without changing stored data. **§3.7** — derive the centered-coordinate physical spectrum, its inverse, and same-grid ASM cancellation of area and origin factors. **§3.9.1** — restrict conjugacy under distance reversal to real `kz` and explain the evanescent exception. | Approved M0/M1 corrective maintenance. Existing selected signs, grid/FFT ordering, precision, normalization, propagation implementation, and evanescent policy are retained; phase output is corrected to the existing canonical-interval contract. Historical evidence and dated errata are recorded in `docs/corrections/m0_m1_contract_and_evidence.md`. |
 | 0.3 | 2026-08-11 | **§3.1** — records the external verification of the time convention and propagation sign against Konijnenberg/Adam/Urbach; downgrades the Goodman citation to an unverified secondary attribution; corrects the mislabelling of `exp(−iωt)` as the "engineering" convention (it is the *physicists'* convention); states that NumPy fixes the DFT kernel only, not the time convention, and that the three sign choices form a mutually verified set. **§3.9 rewritten** — §3.9.1 mandates the single expression `H = exp(+i·kz·z)` with `Im{kz} ≥ 0` and withdraws the piecewise presentation; §3.9.2 requires evanescence to be determined from the discrete mesh and corrects the threshold from `d < λ/2` to the corner condition `d < λ/√2`; §3.9.3 states the evanescent policy; §3.9.4 specifies the padding/cropping alignment rule and the boundary-condition semantics; §3.9.5 defers band-limited ASM. **§3.8** — periodicity note updated. No mathematical convention changed. | Milestone 1. The `d < λ/2` threshold in the M1 plan was an error (axis-only reasoning); the corner of the 2-D Nyquist square reaches the cutoff first. Raised and corrected before implementation. |
 | 0.2 | 2026-08-08 | **§3.8.1 added** — mandates the reciprocal-multiply evaluation order for frequency axes, with measured ULP-level evidence. **§3.4** — documents that `meshgrid()` returns `(x_grid, y_grid)`, matching `numpy.meshgrid` order rather than axis order. Both are clarifications; no mathematical convention changed. | Milestone 0. The literal division form in v0.1 §3.8 was inconsistent with the bit-for-bit agreement with `numpy.fft.fftfreq` required by `milestones.md`; the conflict was raised and approved before implementation. |
 | 0.1 | 2026-08-08 | Initial version. Establishes §1–§5: scalar monochromatic model at `n = 1`; SI units with `I ≡ \|U\|²`; `exp(−iωt)` time convention with forward propagation `exp(+i·kz·z)`; `(Ny, Nx)` array layout with `+y` downward; `N//2`-centred space and frequency grids; `numpy.fft` `norm="backward"`; `*_fft` / `*_centered` ordering discipline; Angular Spectrum transfer function; determinism and precision rules. | Scaffolding, prior to Milestone 0. |

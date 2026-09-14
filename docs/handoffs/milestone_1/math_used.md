@@ -3,6 +3,11 @@
 Every equation implemented or assumed in Milestone 1. Technically precise, not
 a beginner tutorial. Normative source: `docs/math_conventions.md` v0.3.
 
+**Correction notes added 2026-09-14.** Original equations and measurements are
+preserved below. Notes in §2.1 and §2.4 correct spectrum notation and the
+domain of the conjugacy identity. The current normative source is v0.4; see
+the [consolidated correction record](../../corrections/m0_m1_contract_and_evidence.md).
+
 Milestone 0's symbol table (`U`, `A`, `φ`, `I`, `P`, `λ`, `k`, `fx`, `kx`, …)
 still applies; only additions are listed here.
 
@@ -41,6 +46,24 @@ The `dx·dy` factor relating the DFT to the continuous spectrum (§3.7 eq. 19)
 is not applied: the forward and inverse transforms contribute reciprocal
 factors that cancel exactly, and nothing here reports a physical spectral
 amplitude.
+
+**Correction (2026-09-14).** The `A` in the original FFT pipeline (1)–(3)
+denotes raw index-based DFT coefficients, not the physical spectrum with units
+a.u.·m² listed in §1. For the latter, define `a = dx·dy` and
+`C[l,m] = exp(−i·2π·(fx[m]·x0 + fy[l]·y0))`, where
+`x0 = −(Nx//2)·dx`, `y0 = −(Ny//2)·dy`. Then
+
+```
+A_d(0) = a·C·FFT2(U_0)
+A_d(z) = H·A_d(0)
+U_z = IFFT2{ A_d(z)/(a·C) } = IFFT2{ H·FFT2(U_0) }
+```
+
+Factoring the constant origin term from the physical-coordinate Fourier sum
+gives the first line; the inverse uses the opposite kernel and frequency-cell
+area `1/(Ny·Nx·a)`. The origin phases cancel along with the areas on the
+**same grid**. No shifts are inserted into propagation. See normative §3.7,
+M0 equation (19-c), and independent direct-sum tests C-09–C-11.
 
 ### 2.2 The transfer function — one expression
 
@@ -108,6 +131,22 @@ so reversing the distance conjugates the propagator automatically. Writing a
 second formula such as `exp(−i·|kz|·z)` would be redundant, would need its own
 branch handling for the evanescent case, and is easy to sign incorrectly.
 Pinned by `test_m04`.
+
+**Correction (2026-09-14) to equation (7).** The historical wording "any
+`kz` on the chosen branch" is incorrect. Conjugacy holds for **real `kz`**
+only (including zero). For `kz=i·κ`, `κ>0`, and `z>0`:
+
+```
+H(z) = exp(−κz),    H(−z) = exp(+κz) != conj(H(z))                 (7-c)
+```
+
+The public functions refuse the backward request on an evanescent mesh; they
+still compute forward decay with the same single expression. M-04 uses an
+all-propagating mesh; M-11/M-12 test decay and backward rejection separately.
+The original equation remains above for historical traceability and must be
+read with this restriction. Composition (8) remains valid for the exponential,
+but neither composition nor a forward/backward round trip alone establishes
+the physical propagation sign.
 
 Composition follows from the same exponential:
 

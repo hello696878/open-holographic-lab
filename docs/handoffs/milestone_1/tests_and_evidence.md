@@ -1,5 +1,17 @@
 # Milestone 1 — Tests and Evidence
 
+**Dated clarification — 2026-09-14.** Original outputs and measurements in
+this document are preserved. Its 72 mechanics / 31 analytic split is the
+correct attribution for baseline `1b2e755` (291 total), unlike the original
+71 / 32 split in `implementation_summary.md`. The corrected current suite,
+explicit-tolerance inventory, recovered Gaussian-reference provenance, and
+limits of individual test claims are recorded in the
+[maintenance evidence and tutor errata](../../corrections/m0_m1_contract_and_evidence.md).
+In particular, `H(-z) = conj(H(z))` is restricted to real `kz`, and both
+round-trip and composition checks can pass under a global propagation-sign
+flip. Historical "0 gaps" means the ten recorded mutations were caught;
+it is not a claim that every possible defect was ruled out.
+
 ---
 
 ## 1. Exact test command and output

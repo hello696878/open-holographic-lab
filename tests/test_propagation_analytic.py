@@ -1,14 +1,15 @@
 """Analytic validation of Angular Spectrum propagation (IDs A-01 .. A-12).
 
-These tests carry the evidential weight for Milestone 1. Every one of them
-compares against a closed-form solution derived independently of the
-implementation, rather than against another numerical result.
+These tests supply independent closed-form references for Milestone 1,
+together with exact-identity and symmetry checks. Their evidence classes
+differ; a symmetry or identity alone does not establish physical accuracy.
 
 Why the round trip is not enough
 --------------------------------
-``propagate(+z)`` followed by ``propagate(-z)`` is invariant under a global
-sign flip of the transfer function, because ``H(-z) = conj(H(z))`` whichever
-sign convention is used. A completely wrong propagator cancels itself. The
+With ``pad_factor=1`` and a propagating-only mesh, ``propagate(+z)`` followed
+by ``propagate(-z)`` is invariant under reversal of the propagation phase
+sign: ``H(-z) = conj(H(z))`` in that real-kz regime whichever sign is used.
+That specific incorrect sign still cancels on the round trip. The
 round trip therefore lives in ``test_propagation.py`` as secondary evidence,
 and the sign is pinned here instead.
 
@@ -267,7 +268,9 @@ def test_a06_uniform_field_phase_sign_is_positive_with_distance(
     out = propagate_angular_spectrum(field, distance_m=z, pad_factor=1)
     phase = float(np.mean(out.phase))
     assert phase > 0.0, "phase must ADVANCE under the exp(-i*omega*t) convention"
-    assert phase == pytest.approx(k * z, rel=1e-9)
+    # At 0.496 rad, measured error is 1.67e-16 rad. Preserve rel=1e-9;
+    # abs=1e-15 covers a few float64 epsilons without an implicit default.
+    assert phase == pytest.approx(k * z, rel=1e-9, abs=1e-15)
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +311,7 @@ def test_a08_asymmetric_field_does_not_become_symmetric(
     """A-08: the symmetry test is not vacuous.
 
     Without this, A-07 would also pass for an implementation that symmetrises
-    everything (for example by taking a magnitude somewhere).
+    every output. Taking a magnitude alone need not cause that symmetry.
     """
     x_grid, y_grid = prop_grid.meshgrid()
     offset = np.exp(
@@ -449,7 +452,10 @@ def test_a10_gaussian_beam_radius_expands_as_predicted(wavelength: float) -> Non
         )
         measured_w = 2.0 * second_moment
         expected_w = waist * math.sqrt(1.0 + (z / rayleigh) ** 2)
-        assert measured_w == pytest.approx(expected_w, rel=2e-3), (
+        # Widths are 1.12e-4..2.24e-4 m; measured model discrepancy is at most
+        # 3.64e-10 m (1.63e-6 relative). Keep the paraxial rel=2e-3 threshold
+        # and the existing 1e-12 m absolute floor, now both explicit.
+        assert measured_w == pytest.approx(expected_w, rel=2e-3, abs=1e-12), (
             f"z={factor} z_R: measured w={measured_w*1e6:.2f} um, "
             f"expected {expected_w*1e6:.2f} um"
         )
@@ -493,8 +499,8 @@ def test_a11_gaussian_gouy_phase_has_the_expected_sign_and_size(
 def test_a12_gaussian_peak_intensity_falls_as_predicted(wavelength: float) -> None:
     """A-12: on-axis intensity follows ``(w0/w(z))^2``.
 
-    Energy conservation expressed pointwise: as the beam expands its peak
-    intensity must fall by exactly the ratio of areas.
+    For the paraxial Gaussian model, expansion and conserved total power imply
+    this on-axis ratio. Intensity is not conserved pointwise during propagation.
     """
     waist = 100.0 * UM
     grid = SamplingGrid.square(n=512, pitch=4.0 * UM)
@@ -513,6 +519,8 @@ def test_a12_gaussian_peak_intensity_falls_as_predicted(wavelength: float) -> No
         out = propagate_angular_spectrum(source, distance_m=z, pad_factor=2)
         w_z = waist * math.sqrt(1.0 + (z / rayleigh) ** 2)
         expected_ratio = (waist / w_z) ** 2
+        # Ratios are 0.2..0.8; the measured discrepancy is at most 2.03e-6
+        # relative. Preserve the model-limited rel=5e-3 and existing abs=1e-12.
         assert out.intensity[centre] / peak0 == pytest.approx(
-            expected_ratio, rel=5e-3
+            expected_ratio, rel=5e-3, abs=1e-12
         )

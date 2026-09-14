@@ -184,6 +184,28 @@ Recorded verbatim in `tests_and_evidence.md`.
 
 ---
 
+## Corrective maintenance — 2026-09-14
+
+Approved M0/M1 categories A and B; this is not a new milestone. M0 and M1
+remain complete, and their acceptance counts and historical evidence above
+remain preserved. The current suite is **323 passing tests** (291 baseline
+plus 32 regressions); the historical M1 file split is 72 mechanics / 31
+analytic cases, correcting the original 71/32 prose attribution.
+
+Production changes are limited to the exact `-pi` to `+pi` phase endpoint
+representation and corrected diffraction-angle diagnostic text. Propagation
+has no executable change. Explicit tolerances, literal byte-identity tests,
+independent physical-coordinate Fourier sums, dated mathematical errata,
+and recovered Gaussian-reference provenance are recorded in the
+[consolidated correction and tutor errata](corrections/m0_m1_contract_and_evidence.md).
+Original measurements and transcripts remain intact; historical sign and
+"0 test gaps" claims above must be read with that dated clarification.
+
+Category C remains deferred to the future M2 I/O design. Milestone 2 and all
+later work remain not started.
+
+---
+
 ## Milestone 2 — Target image loading
 
 **Status:** not started.

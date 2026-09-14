@@ -1,11 +1,12 @@
-"""Agreement between ``ohlab`` grids and ``numpy.fft`` (IDs C-01 .. C-08).
+"""Agreement between ``ohlab`` grids and ``numpy.fft`` (IDs C-01 .. C-11).
 
-This is the most important module in Milestone 0. Three sign/ordering choices
-must be mutually consistent -- the ``exp(-i*omega*t)`` time convention, the
-``exp(+i*kz*z)`` forward-propagation sign, and the ``-i`` forward FFT kernel
-(``docs/math_conventions.md`` sections 3.1, 3.6, 3.8). If any one of them is
-wrong, Milestone 3 produces a hologram that reconstructs a mirrored or shifted
-image which still *looks* correct. These tests fail loudly now instead.
+These tests pin the selected Fourier kernel, frequency labels, normalization,
+and coordinate origin (``docs/math_conventions.md`` sections 3.6--3.8).
+NumPy's Fourier kernel does not select the physical time convention. Propagation
+signs have separate analytic tests in ``test_propagation_analytic.py``.
+C-09--C-11 were added in the 2026-09-14 corrective maintenance: independent
+direct sums check the physical spectrum and both Fourier sign pairs without
+changing the production transform pair.
 
 It also contains the static-analysis guards that keep the numerical core free
 of UI/plotting dependencies and of the legacy global RNG.
@@ -14,12 +15,15 @@ of UI/plotting dependencies and of the legacy global RNG.
 from __future__ import annotations
 
 import ast
+import cmath
+import math
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 from _helpers import assert_bit_identical
+from ohlab import ComplexField, propagate_angular_spectrum
 from ohlab.grid import SamplingGrid
 
 # Import roots that must never appear anywhere inside src/ohlab/.
@@ -129,7 +133,7 @@ def test_c01_on_grid_plane_wave_lands_in_the_predicted_bin(
         off_peak[peak] = 0.0
         assert float(np.max(off_peak)) <= 1e-10 * float(magnitude[peak])
 
-        # Complex value, which pins the spatial ORIGIN as well as the spacing.
+        # Pins meshgrid/axis consistency and DFT scale, not the absolute origin.
         predicted = n_samples * np.exp(
             2j * np.pi * (fx0 * aniso_grid.x[0] + fy0 * aniso_grid.y[0])
         )
@@ -328,13 +332,15 @@ def test_c07_numerical_core_uses_only_the_modern_rng() -> None:
                     )
 
 
-def test_c08_every_public_module_is_importable_without_optional_deps() -> None:
-    """C-08: the core imports cleanly and exposes the documented public API.
+def test_c08_documented_public_api_is_available() -> None:
+    """C-08: the installed package exposes the documented public API.
 
     Updated in Milestone 1 to include the two propagation entry points. The
     assertion is deliberately an exact set comparison rather than a subset
     check, so that adding a name to ``__all__`` is a conscious act recorded in
-    a milestone rather than something that drifts in unnoticed.
+    a milestone rather than something that drifts in unnoticed. This run has
+    the development dependencies installed; it does not establish successful
+    import in an environment without optional dependencies.
     """
     import ohlab
 
@@ -346,3 +352,182 @@ def test_c08_every_public_module_is_importable_without_optional_deps() -> None:
     for name in milestone_0_api | milestone_1_api:
         assert hasattr(ohlab, name), f"ohlab.{name} is missing"
     assert set(ohlab.__all__) == milestone_0_api | milestone_1_api
+
+
+# ---------------------------------------------------------------------------
+# C-09 .. C-11: centered-coordinate spectrum and independent direct sums
+# ---------------------------------------------------------------------------
+def _physical_spectrum_via_fft(
+    data: np.ndarray, grid: SamplingGrid, kernel_sign: int
+) -> np.ndarray:
+    """Test subject for section 3.7, in a.u. * m^2; never used by production.
+
+    ``kernel_sign=-1`` is the selected analysis kernel. ``+1`` exercises the
+    alternative transform pair, using an unnormalized positive-kernel DFT.
+    Keep the origin factor explicit so its omission can be a negative control.
+    """
+    fx, fy = grid.freq_meshgrid(order="fft")
+    origin_phase = np.exp(
+        kernel_sign * 2j * np.pi * (fx * grid.x[0] + fy * grid.y[0])
+    )
+    raw_spectrum = (
+        np.fft.fft2(data)
+        if kernel_sign == -1
+        else np.fft.ifft2(data) * data.size
+    )
+    return grid.pixel_area * origin_phase * raw_spectrum
+
+
+def _direct_physical_spectrum(
+    data: np.ndarray, grid: SamplingGrid, kernel_sign: int
+) -> np.ndarray:
+    """Independent rectangular sum on physical coordinates, in a.u. * m^2.
+
+    No FFT, shift, library coordinate/frequency accessor, or origin-correction
+    helper is used. Signed bin integers and sample positions are built from
+    counts and pitches, then the physical Fourier kernel is summed directly.
+    """
+    result = np.empty(grid.shape, dtype=np.complex128)
+    for row in range(grid.ny):
+        bin_y = row if row < (grid.ny + 1) // 2 else row - grid.ny
+        fy = bin_y / (grid.ny * grid.dy)
+        for col in range(grid.nx):
+            bin_x = col if col < (grid.nx + 1) // 2 else col - grid.nx
+            fx = bin_x / (grid.nx * grid.dx)
+            total = 0j
+            for i in range(grid.ny):
+                y = (i - grid.ny // 2) * grid.dy
+                for j in range(grid.nx):
+                    x = (j - grid.nx // 2) * grid.dx
+                    total += data[i, j] * cmath.exp(
+                        kernel_sign * 2j * math.pi * (fx * x + fy * y)
+                    )
+            result[row, col] = grid.dx * grid.dy * total
+    return result
+
+
+def _direct_physical_synthesis(
+    spectrum: np.ndarray, grid: SamplingGrid, kernel_sign: int
+) -> np.ndarray:
+    """Independent inverse sum, in a.u.; opposite kernel and frequency-cell area.
+
+    Like the forward reference, this uses only scalar coordinates, signed bin
+    integers, and complex exponentials. It calls no FFT or correction helper.
+    """
+    result = np.empty(grid.shape, dtype=np.complex128)
+    for i in range(grid.ny):
+        y = (i - grid.ny // 2) * grid.dy
+        for j in range(grid.nx):
+            x = (j - grid.nx // 2) * grid.dx
+            total = 0j
+            for row in range(grid.ny):
+                bin_y = row if row < (grid.ny + 1) // 2 else row - grid.ny
+                fy = bin_y / (grid.ny * grid.dy)
+                for col in range(grid.nx):
+                    bin_x = col if col < (grid.nx + 1) // 2 else col - grid.nx
+                    fx = bin_x / (grid.nx * grid.dx)
+                    total += spectrum[row, col] * cmath.exp(
+                        -kernel_sign * 2j * math.pi * (fx * x + fy * y)
+                    )
+            result[i, j] = total / (grid.ny * grid.nx * grid.dy * grid.dx)
+    return result
+
+
+@pytest.mark.parametrize("shape", [(5, 8), (6, 7)])
+@pytest.mark.parametrize("kernel_sign", [-1, +1])
+@pytest.mark.parametrize("source_kind", ["center_impulse", "complex"])
+def test_c09_physical_spectrum_matches_independent_coordinate_sum(
+    shape: tuple[int, int], kernel_sign: int, source_kind: str
+) -> None:
+    """C-09: both Fourier kernels need the physical origin factor (section 3.7).
+
+    The center impulse has a constant physical spectrum, independently of any
+    transform formula. Nontrivial seeded complex data tests every kernel sum.
+    Mixed parities and unequal pitches expose half-grid and axis mistakes.
+
+    Before this test was added, the 2026-09-14 probe measured maximum absolute
+    error / (pixel_area * sum(abs(data))) <= 1.41e-15. The tolerance is
+    rtol=1e-12, atol=1e-12 times that triangle-inequality spectral bound: it
+    allows near-zero bins without imposing a dimensionless floor on ~1e-11
+    a.u.*m^2 spectra. Omitting the origin factor gives scaled errors 0.517--2.
+    """
+    grid = SamplingGrid(ny=shape[0], nx=shape[1], dy=5e-6, dx=3.74e-6)
+    if source_kind == "center_impulse":
+        data = np.zeros(shape, dtype=np.complex128)
+        data[grid.ny // 2, grid.nx // 2] = 1.0
+    else:
+        rng = np.random.default_rng(20260914)
+        data = rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
+    expected = _direct_physical_spectrum(data, grid, kernel_sign)
+    actual = _physical_spectrum_via_fft(data, grid, kernel_sign)
+    scale = grid.pixel_area * float(np.sum(np.abs(data)))
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12 * scale)
+    if source_kind == "center_impulse":
+        np.testing.assert_allclose(
+            actual, np.full(shape, grid.pixel_area),
+            rtol=1e-12, atol=1e-12 * grid.pixel_area,
+        )
+
+
+@pytest.mark.parametrize("shape", [(5, 8), (6, 7)])
+@pytest.mark.parametrize("kernel_sign", [-1, +1])
+def test_c10_each_fourier_sign_pair_inverts_an_independent_physical_spectrum(
+    shape: tuple[int, int], kernel_sign: int
+) -> None:
+    """C-10: inverse origin factor and inverse kernel recover the sampled field.
+
+    Input spectra come from the independent direct sum, not C-09's FFT helper;
+    an incorrect forward factor therefore cannot cancel an incorrect inverse.
+    Both sign pairs work without selecting a time-harmonic convention.
+    Measured inverse error / max(abs(data)) <= 7.12e-16 (2026-09-14);
+    rtol=1e-12 and a peak-scaled atol allow roundoff at small-amplitude pixels.
+    """
+    grid = SamplingGrid(ny=shape[0], nx=shape[1], dy=5e-6, dx=3.74e-6)
+    rng = np.random.default_rng(20260914)
+    data = rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
+    physical = _direct_physical_spectrum(data, grid, kernel_sign)
+    fx, fy = grid.freq_meshgrid(order="fft")
+    origin_phase = np.exp(
+        kernel_sign * 2j * np.pi * (fx * grid.x[0] + fy * grid.y[0])
+    )
+    index_spectrum = physical / (grid.pixel_area * origin_phase)
+    actual = (
+        np.fft.ifft2(index_spectrum)
+        if kernel_sign == -1
+        else np.fft.fft2(index_spectrum) / data.size
+    )
+    scale = float(np.max(np.abs(data)))
+    np.testing.assert_allclose(actual, data, rtol=1e-12, atol=1e-12 * scale)
+
+
+@pytest.mark.parametrize("shape", [(5, 8), (6, 7)])
+def test_c11_coordinate_factors_cancel_in_same_grid_asm(
+    shape: tuple[int, int]
+) -> None:
+    """C-11: unchanged ASM equals physical-coordinate analysis/H/synthesis.
+
+    Direct sums independently check the transform pair on the same sampled H;
+    this isolates coordinate-factor cancellation, not transfer-function physics
+    or sampling adequacy. Existing analytic propagation tests validate H.
+    Measured max error / max(abs(reference)) <= 9.50e-16 (2026-09-14).
+    rtol=1e-12 plus a peak-scaled atol handles cancellation near zero pixels.
+    """
+    grid = SamplingGrid(ny=shape[0], nx=shape[1], dy=5e-6, dx=3.74e-6)
+    rng = np.random.default_rng(20260914)
+    data = rng.standard_normal(shape) + 1j * rng.standard_normal(shape)
+    wavelength, distance = 633e-9, 1e-3
+    fx, fy = grid.freq_meshgrid(order="fft")
+    transfer = np.exp(
+        1j * 2 * np.pi
+        * np.sqrt(((1 / wavelength) ** 2 - fx**2 - fy**2).astype(np.complex128))
+        * distance
+    )
+    expected = _direct_physical_synthesis(
+        _direct_physical_spectrum(data, grid, -1) * transfer, grid, -1
+    )
+    field = ComplexField(data=data, grid=grid, wavelength_m=wavelength)
+    actual = propagate_angular_spectrum(
+        field, distance_m=distance, pad_factor=1
+    ).data
+    scale = float(np.max(np.abs(expected)))
+    np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=1e-12 * scale)

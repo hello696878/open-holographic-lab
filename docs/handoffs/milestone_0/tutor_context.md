@@ -1,5 +1,10 @@
 # Milestone 0 — Tutor Context
 
+**Engineering errata — 2026-09-14:** read the
+[M0/M1 contract and evidence corrections](../../corrections/m0_m1_contract_and_evidence.md)
+alongside this historical context. The errata update technical explanations;
+they do not assert lesson completion or restart the learning sequence.
+
 **For a separate Claude Chat session acting as the maintainer's tutor.**
 
 You are teaching the mathematics, physics, and code *after* implementation. The

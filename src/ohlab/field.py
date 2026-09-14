@@ -189,14 +189,18 @@ class ComplexField:
     def phase(self) -> np.ndarray:
         """Phase ``phi = arg(U)``, shape ``(ny, nx)``, float64, in radians.
 
-        Returned on the canonical branch ``(-pi, +pi]`` (section 3.2). Note
-        that ``np.angle(-1)`` is ``+pi``, not ``-pi``.
+        Returned on the canonical branch ``(-pi, +pi]`` (section 3.2).
+        Only an output exactly equal to ``-pi`` is replaced by ``+pi``;
+        nearby negative phases and the stored complex data are unchanged.
 
-        Where the amplitude is zero the phase is **physically undefined**;
-        NumPy returns ``0.0`` there as a matter of its own convention. Do not
-        attach meaning to those values.
+        Where the amplitude is zero the phase is **physically undefined**.
+        NumPy distinguishes signed zeros; the same endpoint replacement is
+        applied there, while ordinary ``0+0j`` still yields ``0.0``. Do not
+        attach physical meaning to those values.
         """
-        return np.angle(self.data)
+        phase = np.angle(self.data)
+        phase[phase == -math.pi] = math.pi
+        return phase
 
     @property
     def intensity(self) -> np.ndarray:

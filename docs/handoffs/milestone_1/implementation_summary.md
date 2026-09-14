@@ -4,6 +4,15 @@
 Verified on Python 3.11.9, NumPy 2.4.6, SciPy 1.17.1, pytest 9.1.1
 (Windows 11).
 
+**Correction note — 2026-09-14.** The status and measurements below are the
+original milestone record. The original file-count split of 71 mechanics /
+32 analytic tests is inaccurate: baseline `1b2e755` contains **72 / 31**,
+still 103 M1 cases and 291 total. Conjugacy in the design discussion applies
+only to real `kz`; backward evanescent propagation remains refused. See the
+[maintenance evidence and tutor errata](../../corrections/m0_m1_contract_and_evidence.md)
+for current corrections and the new suite count. Original transcripts and
+historical count claims below are retained with this clarification.
+
 ---
 
 ## What was implemented

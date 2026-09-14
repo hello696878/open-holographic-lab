@@ -11,13 +11,14 @@ floating-point precision, **not** bit for bit, so those tests use explicit
 Phase is also only defined modulo ``2*pi``, and ``np.angle`` has a branch cut
 on the negative real axis. Comparisons therefore go through
 ``wrapped_phase_difference``, i.e. ``angle(exp(i*(actual - expected)))``, which
-returns zero for physically identical phases regardless of branch. Pixels of
+returns a residual near zero within floating-point error for equivalent phases.
+Pixels of
 zero amplitude are excluded, because phase is physically undefined there
 (``docs/math_conventions.md`` section 3.2).
 
-Bit-for-bit equality is asserted only where the implementation genuinely
-preserves an array without recomputation: the defensive copy (F-19) and
-seeded reproducibility (F-22).
+Canonical endpoint tests compare the specified output representation directly,
+separately from those mathematical phase-equivalence tests. Bit-for-bit tests
+also pin unchanged stored data, the defensive copy, and seeded reproducibility.
 """
 
 from __future__ import annotations
@@ -74,8 +75,8 @@ def test_f02_transposed_shape_is_rejected(
     """F-02: the transposition trap.
 
     ``aniso_grid`` is 6 x 10, so passing a 10 x 6 array is a shape error. On a
-    square grid this mistake would pass silently, which is why every field
-    test uses the anisotropic fixture.
+    square grid this mistake would pass silently, which is why shape-sensitive
+    field tests use the anisotropic fixture.
     """
     wrong = np.ones((aniso_grid.nx, aniso_grid.ny), dtype=np.complex128)
     with pytest.raises(ValueError, match=r"\(ny, nx\)"):
@@ -173,7 +174,7 @@ def test_f06_phase_is_wrapped_to_canonical_branch(
 
     * ``phi = 3*pi/2`` must come back as ``-pi/2``, not ``4.712``.
     * ``U = -1`` must give ``+pi``, not ``-pi``. The interval is half-open at
-      the top, and NumPy's convention places the negative real axis at ``+pi``.
+      the bottom; the canonical output places the negative real axis at ``+pi``.
     """
     field = ComplexField.from_amplitude_phase(
         amplitude=1.0,
@@ -194,6 +195,67 @@ def test_f06_phase_is_wrapped_to_canonical_branch(
         wavelength_m=wavelength,
     )
     assert np.all(negative_real.phase == math.pi)  # exactly +pi, not -pi
+
+
+def test_f06b_signed_zero_branch_endpoints_preserve_stored_bits(
+    aniso_grid: SamplingGrid, wavelength: float
+) -> None:
+    """F-06b: either signed imaginary zero on the negative axis yields +pi.
+
+    EXACTNESS IS THE PROPERTY UNDER TEST: this pins the canonical endpoint,
+    float64 shape, and input bytes, not merely phase equivalence modulo 2*pi.
+    """
+    data = np.full(aniso_grid.shape, complex(-1.0, 0.0), dtype=np.complex128)
+    data[:, 1::2] = complex(-1.0, -0.0)
+    field = ComplexField(data=data, grid=aniso_grid, wavelength_m=wavelength)
+    source_bytes = data.tobytes(order="C")
+    stored_bytes = field.data.tobytes(order="C")
+
+    phase = field.phase
+
+    assert phase.shape == aniso_grid.shape
+    assert phase.dtype == np.dtype(np.float64)
+    assert np.all(phase == math.pi)
+    assert field.data.tobytes(order="C") == stored_bytes == source_bytes
+    assert field.data.flags.writeable is False
+
+
+def test_f06c_conjugation_retains_the_positive_pi_endpoint(
+    aniso_grid: SamplingGrid, wavelength: float
+) -> None:
+    """F-06c: conjugation changes imaginary-zero bits, not the +pi endpoint."""
+    data = np.full(aniso_grid.shape, complex(-1.0, 0.0), dtype=np.complex128)
+    field = ComplexField(data=data, grid=aniso_grid, wavelength_m=wavelength)
+    conjugated = field.conjugate()
+    before = conjugated.data.tobytes(order="C")
+
+    # Exact signed-zero and endpoint representations are the properties tested.
+    assert not np.any(np.signbit(field.data.imag))
+    assert np.all(np.signbit(conjugated.data.imag))
+    assert np.all(field.phase == math.pi)
+    assert np.all(conjugated.phase == math.pi)
+    assert conjugated.data.tobytes(order="C") == before
+
+
+def test_f06d_nearby_negative_angles_are_not_mapped_to_positive_pi(
+    aniso_grid: SamplingGrid, wavelength: float
+) -> None:
+    """F-06d: preserve representable neighbors; no isclose or modulo remap.
+
+    These nonzero fields have raw angles strictly above -pi. Exact equality
+    to their raw np.angle output pins the absence of additional processing.
+    """
+    nearest = np.nextafter(-math.pi, 0.0)
+    angles = np.array([nearest, np.nextafter(nearest, 0.0), -math.pi + 1e-12])
+    values = np.exp(1j * np.resize(angles, aniso_grid.shape))
+    field = ComplexField(data=values, grid=aniso_grid, wavelength_m=wavelength)
+    raw_phase = np.angle(field.data)
+    before = field.data.tobytes(order="C")
+
+    assert np.all(raw_phase > -math.pi)
+    assert np.all(raw_phase < 0.0)
+    assert field.phase.tobytes(order="C") == raw_phase.tobytes(order="C")
+    assert field.data.tobytes(order="C") == before
 
 
 def test_f07_intensity_matches_amplitude_squared(
@@ -219,7 +281,7 @@ def test_f07_intensity_matches_amplitude_squared(
 def test_f08_zero_amplitude_phase_is_defined_by_numpy_not_physics(
     aniso_grid: SamplingGrid, wavelength: float
 ) -> None:
-    """F-08: a zero pixel yields phase 0.0 and raises no warning.
+    """F-08: an ordinary +0+0j pixel yields phase 0.0 with no warning.
 
     Physically the phase is undefined there. ``0.0`` is NumPy's convention,
     and the project must not attach meaning to it. Because pytest is
@@ -233,17 +295,65 @@ def test_f08_zero_amplitude_phase_is_defined_by_numpy_not_physics(
     assert field.power == 0.0
 
 
+def test_f08b_signed_zeros_follow_endpoint_policy_without_physical_meaning(
+    wavelength: float,
+) -> None:
+    """F-08b: all four zero sign combinations retain their stored bits.
+
+    Phase at zero amplitude is undefined. This checks representation only:
+    +0+0j -> +0, +0-0j -> -0, -0+0j -> +pi, and -0-0j -> +pi.
+    The final case uses the same exact -pi endpoint correction as nonzero data.
+    """
+    grid = SamplingGrid(ny=2, nx=2, dy=5.0 * UM, dx=3.74 * UM)
+    data = np.array(
+        [[complex(0.0, 0.0), complex(0.0, -0.0)],
+         [complex(-0.0, 0.0), complex(-0.0, -0.0)]],
+        dtype=np.complex128,
+    )
+    field = ComplexField(data=data, grid=grid, wavelength_m=wavelength)
+    before = field.data.tobytes(order="C")
+    expected = np.array([[0.0, -0.0], [math.pi, math.pi]], dtype=np.float64)
+
+    assert field.phase.shape == grid.shape
+    assert field.phase.dtype == expected.dtype
+    assert field.phase.tobytes(order="C") == expected.tobytes(order="C")
+    assert field.data.tobytes(order="C") == before == data.tobytes(order="C")
+    assert np.all(field.amplitude == 0.0)  # exactly zero for these zero inputs
+
+
 # ---------------------------------------------------------------------------
 # Power
 # ---------------------------------------------------------------------------
 def test_f09_power_is_the_discretised_area_integral(
     sample_field: ComplexField,
 ) -> None:
-    """F-09: ``P = sum(I) * dx * dy`` (section 2.1)."""
+    """F-09: pin the implementation contract ``P = sum(I) * dx * dy``.
+
+    The fixture's power is 5.4153e-9 a.u. m^2; baseline error is zero because
+    both sides evaluate the same expression. Preserve rel=1e-15 and set
+    abs=1e-24 (below one float64 epsilon at this scale), rather than pytest's
+    implicit 1e-12, which accepted a 1e-4 relative power error. Independent
+    scaling/conservation evidence is in F-09b and F-10.
+    """
     expected = float(
         np.sum(sample_field.intensity) * sample_field.grid.pixel_area
     )
-    assert sample_field.power == pytest.approx(expected, rel=1e-15)
+    assert sample_field.power == pytest.approx(expected, rel=1e-15, abs=1e-24)
+
+
+def test_f09c_power_integral_assertion_rejects_small_relative_perturbation(
+    sample_field: ComplexField, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F-09c: exercise the actual F-09 assertion with a corrupted power value.
+
+    The 1e-4 perturbation is about 5.4e-13 a.u. m^2: accepted by the old
+    implicit abs=1e-12. Restoring that weak assertion makes this test fail.
+    The property patch is isolated to this test and never changes field data.
+    """
+    perturbed = sample_field.power * 1.0001
+    monkeypatch.setattr(ComplexField, "power", property(lambda self: perturbed))
+    with pytest.raises(AssertionError):
+        test_f09_power_is_the_discretised_area_integral(sample_field)
 
 
 @pytest.mark.parametrize("factor", [2.0, 0.5, -3.0, 1j, (0.6 + 0.8j)])
@@ -253,8 +363,8 @@ def test_f09b_power_scales_as_modulus_squared(
     """F-09b: scaling the field by ``c`` scales power by ``|c|^2``.
 
     Evidence class: exact algebraic identity. ``rtol=1e-12`` covers the
-    summation over all pixels, whose error grows only as the square root of
-    the pixel count.
+    accumulated rounding over this 60-pixel fixture. This does not assume a
+    universal square-root bound on summation error.
     """
     scaled = sample_field.scaled(factor)
     np.testing.assert_allclose(
@@ -431,7 +541,7 @@ def test_f17_uniform_field(aniso_grid: SamplingGrid, wavelength: float) -> None:
     assert np.all(field.phase == 0.0)
 
 
-def test_f18_from_intensity_phase_is_the_square_root_of_from_amplitude(
+def test_f18_intensity_constructor_matches_sqrt_intensity_amplitude_constructor(
     aniso_grid: SamplingGrid, wavelength: float, rng: np.random.Generator
 ) -> None:
     """F-18: ``from_intensity_phase(I)`` equals ``from_amplitude_phase(sqrt(I))``."""
@@ -474,7 +584,10 @@ def test_f19_construction_takes_a_defensive_copy(
 def test_f20_stored_data_is_read_only_and_instance_is_frozen(
     sample_field: ComplexField,
 ) -> None:
-    """F-20: neither the array nor the attribute binding can be mutated."""
+    """F-20: ordinary array writes and frozen-attribute assignment are rejected.
+
+    This does not claim protection against deliberately bypassing those guards.
+    """
     assert sample_field.data.flags.writeable is False
     with pytest.raises(ValueError):
         sample_field.data[0, 0] = 1.0
@@ -596,7 +709,9 @@ def test_f26_wavenumber(aniso_grid: SamplingGrid) -> None:
     np.testing.assert_allclose(
         field.wavenumber, 2.0 * math.pi / 633e-9, rtol=1e-15, atol=0.0
     )
-    assert field.wavenumber == pytest.approx(9.926e6, rel=1e-3)
+    # Rounded nonzero reference: the 43.14 rad/m baseline error is below the
+    # existing 1e-3 relative threshold; no absolute floor is needed at this scale.
+    assert field.wavenumber == pytest.approx(9.926e6, rel=1e-3, abs=0.0)
 
 
 def test_f27_repr_does_not_dump_the_array(sample_field: ComplexField) -> None:
