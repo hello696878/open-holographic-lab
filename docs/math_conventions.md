@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.4 — 2026-09-14
+**Version:** 0.5 — 2026-09-16
 
 ---
 
@@ -527,6 +527,58 @@ through `uint8` inside the core.
 
 ---
 
+### 3.12 Design target intensity and amplitude
+
+A target grayscale code `g` is an intensity specification, with the fixed
+mapping
+
+    I_target[i,j] = float64(g[i,j]) / 255
+    A_target[i,j] = sqrt(I_target[i,j])
+
+These normalized design values lie in `[0, 1]`. They use the same amplitude-
+squared intensity relation as §2.1, but do not supply a physical radiometric
+calibration or a phase. In particular, code 128 means intensity
+`128/255 ≈ 0.501961` and amplitude `≈ 0.708492`; it does not mean amplitude
+`128/255`. A target amplitude alone is neither a `ComplexField` nor an SLM
+phase pattern. No target phase is inferred or assigned.
+
+`ohlab.targets.grayscale8_to_intensity(grayscale, *, grid)` accepts only a
+plain two-dimensional `uint8` ndarray. `intensity_to_amplitude(intensity, *,
+grid)` accepts only a plain native `float64` ndarray with finite values in
+`[0, 1]`. Array subclasses, masked arrays, array-like objects, implicit dtype
+conversions and non-native float storage are rejected. Both require
+`shape == grid.shape == (ny, nx)` and return fresh, writable, C-contiguous
+native `float64` arrays. They preserve input storage and grid parameters.
+Invalid type/dtype raises `TypeError`; invalid dimensions, shape, finiteness
+or range raises `ValueError`.
+
+Pixel `[i, j]` remains at `(grid.x[j], grid.y[i])` under §3.4, with `+y`
+downward. There is no resize, interpolation, crop, pad, axis transpose,
+orientation correction or pitch inference from image metadata. There is no
+gamma/profile conversion, threshold, clipping, contrast stretch, per-image
+peak normalization or power normalization. Equal codes retain equal
+intensities across different images. All-zero targets are valid and remain
+zero; a later algorithm must separately define any nonzero-power requirement.
+
+The optional boundary `ohlab.io.images.load_target_intensity(path, *, grid)`
+accepts actual PNG content independently of extension, with source bit depth
+8, grayscale color type 0, decoded mode `L`, no transparency and no APNG
+metadata (including single-frame APNG). It checks the fixed IHDR dimensions
+against the grid before full pixel decoding or target allocation, verifies
+integrity, reopens for decoding, and rechecks decoded shape. Pillow's size
+and malformed/truncated-image protections remain enabled. Metadata such as
+gamma, ICC, DPI and EXIF never changes the returned raster or its grid.
+This strict boundary is not an exhaustive validator for all malformed PNGs.
+
+M2 validation uses independent 80-digit Decimal references for all 256 codes:
+`rtol=2e-15, atol=0` for intensity/amplitude and `rtol=5e-15, atol=0` for
+`A_target**2 == I_target`. Zero endpoints are exact; nonzero encoded intensity
+is at least `1/255`. Measured errors and the scope of these bounds are in the
+[M2 evidence](handoffs/milestone_2/tests_and_evidence.md). Existing propagation,
+sampling and boundary-condition limitations in §3.9 are unchanged.
+
+---
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -566,6 +618,7 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.5 | 2026-09-16 | **§3.12 added** — fixed grayscale-to-intensity `/255` and amplitude square-root contracts, strict array ownership/dtypes, size/orientation rules and static 8-bit grayscale PNG boundary. | Approved Milestone 2. No hidden radiometric or spatial conversion; no phase assignment. Existing optical signs, grid/FFT conventions, field/propagation behavior and precision remain unchanged. |
 | 0.4 | 2026-09-14 | **§3.1/§3.6** — distinguish the selected Fourier pair from the physical time/propagation convention; remove the claim that all three signs must flip together. **§3.2** — specify exact `−π` to `+π` endpoint normalization after `np.angle`, including signed-zero handling without changing stored data. **§3.7** — derive the centered-coordinate physical spectrum, its inverse, and same-grid ASM cancellation of area and origin factors. **§3.9.1** — restrict conjugacy under distance reversal to real `kz` and explain the evanescent exception. | Approved M0/M1 corrective maintenance. Existing selected signs, grid/FFT ordering, precision, normalization, propagation implementation, and evanescent policy are retained; phase output is corrected to the existing canonical-interval contract. Historical evidence and dated errata are recorded in `docs/corrections/m0_m1_contract_and_evidence.md`. |
 | 0.3 | 2026-08-11 | **§3.1** — records the external verification of the time convention and propagation sign against Konijnenberg/Adam/Urbach; downgrades the Goodman citation to an unverified secondary attribution; corrects the mislabelling of `exp(−iωt)` as the "engineering" convention (it is the *physicists'* convention); states that NumPy fixes the DFT kernel only, not the time convention, and that the three sign choices form a mutually verified set. **§3.9 rewritten** — §3.9.1 mandates the single expression `H = exp(+i·kz·z)` with `Im{kz} ≥ 0` and withdraws the piecewise presentation; §3.9.2 requires evanescence to be determined from the discrete mesh and corrects the threshold from `d < λ/2` to the corner condition `d < λ/√2`; §3.9.3 states the evanescent policy; §3.9.4 specifies the padding/cropping alignment rule and the boundary-condition semantics; §3.9.5 defers band-limited ASM. **§3.8** — periodicity note updated. No mathematical convention changed. | Milestone 1. The `d < λ/2` threshold in the M1 plan was an error (axis-only reasoning); the corner of the 2-D Nyquist square reaches the cutoff first. Raised and corrected before implementation. |
 | 0.2 | 2026-08-08 | **§3.8.1 added** — mandates the reciprocal-multiply evaluation order for frequency axes, with measured ULP-level evidence. **§3.4** — documents that `meshgrid()` returns `(x_grid, y_grid)`, matching `numpy.meshgrid` order rather than axis order. Both are clarifications; no mathematical convention changed. | Milestone 0. The literal division form in v0.1 §3.8 was inconsistent with the bit-for-bit agreement with `numpy.fft.fftfreq` required by `milestones.md`; the conflict was raised and approved before implementation. |

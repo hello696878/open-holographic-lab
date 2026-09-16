@@ -3,6 +3,10 @@
 Authoritative status for Open Holographic Lab. Updated at the end of every
 milestone according to the workflow in [`AGENTS.md`](../AGENTS.md).
 
+The status summary and each milestone's dated entry show current acceptance.
+Older milestone and corrective-maintenance sections remain historical
+snapshots; their counts and deferred-work statements describe their own dates.
+
 **Rule:** do not begin a milestone before the previous one is implemented,
 tested, its limitations recorded here, and its handoff package written to
 `docs/handoffs/milestone_<n>/`.
@@ -17,7 +21,7 @@ tested, its limitations recorded here, and its handoff package written to
 | 0 | Field and grid representation | **complete** (2026-08-08) | [`milestone_0/`](handoffs/milestone_0/) |
 | 1.x | *Candidate:* band-limited ASM (deferred from M1) | not started | — |
 | 1 | Angular Spectrum propagation | **complete** (2026-08-11) | [`milestone_1/`](handoffs/milestone_1/) |
-| 2 | Target image loading | not started | — |
+| 2 | Target image loading | **complete** (2026-09-16) | [`milestone_2/`](handoffs/milestone_2/) |
 | 3 | Gerchberg–Saxton phase retrieval | not started | — |
 | 4 | Reconstruction quality metrics | not started | — |
 | 5 | Configuration and run artifacts | not started | — |
@@ -208,12 +212,61 @@ later work remain not started.
 
 ## Milestone 2 — Target image loading
 
-**Status:** not started.
+**Status: complete** (2026-09-16). **491 tests passing**: all 323 accepted
+baseline cases plus 168 new cases (70 target-array, 47 image-boundary,
+51 architecture/RNG guard cases). Existing numerical regressions are retained.
 
-**Scope.** `src/ohlab/io/` — grayscale image to normalized target amplitude.
-Defines the amplitude-vs-intensity convention for targets, resizing policy,
-and normalization. First code permitted to touch disk; stays out of the
-numerical core.
+**Scope.** Pure `ohlab.targets` conversions and the optional
+`ohlab.io.images.load_target_intensity` PNG boundary. The approved strict-size
+policy preserves `(ny, nx)` orientation and caller-supplied SI pitches.
+`I_target = g / 255`, `A_target = sqrt(I_target)`; all-zero targets are valid.
+Normative contract: `math_conventions.md` §3.12, version 0.5.
+
+**Acceptance criteria — all met.**
+
+- [x] Source 8-bit grayscale PNG, color type 0, decoded mode L; content-based
+      identification independent of filename extension
+- [x] Transparency, low/high bit depths, unsupported color modes, non-PNG,
+      single-frame APNG and multiframe APNG rejected
+- [x] Declared IHDR dimensions checked before payload reading/full decoding;
+      final decoded shape checked independently
+- [x] Integrity verification and pixel decoding use separate reopened image
+      objects; CRC-valid malformed compressed pixels exercise decoding failure
+- [x] Filesystem exception types preserved; identified decoder failures carry
+      path/stage and chained cause; file/stream/image resources closed
+- [x] Independent 80-digit Decimal references cover all 256 codes; maximum
+      amplitude absolute error and amplitude-squared residual each `1.11e-16`
+- [x] Cross-image brightness, blank/low inputs, rectangular mixed-parity
+      orientation, invalid arrays, fresh ownership and nonmutation validated
+- [x] Lazy optional Pillow import; base/dev requirements and root exports
+      unchanged; only the decoder module receives the narrow PIL permission
+- [x] Five targeted mutations detected, with source/test hash restoration
+      checks and a passing full suite afterward; this is finite test evidence
+- [x] Standalone default and explicit-path demo verified headlessly; three
+      figures visually reviewed and regenerated with identical SHA-256 hashes
+- [x] Six handoff documents completed in
+      [`handoffs/milestone_2/`](handoffs/milestone_2/)
+
+Exact commands/output, tolerance measurements, dependency versions and
+negative-control transcripts are in
+[`tests_and_evidence.md`](handoffs/milestone_2/tests_and_evidence.md).
+The final suite used the existing interpreter and a fresh repository-local
+pytest `--basetemp` after Windows denied access to its default temp root.
+No package was installed, upgraded or rebuilt.
+
+**Recorded limitations.** No resize/pad/crop, gamma/profile conversion,
+thresholding or normalization beyond fixed `/255`. Targets are design
+intensity/amplitude, not calibrated irradiance, a complex field or an SLM
+phase pattern. Encoded files are buffered after header validation; this is
+not a streaming or exhaustive malformed-PNG validator. Pillow 12.3.0 was
+tested; the declared `pillow>=10.0` range has not been exhaustively tested.
+Existing propagation/sampling limitations remain unchanged. See the full
+[limitations](handoffs/milestone_2/known_limitations.md).
+
+Category C's narrow I/O boundary is now implemented. Historical M0/M1
+handoffs, correction evidence, numerical source, AGENTS.md, CLAUDE.md and
+existing figures remain unchanged. Milestone 3 and all later work remain
+not started; there is no phase assignment or hologram computation.
 
 ---
 

@@ -32,16 +32,19 @@ A CGH simulator that can:
 
 ## Status
 
-**Milestones 0 and 1 complete — 291 tests passing.** Milestone 2 not started.
+**Milestones 0, 1 and 2 complete.** See the authoritative
+[milestone ledger](docs/milestones.md) for dated acceptance evidence.
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
-the **Angular Spectrum Method**. There is no phase retrieval, and no file or
-plotting support yet.
+the **Angular Spectrum Method**. Milestone 2 adds strict grayscale PNG loading
+and array-only target intensity/amplitude preparation. Phase retrieval remains
+deferred to Milestone 3.
 
 See [`docs/milestones.md`](docs/milestones.md) for the full ledger, and the
 handoff packages for [Milestone 0](docs/handoffs/milestone_0/) and
-[Milestone 1](docs/handoffs/milestone_1/) — implementation summary, code map,
+[Milestone 1](docs/handoffs/milestone_1/) and
+[Milestone 2](docs/handoffs/milestone_2/) — implementation summary, code map,
 mathematics, test evidence, known limitations, and figures.
 
 ```python
@@ -95,12 +98,15 @@ different boundary conditions, and the trade-off is documented in
 
 - Python **3.11**
 - NumPy ≥ 1.26, SciPy ≥ 1.11 (installed automatically)
+- Optional image loading: Pillow ≥ 10.0 through the `[images]` extra.
+  M2 was tested with the existing Pillow 12.3.0; the declared range is not
+  a claim that every permitted version was tested.
 
 ---
 
 ## Install
 
-From the repository root, on Windows:
+For a new environment, from the repository root on Windows:
 
 ```
 py -3.11 -m venv .venv
@@ -110,8 +116,14 @@ py -3.11 -m venv .venv
 
 On Linux/macOS the interpreter path is `./.venv/bin/python` instead.
 
-The `[dev]` extra adds `pytest`, `matplotlib`, and `pillow`. **The numerical
-core does not depend on any of them** — see "Architecture" below.
+The `[dev]` extra adds `pytest`, `matplotlib`, and `pillow`; the narrower
+`[images]` extra adds only Pillow (`pip install -e ".[images]" in a new
+environment). **The numerical core does not depend on these extras.**
+The standalone demo and figure generator also need matplotlib from `[dev]`.
+
+For this existing checkout, use `C:\holographiclab\.venv\Scripts\python.exe`.
+These setup instructions do not authorize recreating its environment or
+installing/upgrading packages; follow `AGENTS.md` if the environment is missing.
 
 ### Troubleshooting: `CERTIFICATE_VERIFY_FAILED` on install
 
@@ -139,6 +151,54 @@ verification. `--use-feature=truststore` still fully validates the certificate
 chain; it simply uses the operating system's trust anchors, which is the
 correct behaviour on Windows.
 
+## Prepare a target image
+
+```python
+from ohlab import SamplingGrid
+from ohlab.io.images import load_target_intensity
+from ohlab.targets import intensity_to_amplitude
+
+grid = SamplingGrid(ny=480, nx=640, dy=5e-6, dx=3.74e-6)
+intensity = load_target_intensity("target.png", grid=grid)
+amplitude = intensity_to_amplitude(intensity, grid=grid)
+```
+
+The file must contain a static 8-bit grayscale PNG (source bit depth 8,
+color type 0, decoded mode `L`), without transparency or APNG metadata.
+Declared and decoded dimensions must match `grid.shape` exactly. Pixel
+`[i, j]` stays at `(grid.x[j], grid.y[i])`; nothing is resized, rotated,
+cropped or padded. PNG content, rather than the filename extension, is checked.
+
+`I_target = g / 255`, then `A_target = sqrt(I_target)`. There is no gamma/profile
+conversion, clipping, thresholding, contrast stretching or peak/power
+normalization. All-zero targets stay valid and zero. These are normalized
+design values, not calibrated irradiance. Amplitude supplies no phase and is
+not a complex field or an SLM phase pattern.
+
+For an existing plain `uint8` array, use
+`ohlab.targets.grayscale8_to_intensity(grayscale, grid=grid)`.
+`intensity_to_amplitude` accepts only a plain native `float64` array of finite
+values in `[0, 1]`. Both require shape `(ny, nx)` and return fresh, writable,
+C-contiguous native `float64` arrays without modifying the input or grid.
+Pillow is imported only when the file loader is called. Genuine filesystem
+errors retain their exception types; identified decoder errors include path,
+stage and their original cause. See the [M2 contract](docs/handoffs/milestone_2/implementation_summary.md)
+and [limitations](docs/handoffs/milestone_2/known_limitations.md).
+
+Run the deterministic synthetic example from PowerShell, or select the same
+interpreter in VS Code and run `examples/load_target.py`:
+
+```powershell
+.\.venv\Scripts\python.exe -B examples\load_target.py
+.\.venv\Scripts\python.exe -B examples\load_target.py --no-show
+.\.venv\Scripts\python.exe -B examples\load_target.py --input target.png --ny 480 --nx 640 --dx-m 3.74e-6 --dy-m 5e-6
+.\.venv\Scripts\python.exe -B scripts\make_m2_figures.py
+```
+
+The example displays intensity and amplitude on fixed `[0, 1]` scales and
+reports `max(abs(A_target**2 - I_target))`. Its default PNG is temporary.
+The generator writes only the three M2 handoff figures.
+
 ## Test
 
 ```
@@ -155,6 +215,13 @@ Always invoke pytest through the virtual environment's interpreter
 (`python -m pytest`), never a bare `pytest`, so the interpreter under test is
 unambiguous.
 
+If Windows denies access to pytest's default temporary directory, use a fresh
+repository-local temporary directory for file-based tests:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider --basetemp .pytest_cache/m2-local-run
+```
+
 ---
 
 ## Layout
@@ -170,7 +237,11 @@ docs/
   handoffs/                 per-milestone learning handoff packages
 src/
   ohlab/                    the importable package
+    targets.py              pure intensity/amplitude array functions
+    io/images.py            optional strict PNG decoder
 tests/                      pytest suite
+examples/load_target.py     standalone target demonstration
+scripts/make_m2_figures.py   deterministic M2 figure generator
 ```
 
 ---
@@ -180,13 +251,16 @@ tests/                      pytest suite
 Two rules shape the codebase:
 
 **1. The numerical optics core is independent of UI, plotting, and file I/O.**
-`grid.py`, `field.py`, `propagation.py`, `algorithms/`, and `metrics.py` take
+`grid.py`, `field.py`, `propagation.py`, `targets.py`, `algorithms/`, and `metrics.py` take
 arrays and return arrays. Anything touching disk or screen lives in
 `ohlab/io/`, `scripts/`, or `examples/`.
 
-This is enforced by `pyproject.toml` rather than by convention: the runtime
-dependency set is NumPy and SciPy only, so an `import matplotlib` inside the
-core would fail in a clean install.
+Base runtime dependencies remain NumPy and SciPy. The C06 static guard in
+`tests/test_fft_conventions.py` permits `PIL` only in `ohlab/io/images.py`
+and rejects ordinary imports of `ohlab.io` from every numerical-core module
+and the root initializer. Other forbidden-dependency and RNG restrictions
+remain in place. Fresh-subprocess tests block Pillow to verify core import
+isolation; these checks are not a compatibility matrix across Pillow versions.
 
 **2. `docs/math_conventions.md` is normative.**
 Sign conventions, array layout, coordinate-grid centring, and FFT

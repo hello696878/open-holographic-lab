@@ -33,15 +33,11 @@ classifiers = [
 # ---------------------------------------------------------------------------
 # Runtime dependencies.
 #
-# ARCHITECTURAL CONSTRAINT, ENFORCED HERE:
-# The numerical optics core must not depend on UI, plotting, or file-I/O
-# libraries. That rule is enforced by this dependency list, not by convention:
-# a clean runtime install of `ohlab` provides NumPy and SciPy and nothing else,
-# so `import matplotlib` or `import PIL` inside src/ohlab/ would fail outright.
-#
-# matplotlib and pillow live in the [dev] extra because they are needed only by
-# figure-generation scripts and (from Milestone 2) image loading in ohlab.io,
-# which are outside the numerical core.
+# The numerical core requires only NumPy and SciPy. The [images] extra adds
+# Pillow for optional decoding in ohlab.io.images; it is imported only when
+# loading an image. Category C tests enforce that the core cannot import I/O
+# and that PIL imports are confined to that exact decoder module.
+# The [dev] extra also provides Pillow and matplotlib for tests and figures.
 # ---------------------------------------------------------------------------
 dependencies = [
     "numpy>=1.26",
@@ -49,6 +45,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+images = [
+    "pillow>=10.0",
+]
 dev = [
     "pytest>=8.0",
     "matplotlib>=3.8",

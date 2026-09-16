@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import cmath
+from importlib.util import resolve_name
 import math
 from pathlib import Path
 
@@ -26,7 +27,7 @@ from _helpers import assert_bit_identical
 from ohlab import ComplexField, propagate_angular_spectrum
 from ohlab.grid import SamplingGrid
 
-# Import roots that must never appear anywhere inside src/ohlab/.
+# Forbidden throughout src/ohlab/, except PIL in exactly io/images.py.
 FORBIDDEN_IMPORT_ROOTS = frozenset(
     {
         "matplotlib",
@@ -65,6 +66,44 @@ def _dotted_name(node: ast.AST) -> str | None:
         parts.append(current.id)
         return ".".join(reversed(parts))
     return None
+
+
+def _assert_import_boundaries(source: str, relative_path: Path) -> None:
+    """Check ordinary imports, including aliases and function-local imports.
+
+    ``relative_path`` is relative to the ``ohlab`` package directory. Resolve
+    relative imports from that file's package; this applies equally to module
+    files and ``__init__.py``. This bounded AST check does not resolve dynamic
+    imports or attribute access through arbitrary runtime objects.
+    """
+    tree = ast.parse(source, filename=str(relative_path))
+    package = ".".join(("ohlab", *relative_path.parent.parts))
+    in_io = relative_path.parts[0] == "io"
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_names = [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level:
+                module = resolve_name("." * node.level + module, package)
+            imported_names = [module]
+            imported_names.extend(f"{module}.{alias.name}" for alias in node.names)
+        else:
+            continue
+
+        for name in imported_names:
+            root = name.split(".")[0]
+            permitted_pil = (
+                root == "PIL" and relative_path.as_posix() == "io/images.py"
+            )
+            assert root not in FORBIDDEN_IMPORT_ROOTS or permitted_pil, (
+                f"{relative_path} imports forbidden module {name!r}"
+            )
+            imports_io = name == "ohlab.io" or name.startswith("ohlab.io.")
+            assert in_io or not imports_io, (
+                f"{relative_path} imports I/O module {name!r} into the numerical core"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -265,32 +304,97 @@ def test_c05_fftshift_round_trip_is_exact(
 # C-06 / C-07: static guards on the numerical core
 # ---------------------------------------------------------------------------
 def test_c06_numerical_core_imports_no_ui_or_io_library() -> None:
-    """C-06: no module in ``src/ohlab/`` imports a plotting or image library.
+    """C-06: image decoding is confined to ``ohlab/io/images.py``.
 
     Evidence class: static analysis of the AST, not a runtime probe -- a
     runtime check would only catch imports on the paths that happen to run.
 
-    This is the architectural rule from ``CLAUDE.md`` section 6, and it is what
-    lets the numerical core stay testable and headless. Figure generation lives
-    in ``scripts/``.
+    AGENTS.md keeps the numerical core independent of I/O. The M2 exception
+    permits PIL only in the designated decoder module. Every source file is
+    scanned, including package initializers; core modules cannot import
+    ``ohlab.io`` directly or through ordinary relative/aliased imports.
+    All other plotting, image, UI and accelerator prohibitions remain in force.
     """
+    import ohlab
+
+    package_dir = Path(ohlab.__file__).resolve().parent
     sources = _package_source_files()
     assert sources, "no ohlab source files found; the scan would be vacuous"
 
     for path in sources:
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    root = alias.name.split(".")[0]
-                    assert root not in FORBIDDEN_IMPORT_ROOTS, (
-                        f"{path.name} imports forbidden module {alias.name!r}"
-                    )
-            elif isinstance(node, ast.ImportFrom) and node.module:
-                root = node.module.split(".")[0]
-                assert root not in FORBIDDEN_IMPORT_ROOTS, (
-                    f"{path.name} imports from forbidden module {node.module!r}"
-                )
+        _assert_import_boundaries(
+            path.read_text(encoding="utf-8"), path.relative_to(package_dir)
+        )
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "source"),
+    [
+        ("io/images.py", "from PIL import Image"),
+        ("io/images.py", "import PIL.Image as decoder"),
+        ("io/images.py", "def load():\n    from PIL import Image as decoder"),
+        ("io/__init__.py", "from .images import load_target_intensity"),
+        ("targets.py", "import io\nfrom .grid import SamplingGrid"),
+        ("__init__.py", "from . import units"),
+        ("algorithms/__init__.py", "from .. import targets"),
+        ("targets.py", "import ohlab.iota as unrelated"),
+        ("targets.py", "# import PIL\ntext = 'from ohlab import io'"),
+    ],
+)
+def test_c06_import_guard_accepts_only_the_designated_exception(
+    relative_path: str, source: str
+) -> None:
+    """Positive controls distinguish the I/O subtree from similarly named imports."""
+    _assert_import_boundaries(source, Path(relative_path))
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "field.py",
+        "targets.py",
+        "__init__.py",
+        "io/__init__.py",
+        "io/other.py",
+        "io/sub/images.py",
+        "io/Images.py",
+    ],
+)
+def test_c06_pil_exception_requires_the_exact_decoder_path(relative_path: str) -> None:
+    with pytest.raises(AssertionError, match="forbidden module 'PIL'"):
+        _assert_import_boundaries("from PIL import Image", Path(relative_path))
+
+
+@pytest.mark.parametrize("root", sorted(FORBIDDEN_IMPORT_ROOTS - {"PIL"}))
+def test_c06_other_forbidden_dependencies_stay_forbidden_in_io(root: str) -> None:
+    with pytest.raises(AssertionError, match="forbidden module"):
+        _assert_import_boundaries(f"import {root} as library", Path("io/images.py"))
+
+
+@pytest.mark.parametrize(
+    ("relative_path", "source"),
+    [
+        ("targets.py", "import ohlab.io"),
+        ("targets.py", "import ohlab.io.images as images"),
+        ("targets.py", "from ohlab.io.images import load_target_intensity as load"),
+        ("targets.py", "from ohlab import io as files"),
+        ("targets.py", "from . import io as files"),
+        ("targets.py", "from .io import images"),
+        ("targets.py", "from .io.images import load_target_intensity"),
+        ("targets.py", "def prepare():\n    from . import io"),
+        ("__init__.py", "from . import io"),
+        ("__init__.py", "from ohlab.io import images"),
+        ("algorithms/prepare.py", "from .. import io as files"),
+        ("algorithms/prepare.py", "from ..io.images import load_target_intensity"),
+        ("algorithms/__init__.py", "from ..io import images"),
+        ("algorithms/__init__.py", "def prepare():\n    import ohlab.io as files"),
+    ],
+)
+def test_c06_import_guard_rejects_core_to_io_dependencies(
+    relative_path: str, source: str
+) -> None:
+    with pytest.raises(AssertionError, match="imports I/O module"):
+        _assert_import_boundaries(source, Path(relative_path))
 
 
 def test_c07_numerical_core_uses_only_the_modern_rng() -> None:
@@ -330,6 +434,34 @@ def test_c07_numerical_core_uses_only_the_modern_rng() -> None:
                         f"{path.name} imports {alias.name!r} from "
                         f"{node.module!r}; only default_rng is permitted"
                     )
+
+
+@pytest.mark.parametrize(
+    ("source", "permitted"),
+    [
+        ("rng = np.random.default_rng(0)", True),
+        ("rng = numpy.random.default_rng(0)", True),
+        ("from numpy.random import default_rng as make_rng", True),
+        ("# np.random.seed(0)\ntext = 'numpy.random.rand()'", True),
+        ("np.random.seed(0)", False),
+        ("numpy.random.rand(2)", False),
+        ("from numpy.random import seed as set_seed", False),
+        ("from np.random import rand", False),
+        ("def prepare():\n    np.random.normal()", False),
+    ],
+)
+def test_c07_existing_rng_guard_supported_forms(
+    source: str, permitted: bool, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercise the actual unchanged RNG guard without broadening its syntax scope."""
+    probe = tmp_path / "rng_probe.py"
+    probe.write_text(source, encoding="utf-8")
+    monkeypatch.setitem(globals(), "_package_source_files", lambda: [probe])
+    if permitted:
+        test_c07_numerical_core_uses_only_the_modern_rng()
+    else:
+        with pytest.raises(AssertionError, match="only .*default_rng"):
+            test_c07_numerical_core_uses_only_the_modern_rng()
 
 
 def test_c08_documented_public_api_is_available() -> None:

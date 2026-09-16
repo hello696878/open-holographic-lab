@@ -2,12 +2,15 @@
 
 A reproducible computer-generated holography (CGH) simulator.
 
-Milestones 0 and 1 are complete: this package provides an exactly-specified,
-exactly-tested representation of a sampled complex optical field
+This package provides an exactly-specified, exactly-tested representation
+of a sampled complex optical field
 (:class:`~ohlab.field.ComplexField`) and its coordinate and frequency grids
 (:class:`~ohlab.grid.SamplingGrid`), and free-space propagation by the Angular
-Spectrum Method (:func:`~ohlab.propagation.propagate_angular_spectrum`). There
-is no phase retrieval, and no file or plotting support yet.
+Spectrum Method (:func:`~ohlab.propagation.propagate_angular_spectrum`). Target
+intensity and amplitude preparation lives in :mod:`ohlab.targets`; optional
+strict grayscale PNG loading lives in :mod:`ohlab.io.images`. These modules
+are imported explicitly rather than re-exported here. There is no phase
+retrieval or plotting support in the numerical core.
 
 Normative references
 --------------------
