@@ -22,7 +22,7 @@ tested, its limitations recorded here, and its handoff package written to
 | 1.x | *Candidate:* band-limited ASM (deferred from M1) | not started | — |
 | 1 | Angular Spectrum propagation | **complete** (2026-08-11) | [`milestone_1/`](handoffs/milestone_1/) |
 | 2 | Target image loading | **complete** (2026-09-16) | [`milestone_2/`](handoffs/milestone_2/) |
-| 3 | Gerchberg–Saxton phase retrieval | not started | — |
+| 3 | Gerchberg–Saxton phase retrieval | **complete** (2026-09-16) | [`milestone_3/`](handoffs/milestone_3/) |
 | 4 | Reconstruction quality metrics | not started | — |
 | 5 | Configuration and run artifacts | not started | — |
 | 6 | Minimal application layer | not started | — |
@@ -272,12 +272,73 @@ not started; there is no phase assignment or hologram computation.
 
 ## Milestone 3 — Gerchberg–Saxton phase retrieval
 
-**Status:** not started.
+**Status: complete** (2026-09-16). **668 tests passing**: all 491 accepted
+baseline cases plus 177 new cases (160 contract/operator/fixture/PNG cases,
+17 independent direct-reference/fixed-point/analytic cases).
 
-**Scope.** `src/ohlab/algorithms/gerchberg_saxton.py`. Deterministic seeded
-initial phase; per-iteration loss history; explicit convergence and stopping
-criteria; the amplitude/phase projection steps expressed via
-`ComplexField.with_amplitude` / `.with_phase`.
+**Scope.** `ohlab.algorithms.gerchberg_saxton` and frozen
+`GerchbergSaxtonResult`: single-plane phase-only synthesis on one complete
+periodic lossless ASM grid, equivalent to explicit `pad_factor=1`. No crop,
+padding or evanescent samples. The approved fixed-cycle/last-iterate policy
+replaces the earlier provisional convergence-stopping scope. Local projections
+implement the M3 exact-zero phase tie without changing `ComplexField.phase`.
+Normative contract: `math_conventions.md` §3.13, version 0.6.
+
+**Acceptance criteria — all met.**
+
+- [x] All existing tests retained unchanged; root executable exports/version,
+      existing numerical implementations, loader and dependencies preserved
+- [x] Strict plain native-float64 shape/domain/ownership validation, positive
+      usable powers, symmetric power compatibility (`rtol=1e-12`, absolute
+      tolerance zero), and no hidden normalization or target scaling
+- [x] Explicit seed or phase, nonuniform prescribed source amplitude,
+      canonical phase with local exact-zero tie, zero iterations, zero distance,
+      sparse zeros, signed distance and evanescent rejection verified
+- [x] Last source and actual forward reconstruction returned; all N+1 residuals
+      measured before target replacement; returned phase independently rebuilt
+      and propagated through public ASM
+- [x] Public transfer functions constructed once per direction; both local
+      operator directions checked against public propagation, with inverse and
+      adjoint identities on the lossless grid
+- [x] Scalar physical-coordinate direct-DFT complete iterations on (3,5) and
+      (5,8), signed 0.2 mm, N=0/1/3; source/reconstruction discrepancies below
+      2.31e-15 of input peak; constructed fixed points and analytic plane wave
+- [x] All three original quantized planning fixtures and seeds 0/1/2/3 retain
+      50 cycles and satisfy rho50 < 0.05 and rho50 < 0.1*rho0; no seed selection
+- [x] Seven in-memory mutations across six categories detected; 52 assertion
+      failures, no collection/setup/teardown failures; source/test hashes
+      unchanged and complete suite passed afterward
+- [x] Actual synthetic-PNG-to-M2-to-M3 path verified; continuous designs and
+      decoded targets reported separately; analytic unwrapped transfer-phase
+      differences measured on physically sorted adjacent frequencies
+- [x] Default and explicit-path headless demos verified; three useful figures
+      visually reviewed and regenerated with identical SHA-256 values
+- [x] Shipped runtime/memory measured separately from planning probes; paired
+      otherwise-identical kernels measured the benefit of reusing public H
+- [x] Six handoff documents complete in
+      [`handoffs/milestone_3/`](handoffs/milestone_3/)
+
+Review found a rounded-cutoff geometry whose summed-frequency test passes
+while the public H radicand becomes slightly negative. M3 rejects that
+unrepresentable lossless domain, including zero-distance/iteration requests,
+without clamping or changing M1. Exact-grazing acceptance is tested separately.
+
+**Recorded limitations.** This is a discrete periodic synthesis model, not
+arbitrary isolated-aperture optical validation. Power compatibility is necessary
+but insufficient for exact synthesis; there is no unique-phase or arbitrary
+convergence promise. The residual is normalized squared amplitude error, not
+percent accuracy, intensity MSE or efficiency. Tiny/subnormal intermediate
+arithmetic reported unusable by NumPy is rejected rather than rescaled.
+The ideal phase figures are not calibrated SLM drive images. Demonstration
+illumination is explicitly configured separately for each target. Headless
+rendering and the stated Windows environment were tested; interactive GUI and
+cross-platform bit identity were not. Full details and exact commands/output
+are in [tests and evidence](handoffs/milestone_3/tests_and_evidence.md) and
+[known limitations](handoffs/milestone_3/known_limitations.md).
+
+Only the approved twenty paths are included. M0/M1/M2 historical evidence,
+AGENTS.md, CLAUDE.md, existing tests and old figures remain unchanged.
+Milestone 4 and deferred enhancements are not started.
 
 ---
 

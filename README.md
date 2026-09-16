@@ -32,19 +32,21 @@ A CGH simulator that can:
 
 ## Status
 
-**Milestones 0, 1 and 2 complete.** See the authoritative
+**Milestones 0, 1, 2 and 3 complete.** See the authoritative
 [milestone ledger](docs/milestones.md) for dated acceptance evidence.
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
 the **Angular Spectrum Method**. Milestone 2 adds strict grayscale PNG loading
-and array-only target intensity/amplitude preparation. Phase retrieval remains
-deferred to Milestone 3.
+and array-only target intensity/amplitude preparation. Milestone 3 adds
+single-plane phase-only Gerchberg–Saxton synthesis on a complete periodic,
+lossless angular-spectrum grid, with explicit illumination and residual history.
 
 See [`docs/milestones.md`](docs/milestones.md) for the full ledger, and the
 handoff packages for [Milestone 0](docs/handoffs/milestone_0/) and
 [Milestone 1](docs/handoffs/milestone_1/) and
-[Milestone 2](docs/handoffs/milestone_2/) — implementation summary, code map,
+[Milestone 2](docs/handoffs/milestone_2/) and
+[Milestone 3](docs/handoffs/milestone_3/) — implementation summary, code map,
 mathematics, test evidence, known limitations, and figures.
 
 ```python
@@ -199,6 +201,59 @@ The example displays intensity and amplitude on fixed `[0, 1]` scales and
 reports `max(abs(A_target**2 - I_target))`. Its default PNG is temporary.
 The generator writes only the three M2 handoff figures.
 
+## Synthesize a phase-only hologram
+
+```python
+import numpy as np
+from ohlab.algorithms import gerchberg_saxton
+
+# Continue from the loaded target amplitude and grid above. The example
+# deliberately configures illumination separately for each target.
+source_amplitude = np.full(grid.shape, np.sqrt(np.sum(amplitude**2) / amplitude.size))
+result = gerchberg_saxton(
+    target_amplitude=amplitude, source_amplitude=source_amplitude,
+    grid=grid, wavelength_m=633e-9, distance_m=5e-3,
+    iterations=50, seed=0,
+)
+phase_rad = result.phase
+reconstructed_intensity = result.reconstruction.intensity
+loss = result.residual_history  # initial value and all 50 completed cycles
+```
+
+The solver requires plain native `float64` arrays, exact grid shape, finite
+nonnegative amplitudes and positive representable power. Amplitudes may exceed
+one. Source and target energies must agree to relative tolerance `1e-12`,
+absolute tolerance zero; the solver never rescales either input. Supply exactly
+one of `seed` or `initial_phase`. Power compatibility does not guarantee that
+the target can be synthesized exactly. A blank M2 image remains a valid image
+but is rejected by this solver.
+
+This is one fixed **periodic** grid, equivalent to ASM `pad_factor=1`, with
+no evanescent samples even at zero distance or zero iterations. It does not
+validate arbitrary isolated finite-aperture optics. Existing ASM still
+defaults to `pad_factor=2`. The result contains the last source iterate and
+its actual forward reconstruction, never a target-projected intermediate.
+The dimensionless loss is `sum((abs(reconstruction)-A_target)**2)/sum(A_target**2)`;
+it is neither percent accuracy nor an intensity error or diffraction efficiency.
+See the [M3 contract](docs/handoffs/milestone_3/implementation_summary.md)
+and [limitations](docs/handoffs/milestone_3/known_limitations.md).
+
+```powershell
+.\.venv\Scripts\python.exe -B examples\synthesize_hologram.py --no-show
+.\.venv\Scripts\python.exe -B examples\synthesize_hologram.py --input target.png --ny 64 --nx 64 --no-show
+.\.venv\Scripts\python.exe -B scripts\make_m3_figures.py
+.\.venv\Scripts\python.exe -B scripts\probe_m3_evidence.py
+```
+
+The default demo creates a deterministic 64-by-64 grayscale PNG and loads it
+through the strict M2 decoder. It uses seed 0, 50 cycles, 633 nm wavelength,
+8 micrometre pitches and 5 mm distance. It prints the explicitly configured
+uniform source amplitude and both powers. Illumination is configured separately
+for each target; this is not constant illumination across arbitrary images.
+Target and actual reconstruction share a displayed intensity maximum that is
+reported without clipping overshoot to one. Phase is an ideal numerical
+visualization, not a calibrated SLM drive image. Omit `--no-show` to display it.
+
 ## Test
 
 ```
@@ -239,9 +294,13 @@ src/
   ohlab/                    the importable package
     targets.py              pure intensity/amplitude array functions
     io/images.py            optional strict PNG decoder
+    algorithms/             periodic single-plane Gerchberg–Saxton solver
 tests/                      pytest suite
 examples/load_target.py     standalone target demonstration
 scripts/make_m2_figures.py   deterministic M2 figure generator
+examples/synthesize_hologram.py standalone M3 PNG-to-hologram demonstration
+scripts/make_m3_figures.py   deterministic M3 figure generator
+scripts/probe_m3_evidence.py reproducible M3 numerical/performance evidence
 ```
 
 ---

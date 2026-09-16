@@ -9,8 +9,9 @@ of a sampled complex optical field
 Spectrum Method (:func:`~ohlab.propagation.propagate_angular_spectrum`). Target
 intensity and amplitude preparation lives in :mod:`ohlab.targets`; optional
 strict grayscale PNG loading lives in :mod:`ohlab.io.images`. These modules
-are imported explicitly rather than re-exported here. There is no phase
-retrieval or plotting support in the numerical core.
+are imported explicitly rather than re-exported here. Single-plane phase-only
+synthesis on a complete periodic grid lives in :mod:`ohlab.algorithms`.
+Plotting and file I/O remain outside the numerical core.
 
 Normative references
 --------------------

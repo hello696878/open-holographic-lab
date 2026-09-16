@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.5 — 2026-09-16
+**Version:** 0.6 — 2026-09-16
 
 ---
 
@@ -579,6 +579,112 @@ sampling and boundary-condition limitations in §3.9 are unchanged.
 
 ---
 
+### 3.13 Single-plane phase-only Gerchberg–Saxton synthesis
+
+M3 uses one complete fixed grid and constrains every source and target pixel.
+There is no embedding, cropping, or free exterior region. The forward operator
+is the existing ASM expression with `pad_factor=1`:
+
+    P_z(U) = IFFT2(FFT2(U) * H_z),  H_z = exp(+i*kz*z).
+
+The entire discrete frequency mesh must have real `kz`, including grazing
+zero. A mesh with any evanescent samples is rejected even for `z=0` or zero
+iterations. Existing M1 implementation, signs and default padding are unchanged.
+This is a **discrete periodic synthesis model**, not a validation of arbitrary
+isolated finite-aperture optics or a general sampling-adequacy guarantee.
+
+#### 3.13.1 Inverse, adjoint and power
+
+On this lossless complete grid, `|H_z|=1` mathematically, so
+
+    P_z^(-1) = P_z^* = P_(-z).
+
+The adjoint is with respect to `sum(conj(u)*v)*dx*dy`; the common pixel area
+does not change the adjoint. Forward propagation `P_z` is generally neither
+its own adjoint nor its own inverse. For the embedded/cropped operator
+`E^* P_z E`, distance reversal can give the adjoint but is generally not the
+inverse: cropping discards information. That operator is not the M3 model.
+
+For prescribed real amplitudes `A_s` and `A_t`, define
+
+    S_s = sum(A_s**2),  S_t = sum(A_t**2),  P = S*dx*dy.
+    abs(S_s - S_t) <= 1e-12 * max(S_s, S_t).
+
+This symmetric power-compatibility test has **absolute tolerance zero**.
+Energies and physical powers must be positive, finite and numerically usable
+in float64. Zero power, overflow, underflow that makes the derived arithmetic
+unusable, and nonfinite propagation/residual arithmetic raise informative
+errors. There is no silent rescaling or clipping. Equal power is necessary,
+not sufficient, for exact synthesis. M2's blank-image acceptance is unchanged.
+
+M3 also checks that the public transfer formula's sequential float64 radicand
+`(1/lambda)**2 - fx**2 - fy**2` is nonnegative. At the cutoff, rounding can
+make it negative even when the summed-frequency domain comparison passes.
+Such a geometry cannot represent the chosen lossless model and is rejected,
+including identity requests; it is not clamped to grazing zero. This is domain
+validation only, with no second production kz or transfer-function calculation.
+NumPy-reported underflow is treated as unusable arithmetic, including
+precision-losing tiny/subnormal intermediates even if a total remains positive.
+
+#### 3.13.2 Inputs and initialization
+
+Both amplitudes are plain native `float64` ndarrays, exactly `grid.shape`,
+finite and nonnegative; there is no upper bound of one. Supplied phase is a
+plain native `float64` array of the same shape and finite radians on any
+branch. Read-only and noncontiguous arrays are accepted via owned copies;
+input bytes and the grid are preserved. Array-like objects, subclasses,
+implicit dtype conversion and non-native storage are rejected.
+
+Wavelength is finite positive metres; distance is finite signed metres.
+Iterations is an integer at least zero; seed is an integer at least zero;
+booleans are rejected. Exactly one of seed or initial phase is required.
+Seeded initialization uses `default_rng(seed).uniform(-pi, pi, grid.shape)`.
+The initial field is `U_0=A_s*exp(i*phi_0)`.
+
+Wrong types/dtypes raise `TypeError`; invalid shapes, domains, initialization
+choices, incompatible power and unusable derived arithmetic raise `ValueError`.
+
+#### 3.13.3 Projection cycle and returned iterate
+
+Define `theta(w)` as the canonical phase in `(-pi,+pi]`, with **zero radians at
+exact complex zero**. Only the exact `-pi` endpoint is mapped to `+pi`; there
+is no near-zero cutoff. This tie rule is local to M3 and does not change the
+existing `ComplexField.phase` signed-zero contract.
+
+For `k=0,...,N-1`:
+
+    V_k = P_z(U_k)
+    rho_k = sum((abs(V_k)-A_t)**2) / S_t
+    V'_k = A_t * exp(i*theta(V_k))
+    W_k = P_(-z)(V'_k)
+    U_(k+1) = A_s * exp(i*theta(W_k))
+
+Finally evaluate `V_N=P_z(U_N)` and `rho_N`. Residuals are evaluated **before**
+target-amplitude replacement. Return the **last** `U_N`, its actual unmodified
+`V_N`, and all `N+1` residuals indexed zero through `N`. There are `N+1`
+forward and `N` inverse applications, with both public transfer functions
+computed once per solve. Local FFT application keeps §3.7 normalization.
+No best-iterate substitution, early stopping, or generic convergence flag
+is provided. Finite fixture improvement does not promise arbitrary convergence.
+
+At `N=0`, return initialization and its actual reconstruction. At `z=0`,
+propagation is exact identity without FFT, while the requested projection
+cycles still run. In particular, a zero target pixel can reset source phase
+to zero on the first cycle even if its prescribed source amplitude is positive.
+
+`rho` is a dimensionless normalized **squared amplitude residual**, not an
+intensity MSE, a fraction of pixels, diffraction efficiency or percent accuracy.
+With exactly equal powers and exact arithmetic, `0 <= rho <= 2`; stored
+histories are not clipped to that theoretical bound.
+
+`GerchbergSaxtonResult` is frozen with `eq=False`. It stores `source_field`,
+`reconstruction` and an owned read-only native-float64 `residual_history`.
+Its `iterations` property derives `len(history)-1`; `phase` derives a fresh
+writable canonical array from `source_field`, with zero on zero source support.
+There is no separately stored phase that can disagree with the returned field.
+
+---
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -618,6 +724,7 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.6 | 2026-09-16 | **§3.13 added** — complete periodic lossless ASM GS, explicit power/initialization/zero contracts, inverse versus adjoint, fixed cycle count, last-iterate reconstruction and pre-projection residual history. | Approved Milestone 3. M0/M1/M2 implementations and conventions remain unchanged; no hidden normalization, physical-device calibration, or general convergence claim. |
 | 0.5 | 2026-09-16 | **§3.12 added** — fixed grayscale-to-intensity `/255` and amplitude square-root contracts, strict array ownership/dtypes, size/orientation rules and static 8-bit grayscale PNG boundary. | Approved Milestone 2. No hidden radiometric or spatial conversion; no phase assignment. Existing optical signs, grid/FFT conventions, field/propagation behavior and precision remain unchanged. |
 | 0.4 | 2026-09-14 | **§3.1/§3.6** — distinguish the selected Fourier pair from the physical time/propagation convention; remove the claim that all three signs must flip together. **§3.2** — specify exact `−π` to `+π` endpoint normalization after `np.angle`, including signed-zero handling without changing stored data. **§3.7** — derive the centered-coordinate physical spectrum, its inverse, and same-grid ASM cancellation of area and origin factors. **§3.9.1** — restrict conjugacy under distance reversal to real `kz` and explain the evanescent exception. | Approved M0/M1 corrective maintenance. Existing selected signs, grid/FFT ordering, precision, normalization, propagation implementation, and evanescent policy are retained; phase output is corrected to the existing canonical-interval contract. Historical evidence and dated errata are recorded in `docs/corrections/m0_m1_contract_and_evidence.md`. |
 | 0.3 | 2026-08-11 | **§3.1** — records the external verification of the time convention and propagation sign against Konijnenberg/Adam/Urbach; downgrades the Goodman citation to an unverified secondary attribution; corrects the mislabelling of `exp(−iωt)` as the "engineering" convention (it is the *physicists'* convention); states that NumPy fixes the DFT kernel only, not the time convention, and that the three sign choices form a mutually verified set. **§3.9 rewritten** — §3.9.1 mandates the single expression `H = exp(+i·kz·z)` with `Im{kz} ≥ 0` and withdraws the piecewise presentation; §3.9.2 requires evanescence to be determined from the discrete mesh and corrects the threshold from `d < λ/2` to the corner condition `d < λ/√2`; §3.9.3 states the evanescent policy; §3.9.4 specifies the padding/cropping alignment rule and the boundary-condition semantics; §3.9.5 defers band-limited ASM. **§3.8** — periodicity note updated. No mathematical convention changed. | Milestone 1. The `d < λ/2` threshold in the M1 plan was an error (axis-only reasoning); the corner of the 2-D Nyquist square reaches the cutoff first. Raised and corrected before implementation. |
