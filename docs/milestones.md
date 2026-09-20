@@ -23,7 +23,7 @@ tested, its limitations recorded here, and its handoff package written to
 | 1 | Angular Spectrum propagation | **complete** (2026-08-11) | [`milestone_1/`](handoffs/milestone_1/) |
 | 2 | Target image loading | **complete** (2026-09-16) | [`milestone_2/`](handoffs/milestone_2/) |
 | 3 | Gerchberg–Saxton phase retrieval | **complete** (2026-09-16) | [`milestone_3/`](handoffs/milestone_3/) |
-| 4 | Reconstruction quality metrics | not started | — |
+| 4 | Reconstruction quality metrics | **complete** (2026-09-20) | [`milestone_4/`](handoffs/milestone_4/) |
 | 5 | Configuration and run artifacts | not started | — |
 | 6 | Minimal application layer | not started | — |
 
@@ -344,10 +344,69 @@ Milestone 4 and deferred enhancements are not started.
 
 ## Milestone 4 — Reconstruction quality metrics
 
-**Status:** not started.
+**Status: complete** (2026-09-20). **904 tests passing**: all 668 accepted
+baseline cases plus 236 new metric contract/reference/integration cases.
 
-**Scope.** `src/ohlab/metrics.py`. Normalized MSE, PSNR, diffraction
-efficiency, uniformity, and the normalization convention each assumes.
+**Scope.** Five keyword-only pure-array functions in `ohlab.metrics`:
+intensity MSE, target-squared-norm intensity NMSE, explicit-range intensity
+PSNR, signal-region power fraction and regional population CV. These precise
+names and definitions replace the earlier provisional efficiency/uniformity
+labels. Normative contract: `math_conventions.md` §3.14, version 0.7; §2.1
+clarifies raw MSE scale dependence without changing field normalization.
+
+**Acceptance criteria — all met.**
+
+- [x] Plain native-float64 nonempty 2-D finite nonnegative intensities; exact
+      comparison/mask shapes; values above one, read-only and strided inputs;
+      built-in float outputs and no mutation/retention
+- [x] Complete validation before exact shortcuts; numerical signed-zero
+      equality for PSNR; required explicit positive range; no approximate
+      equality, clipping, normalization, inferred masks or epsilon denominators
+- [x] Defined zero results separated from undefined ratios; positive-constant
+      CV exactly zero, empty signal selection valid with usable positive total,
+      negative PSNR and CV above one preserved
+- [x] Strict local arithmetic failure handling, unsupported extreme scales
+      documented, and caller NumPy error settings restored on success/failure
+- [x] Hand-array identities and independent Decimal references; scaling,
+      brightness, population-CV, leakage and explicit-range behavior verified
+- [x] Actual M3 reconstruction evaluated; returned phase independently rebuilt
+      through public ASM; M3 amplitude residual remains separately labeled;
+      target/mask/field/history bytes preserved
+- [x] Seven isolated mutations each produced the independent expected assertion
+      failure, with no collection/setup/teardown or other-call failures; all 29
+      source/test file hashes unchanged; full suite passed afterward
+- [x] Separate fixed seed-0 64x64 example passed headlessly; explicit radius-15
+      signal disk and separate intended-flat fixtures; shared display/error
+      scales preserve brightness errors and reconstruction overshoot
+- [x] Two figures visually inspected and regenerated twice with identical hashes
+- [x] Six handoff documents completed in
+      [`handoffs/milestone_4/`](handoffs/milestone_4/); all 85 protected
+      pre-existing tracked files remain byte-identical
+
+The actual smooth-spot reconstruction has intensity MSE
+`4.81562267041563932e-04`, NMSE `1.11723641621580324e-02`, PSNR
+`3.31734754969381669e+01` dB with data_range=1, and regional fraction
+`8.38568123674199528e-01`. Its separate M3 amplitude residual remains
+`1.71252990524567231e-02`. These are shipped-function measurements, not
+replacement historical planning numbers or new GS convergence thresholds.
+
+**Recorded limitations.** Metrics assume corresponding pixels on one declared
+scale. NMSE uses a squared intensity norm, not optical power. PSNR's reference
+range is explicit and exact equality returns infinity. Regional power fraction
+does not establish brightness fidelity or calibrated efficiency. CV describes
+population variation only where its selected region is meaningfully interpreted;
+it can exceed one. Extreme finite inputs can have unsupported arithmetic and
+raise instead of being rescaled. Validation covers finite fixtures and the stated
+Windows environment, not every platform, dependency version or physical model.
+Interactive GUI operation was not separately automated. Exact commands, output,
+tolerances, negative-control code and limitations are in the
+[M4 evidence](handoffs/milestone_4/tests_and_evidence.md) and
+[limitations](handoffs/milestone_4/known_limitations.md).
+
+Only the approved fifteen paths are included. Existing numerical implementations,
+tests, root exports, dependencies, engineering instructions and M0-M3 evidence,
+examples and figures are unchanged. M5, M6 and deferred enhancements are not
+started; no teaching completion is inferred.
 
 ---
 

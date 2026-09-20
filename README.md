@@ -32,7 +32,7 @@ A CGH simulator that can:
 
 ## Status
 
-**Milestones 0, 1, 2 and 3 complete.** See the authoritative
+**Milestones 0, 1, 2, 3 and 4 complete.** See the authoritative
 [milestone ledger](docs/milestones.md) for dated acceptance evidence.
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
@@ -41,12 +41,15 @@ the **Angular Spectrum Method**. Milestone 2 adds strict grayscale PNG loading
 and array-only target intensity/amplitude preparation. Milestone 3 adds
 single-plane phase-only Gerchberg–Saxton synthesis on a complete periodic,
 lossless angular-spectrum grid, with explicit illumination and residual history.
+Milestone 4 adds explicit intensity MSE/NMSE/PSNR, signal-region power fraction
+and regional population CV, evaluated on the actual reconstruction.
 
 See [`docs/milestones.md`](docs/milestones.md) for the full ledger, and the
 handoff packages for [Milestone 0](docs/handoffs/milestone_0/) and
 [Milestone 1](docs/handoffs/milestone_1/) and
 [Milestone 2](docs/handoffs/milestone_2/) and
-[Milestone 3](docs/handoffs/milestone_3/) — implementation summary, code map,
+[Milestone 3](docs/handoffs/milestone_3/) and
+[Milestone 4](docs/handoffs/milestone_4/) — implementation summary, code map,
 mathematics, test evidence, known limitations, and figures.
 
 ```python
@@ -254,6 +257,61 @@ Target and actual reconstruction share a displayed intensity maximum that is
 reported without clipping overshoot to one. Phase is an ideal numerical
 visualization, not a calibrated SLM drive image. Omit `--no-show` to display it.
 
+## Evaluate reconstruction quality
+
+```python
+from ohlab.metrics import (
+    intensity_mse, intensity_nmse, intensity_psnr,
+    signal_region_power_fraction, regional_intensity_cv,
+)
+
+# Continue from the M3 example: evaluate its actual forward reconstruction.
+reconstructed_intensity = result.reconstruction.intensity
+mse = intensity_mse(target_intensity=intensity,
+                    reconstruction_intensity=reconstructed_intensity)
+nmse = intensity_nmse(target_intensity=intensity,
+                      reconstruction_intensity=reconstructed_intensity)
+psnr_db = intensity_psnr(target_intensity=intensity,
+                        reconstruction_intensity=reconstructed_intensity,
+                        data_range=1.0)  # explicitly declared M2 design range
+# Supply a Boolean mask of exactly the image shape, defined for the task.
+# fraction = signal_region_power_fraction(
+#     reconstruction_intensity=reconstructed_intensity, signal_mask=mask)
+# cv = regional_intensity_cv(intensity=reconstructed_intensity, mask=mask)
+```
+
+MSE uses intensity units squared. NMSE divides squared intensity error by
+`sum(I_target**2)`, the squared intensity norm, not optical power or M3's
+amplitude residual. PSNR needs an explicit positive `data_range`; exact matches
+return `+inf` and negative scores remain negative. No clipping or independent
+image normalization occurs. Native `float64` nonempty 2-D arrays are required;
+values above one and read-only/noncontiguous inputs are supported.
+
+The signal-region fraction divides selected intensity by full-window intensity;
+it describes power concentration, not calibrated hardware efficiency or target
+brightness fidelity. CV uses population standard deviation (`ddof=0`) divided
+by regional mean, can exceed one, and describes uniformity only where flat
+brightness is intended. Undefined denominators and unusable float64 arithmetic
+raise errors without adding epsilon. See the
+[M4 contract](docs/handoffs/milestone_4/implementation_summary.md) and
+[limitations](docs/handoffs/milestone_4/known_limitations.md).
+
+Run the separate example from PowerShell, or select the existing project
+interpreter in VS Code and run `examples/evaluate_reconstruction.py`:
+
+```powershell
+.\.venv\Scripts\python.exe -B examples\evaluate_reconstruction.py --no-show
+.\.venv\Scripts\python.exe -B scripts\make_m4_figures.py
+```
+
+Omit `--no-show` to display the figures. The fixed 64-by-64 smooth-spot case
+compares the exact target, twice the target and the actual seed-0 M3 result.
+Its predeclared radius-15-pixel disk excludes some target power, so even the
+exact target's signal fraction is below one. The declared PSNR range is one;
+shared display limits include overshoot. CV is illustrated separately with
+fixed flat-region fixtures. The example does not change the solver or export
+a run-artifact bundle.
+
 ## Test
 
 ```
@@ -295,12 +353,15 @@ src/
     targets.py              pure intensity/amplitude array functions
     io/images.py            optional strict PNG decoder
     algorithms/             periodic single-plane Gerchberg–Saxton solver
+    metrics.py              pure intensity errors and regional diagnostics
 tests/                      pytest suite
 examples/load_target.py     standalone target demonstration
 scripts/make_m2_figures.py   deterministic M2 figure generator
 examples/synthesize_hologram.py standalone M3 PNG-to-hologram demonstration
 scripts/make_m3_figures.py   deterministic M3 figure generator
 scripts/probe_m3_evidence.py reproducible M3 numerical/performance evidence
+examples/evaluate_reconstruction.py standalone M4 metric demonstration
+scripts/make_m4_figures.py   deterministic M4 figure generator
 ```
 
 ---
@@ -311,8 +372,8 @@ Two rules shape the codebase:
 
 **1. The numerical optics core is independent of UI, plotting, and file I/O.**
 `grid.py`, `field.py`, `propagation.py`, `targets.py`, `algorithms/`, and `metrics.py` take
-arrays and return arrays. Anything touching disk or screen lives in
-`ohlab/io/`, `scripts/`, or `examples/`.
+arrays/fields and return numerical arrays, fields or scalars. Anything touching
+disk or screen lives in `ohlab/io/`, `scripts/`, or `examples/`.
 
 Base runtime dependencies remain NumPy and SciPy. The C06 static guard in
 `tests/test_fft_conventions.py` permits `PIL` only in `ohlab/io/images.py`

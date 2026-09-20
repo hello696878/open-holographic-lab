@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.6 — 2026-09-16
+**Version:** 0.7 — 2026-09-20
 
 ---
 
@@ -60,9 +60,13 @@ constant `½ε₀cn` and define**
 
     I ≡ |U|²
 
-*Justification:* every quantity this project reports is either a ratio
-(diffraction efficiency, uniformity), a normalized error (NMSE, PSNR against a
-normalized reference), or a displayed image. None depends on the constant.
+*Justification:* a shared arbitrary intensity scale suffices for these
+simulations. Ratios such as intensity NMSE, regional power fraction and CV
+cancel a common positive intensity factor. PSNR is invariant only when its
+explicit `data_range` is scaled by that same factor. Raw intensity MSE has
+squared-intensity units and changes by the square of the factor; optical
+power and displayed intensity values also retain their declared scale.
+This clarification adds M4's raw MSE without changing field normalization.
 
 *Consequence:* intensities are comparable **within** a run, and between runs
 using the same normalization, but are **not** absolute radiometric quantities.
@@ -685,6 +689,105 @@ There is no separately stored phase that can disagree with the returned field.
 
 ---
 
+### 3.14 Reconstruction intensity metrics
+
+`ohlab.metrics` evaluates supplied intensity arrays. It neither changes M3's
+algorithm nor replaces its normalized squared **amplitude** residual (§3.13).
+In integration, use the actual `result.reconstruction.intensity` associated
+with the returned source phase, before any target-amplitude replacement.
+
+#### 3.14.1 Definitions and interpretation
+
+Let `T` be target intensity, `R` reconstruction intensity, `N` the total pixel
+count, and `M` a caller-supplied Boolean region. Both comparison inputs must
+use the same declared scale and corresponding pixel locations.
+
+    MSE_I = sum((R - T)**2) / N
+    NMSE_I = sum((R - T)**2) / sum(T**2)
+    PSNR_I = 20*log10(data_range) - 10*log10(MSE_I)
+    signal_region_power_fraction = sum(R[M]) / sum(R)
+    regional_intensity_cv = std(R[M], ddof=0) / mean(R[M])
+
+MSE has squared-intensity units. NMSE is dimensionless squared relative
+intensity error, neither NRMSE nor the M3 residual. Its target squared norm
+`sum(T**2)` is **not** optical power `sum(T)*dx*dy`; the normalization is an
+explicit project convention, not a universal definition of NMSE. PSNR is in
+dB and uses a caller-declared finite positive intensity `data_range`. This is
+not inferred from observed maxima and is not a bound on either array. The M4
+example declares one for M2-normalized design intensities; reconstruction
+values above one remain valid.
+
+Common scaling `T,R -> c*T,c*R`, for positive `c`, multiplies MSE by `c**2`
+and preserves NMSE. PSNR is preserved only if `data_range -> c*data_range`;
+at fixed range it changes by `-20*log10(c)`. Power fraction and CV are
+invariant under common positive scaling within usable float64 arithmetic.
+Equal power fraction therefore does not imply correct target brightness.
+
+The fraction denominator covers the **full supplied reconstruction window**.
+Uniform pixel area cancels from numerator and denominator. A source-normalized
+simulated efficiency would instead equal this fraction times
+`P_destination_window/P_source`. Complete-window power conservation makes the
+two equal; M3 supplies a discrete periodic lossless model, not hardware
+efficiency. Measured hardware efficiency additionally needs defined incident
+and collected powers, radiometric calibration, device losses and collection
+apertures. M4 does not implement either additional efficiency metric.
+
+CV uses population variance (division by selected count, `ddof=0`), not a
+sample estimate. It can exceed one. Lower means less regional intensity
+variation, which is a uniformity diagnostic only where flat brightness is
+intended. A desired Gaussian falloff is not evidence of speckle or poor
+uniformity. CV and `1-CV` are not universal quality or accuracy scores.
+
+#### 3.14.2 Inputs, ownership and undefined cases
+
+The five public functions are keyword-only and return built-in Python floats.
+Intensities must be plain native `float64` ndarrays, nonempty and 2-D, finite
+and nonnegative, with no upper-one bound. Comparison shapes must match exactly.
+Masks must be plain Boolean ndarrays with exactly the intensity shape. All
+intensity pixels are validated, including those outside a selected region.
+Read-only and noncontiguous inputs are accepted without mutation or retention.
+No array-like/subclass conversion, clipping, alignment, resizing, normalization,
+mask inference, thresholding or epsilon denominator is performed.
+
+Wrong types/dtypes raise `TypeError`; invalid shapes, values, undefined
+ratios and unusable derived arithmetic raise contextual `ValueError`.
+`data_range` accepts real Python/NumPy numeric scalars, excluding booleans,
+and must convert to a finite positive float64-scale value.
+
+- Zero-target MSE is valid. A zero target squared norm makes NMSE undefined,
+  including zero against zero. NMSE requires a usable positive denominator
+  even when the two images match.
+- After validating both arrays and `data_range`, exact numerical equality
+  gives PSNR `+inf`. Signed zeros compare numerically equal; raw bit identity
+  is not required. No approximate-match threshold is used. Negative PSNR is
+  returned unchanged. Nonidentical inputs require usable positive MSE.
+- The fraction requires usable positive full-window power. Empty selection
+  or a selection containing only zeros then gives zero; an all-window mask
+  gives one. Zero full-window power raises even for an empty selection.
+- CV requires a nonempty region and positive mean. A validated region whose
+  values are all exactly equal and positive returns exact zero before any
+  mean/variance reduction, including one pixel. A constant zero region raises.
+  No approximate equality, clipping or variance floor is used.
+
+#### 3.14.3 Floating-point scope
+
+Required arithmetic uses local float64 error handling and explicit result
+checks. Overflow, division errors, invalid results and NumPy-reported underflow
+raise `ValueError`; caller error settings are restored on success and failure.
+In particular, underflow of a nonzero squared error never becomes a perfect
+match. The log-domain PSNR formula avoids forming `data_range**2` or its
+ratio to MSE, but it still requires usable MSE for nonidentical inputs.
+
+Finite input alone does not guarantee support: squares, sums, variance or
+ratios can be unusable even when the mathematical metric is defined. No
+rescaling or arbitrary-precision fallback is added. Exact-match PSNR and
+positive-constant CV bypass unnecessary arithmetic only after validation.
+Independent finite-case errors, explicit relative/absolute tolerances and
+deliberate negative controls are recorded in the M4 handoff; they are not
+universal numerical bounds or proof of physical reconstruction accuracy.
+
+---
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -724,6 +827,7 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.7 | 2026-09-20 | **§3.14 added** — five intensity metrics, explicit target/range/region semantics, population CV, validated exact cases and float64 failure policies. **§2.1 clarified** — raw MSE retains squared intensity scale; PSNR cancels common scale only with coordinated data range. | Approved Milestone 4. Field normalization, units, propagation, M3 solver/residual history and historical evidence remain unchanged. |
 | 0.6 | 2026-09-16 | **§3.13 added** — complete periodic lossless ASM GS, explicit power/initialization/zero contracts, inverse versus adjoint, fixed cycle count, last-iterate reconstruction and pre-projection residual history. | Approved Milestone 3. M0/M1/M2 implementations and conventions remain unchanged; no hidden normalization, physical-device calibration, or general convergence claim. |
 | 0.5 | 2026-09-16 | **§3.12 added** — fixed grayscale-to-intensity `/255` and amplitude square-root contracts, strict array ownership/dtypes, size/orientation rules and static 8-bit grayscale PNG boundary. | Approved Milestone 2. No hidden radiometric or spatial conversion; no phase assignment. Existing optical signs, grid/FFT conventions, field/propagation behavior and precision remain unchanged. |
 | 0.4 | 2026-09-14 | **§3.1/§3.6** — distinguish the selected Fourier pair from the physical time/propagation convention; remove the claim that all three signs must flip together. **§3.2** — specify exact `−π` to `+π` endpoint normalization after `np.angle`, including signed-zero handling without changing stored data. **§3.7** — derive the centered-coordinate physical spectrum, its inverse, and same-grid ASM cancellation of area and origin factors. **§3.9.1** — restrict conjugacy under distance reversal to real `kz` and explain the evanescent exception. | Approved M0/M1 corrective maintenance. Existing selected signs, grid/FFT ordering, precision, normalization, propagation implementation, and evanescent policy are retained; phase output is corrected to the existing canonical-interval contract. Historical evidence and dated errata are recorded in `docs/corrections/m0_m1_contract_and_evidence.md`. |
