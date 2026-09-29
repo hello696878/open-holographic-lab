@@ -48,6 +48,11 @@ dependencies = [
 images = [
     "pillow>=10.0",
 ]
+ui = [
+    "streamlit==1.64.0",
+    "pillow>=10.0",
+    "matplotlib>=3.8",
+]
 dev = [
     "pytest>=8.0",
     "matplotlib>=3.8",

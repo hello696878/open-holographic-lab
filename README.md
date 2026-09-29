@@ -33,7 +33,7 @@ A CGH simulator that can:
 
 ## Status
 
-**Milestones 0, 1, 2, 3, 4 and 5 complete.** See the authoritative
+**Milestones 0–6 implemented and validated within their documented scope.** See the authoritative
 [milestone ledger](docs/milestones.md) for dated acceptance evidence.
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
@@ -46,6 +46,8 @@ Milestone 4 adds explicit intensity MSE/NMSE/PSNR, signal-region power fraction
 and regional population CV, evaluated on the actual reconstruction.
 Milestone 5 adds immutable run settings, verified typed artifacts and actual
 replay with separate integrity, qualification and comparison reports.
+Milestone 6 adds the local Streamlit workbench for explicit creation, saved-result
+inspection, verified loading and separately requested replay.
 
 See [`docs/milestones.md`](docs/milestones.md) for the full ledger, and the
 handoff packages for [Milestone 0](docs/handoffs/milestone_0/) and
@@ -53,7 +55,8 @@ handoff packages for [Milestone 0](docs/handoffs/milestone_0/) and
 [Milestone 2](docs/handoffs/milestone_2/) and
 [Milestone 3](docs/handoffs/milestone_3/) and
 [Milestone 4](docs/handoffs/milestone_4/) and
-[Milestone 5](docs/handoffs/milestone_5/) — implementation summary, code map,
+[Milestone 5](docs/handoffs/milestone_5/) and
+[Milestone 6](docs/handoffs/milestone_6/) — implementation summary, code map,
 mathematics, test evidence, known limitations, and figures.
 
 ```python
@@ -371,6 +374,79 @@ cross-version bitwise promise. See the [complete API/schema contract](docs/hando
 [test evidence](docs/handoffs/milestone_5/tests_and_evidence.md), and
 [limitations](docs/handoffs/milestone_5/known_limitations.md).
 
+## Local holographic workbench
+
+The optional M6 workbench is a Traditional Chinese, single-page application
+over the existing M2–M5 public APIs. Its `[ui]` extra declares
+`streamlit==1.64.0`, `pillow>=10.0` and `matplotlib>=3.8`; NumPy/SciPy remain
+the numerical core's only runtime dependencies. Installation into this existing
+environment requires the constrained workflow in `AGENTS.md`, not an editable
+project rebuild or automatic dependency upgrades. A missing optional UI package
+does not prevent numerical-core/controller imports.
+
+From the repository root, with the existing approved environment:
+
+```powershell
+Set-Location -LiteralPath 'C:\holographiclab'
+.\.venv\Scripts\python.exe -B -X utf8 -m streamlit run .\apps\streamlit_app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true --server.enableCORS true --server.enableXsrfProtection true --browser.gatherUsageStats false
+```
+
+Open <http://127.0.0.1:8501> explicitly. `server.headless=true` disables
+automatic browser launch; it does not remove the browser UI. The repository's
+`.streamlit/config.toml` also disables file watching, run-on-save and fast reruns,
+limits encoded uploads to 8 MiB, and keeps CORS/XSRF protections enabled.
+If port 8501 is occupied, stop and report it; do not kill an unrelated service
+or silently change the binding. Stop your own server with Ctrl+C when finished.
+
+1. Set the draft in the sidebar and press **Generate & Save** once. The
+   built-in quantized raster is always 64×64, with width 7.5 pixels (60 μm
+   only at the default 8 μm pitch). Pitch edits reinterpret these fixed pixels.
+   Upload mode accepts only M2's exact-size static 8-bit grayscale PNG, without
+   resizing, color conversion or normalization. Blank targets fail M3's positive
+   power requirement. Each new run explicitly supplies power-matched uniform
+   illumination and seed initialization, with MSE/NMSE/explicit-range PSNR.
+2. Inspect saved target, actual reconstruction, ideal phase, every residual
+   sample, metrics, settings and illumination. Images share an intensity range
+   including overshoot; PSNR's declared range is separate. Editing the draft
+   leaves the saved result labeled as the previous submission.
+3. Open an existing bundle, **Refresh**, or explicitly request **Strict replay**.
+   The bounded list covers direct completed-looking `runs/m5/` and `runs/m6/`
+   children; listing is not verification. The text field also accepts a path
+   relative to `runs/` (for example `m5/run-id`) or a full path inside it.
+   With no selection, actions use the currently displayed bundle. No external
+   paths, links, junctions, archives, overwrites, repair or deletion are offered.
+   Diagnostic replay requires both explicit opt-in and its separate action.
+
+New runs use UUID directories under ignored `runs/m6/`. App limits are
+1–512 pixels per side, 0–200 iterations, a work budget of
+`ny*nx*max(1,iterations) <= 13,107,200`, and a seed in `[0,2**32-1]`.
+Before opening, bundles are limited to 16 direct entries, 32 MiB per file
+and 128 MiB total. These are application resource policies, not changes to
+library contracts or proofs of optical sampling adequacy.
+
+Integrity, qualification and comparison are separate. Save/load/refresh do not
+replay: qualification stays `not_evaluated`, comparison `not_run`. A strict
+unqualified replay does not compute a comparison. Explicit diagnostics can
+compare but never upgrade qualification. Old M5 bundles remain readable but
+can be unqualified under the M6 revision; their provenance is never rewritten.
+Each status names its bundle and last evaluated operation, not continuous
+monitoring. Files are assumed quiescent between separate public M5 calls.
+
+Completed persistence is recorded before presentation. If rendering fails,
+the UI retains the completed bundle path and reports the presentation failure;
+select that path and explicitly Refresh after resolving the display problem.
+No failure, browser reload or new session automatically regenerates a run.
+Duplicate-event prevention covers one active session, not durable exactly-once
+behavior across process crashes or multiple sessions. A hard interruption can
+leave M5's reserved partial staging directory; it is never listed as a completed
+experiment. A completed bundle can be reopened from a fresh session.
+
+M6's [handoff](docs/handoffs/milestone_6/implementation_summary.md) and
+[acceptance evidence](docs/handoffs/milestone_6/tests_and_evidence.md) distinguish
+controller integration, installed-version AppTest and actual browser checks.
+The ideal phase is not a calibrated SLM drive image. Existing periodic-model,
+metric, integrity and replay limitations remain in force.
+
 ## Test
 
 ```
@@ -416,6 +492,8 @@ src/
     algorithms/             periodic single-plane Gerchberg–Saxton solver
     metrics.py              pure intensity errors and regional diagnostics
 tests/                      pytest suite
+apps/                       local controller, provenance, presentation and Streamlit UI
+.streamlit/config.toml      loopback-only application configuration
 examples/load_target.py     standalone target demonstration
 scripts/make_m2_figures.py   deterministic M2 figure generator
 examples/synthesize_hologram.py standalone M3 PNG-to-hologram demonstration
@@ -436,7 +514,7 @@ Two rules shape the codebase:
 **1. The numerical optics core is independent of UI, plotting, and file I/O.**
 `grid.py`, `field.py`, `propagation.py`, `targets.py`, `algorithms/`, and `metrics.py` take
 arrays/fields and return numerical arrays, fields or scalars. Anything touching
-disk or screen lives in `ohlab/io/`, `scripts/`, or `examples/`.
+disk or screen lives in `ohlab/io/`, `scripts/`, `examples/`, or `apps/`.
 
 Base runtime dependencies remain NumPy and SciPy. The C06 static guard in
 `tests/test_fft_conventions.py` permits `PIL` only in `ohlab/io/images.py`

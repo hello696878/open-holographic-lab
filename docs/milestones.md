@@ -494,9 +494,72 @@ three-way publication verification are recorded in the completion report.
 
 ## Milestone 6 — Minimal application layer
 
-**Status:** not started.
+**Status: implementation and precommit acceptance complete** (2026-09-29).
+**1396 tests passing, 1 skipped**: the unchanged 1292-case M5 baseline plus
+105 new M6 cases (68 controller/presentation, 20 installed Streamlit AppTest,
+17 architecture/configuration). The existing Windows file-symlink privilege
+skip and its explanation remain unchanged.
 
-**Scope.** A thin CLI or minimal UI over the existing library. No physics.
+**Scope.** One local Streamlit workbench over the existing M2–M5 public APIs,
+with Traditional Chinese explanations and English scientific terms. It creates
+UUID-named bundles, displays saved arrays/settings/metrics, and explicitly
+loads, refreshes or replays completed runs. It adds no numerical model or
+bundle-schema change.
+
+**Precommit acceptance evidence.**
+
+- [x] Constrained wheel-only installation added Streamlit 1.64.0 and 31
+      necessary missing dependencies; all 20 pre-existing distributions retain
+      their versions, metadata hashes and locations. Pip check, imports and
+      installed uploader/AppTest API probes passed.
+- [x] Original index-disabled dry-run preserved; separately recorded retry
+      used PyPI and a copied child environment with `PIP_NO_INDEX="0"` only.
+      Parent/persistent settings, proxy/certificate configuration and existing
+      packages were not changed.
+- [x] Unchanged pre/post-install suites each passed 1291 cases with one skip;
+      the final full candidate suite passed 1396 cases with that same skip.
+- [x] Immutable submissions, byte-based upload identity, consumed operation
+      tokens, app resource/path limits and separation of persistence from
+      presentation failure validated through real controller/API tests.
+- [x] Installed Streamlit AppTest covers explicit action wiring, stale draft
+      labels, upload replacement, statuses, error recovery and post-save
+      presentation failure; numerical core/controller imports exclude Streamlit.
+- [x] Five process-local negative controls each caused the intended detecting
+      assertion, with no setup/collection failure counted. Restoration hashes
+      and the later full suite are recorded separately.
+- [x] Actual Chrome file-picker uploads, same-name/same-size replacement,
+      invalid RGB rejection and recovery, existing M5 loading, strict/explicit
+      diagnostic replay, reload and fresh-session reopening all performed.
+- [x] Real rapid clicks plus an old-button event received while busy produced
+      one accepted submission and one published bundle. A documented
+      process-local callback pause exposed the queued-event window; no browser
+      events or successful results were fabricated.
+- [x] Loopback-only launch resolves app imports without a PYTHONPATH change;
+      CORS/XSRF stay enabled, telemetry/file watching/run-on-save/fast reruns
+      stay disabled. Two genuine UI screenshots and six handoffs are in
+      [`handoffs/milestone_6/`](handoffs/milestone_6/).
+
+Candidate source is honestly dirty/unqualified. Strict candidate replay reports
+integrity `passed`, qualification `unqualified`, comparison `not_run`; explicit
+diagnostic replay compares successfully without upgrading qualification.
+After the single clean milestone commit, the approved publication gate requires
+a fresh real-UI run and strict `passed / qualified / passed` replay before push.
+The actual clean revision, run and three-way Git verification belong in ignored
+captures and the completion report, avoiding self-referential commits.
+
+**Recorded limitations.** Submission protection is bounded to a tested active
+session, not durable exactly-once behavior across reloads/crashes/sessions.
+App limits are not sampling guarantees; the strict PNG, periodic optical,
+float64, unsigned-manifest and provenance limitations of M2–M5 remain. Saved
+status is a snapshot, not continuous filesystem monitoring. There is no public
+server, hardware output, archive import, job queue, overwrite or repair flow.
+See [exact evidence](handoffs/milestone_6/tests_and_evidence.md) and
+[limitations](handoffs/milestone_6/known_limitations.md).
+
+Only the approved twenty paths change. All 111 protected pre-existing tracked
+files, including numerical source, existing tests/guards and historical evidence,
+remain byte-identical. Later milestones and deferred enhancements are not
+started; teaching completion is not inferred.
 
 ---
 
