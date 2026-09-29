@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.7 — 2026-09-20
+**Version:** 0.8 — 2026-09-23
 
 ---
 
@@ -519,8 +519,12 @@ behind that decision.
 Any function using randomness **must** accept an explicit `seed: int` or an
 `np.random.Generator`, and **must** construct its generator via
 `np.random.default_rng(seed)`. **The legacy global `np.random.*` API is
-forbidden in `src/`.** Given the same configuration, a run must reproduce
-bit-for-bit on the same platform with the same library versions.
+forbidden in `src/`.** Replay must specify its captured inputs, execution
+environment and comparison criterion. M5 distinguishes exact saved-file
+integrity, source/environment qualification and measured numerical replay
+(§3.15). Same-version metadata is necessary under that qualification policy,
+not a universal guarantee across machines, library builds or FFT backends.
+The shipped replay criterion is bit identity with no tolerance fallback.
 
 ### 3.11 Floating-point precision
 
@@ -788,6 +792,141 @@ universal numerical bounds or proof of physical reconstruction accuracy.
 
 ---
 
+### 3.15 Configuration, artifact integrity and numerical replay
+
+M5 is an I/O orchestration boundary over the unchanged M2, M3 and M4 APIs.
+Schema v1 accepts normalized M2 target intensity in `[0,1]`, explicitly
+supplied source amplitude, one M3 initialization mode, and a requested subset
+of the five named M4 metrics. It does not cover arbitrary target-amplitude
+scales, other algorithms, device encoding or an application interface.
+
+#### 3.15.1 Captured scientific identity
+
+Grid shape and SI pitches, wavelength, signed distance, exact cycle count,
+the `m3_periodic_lossless_asm_v1` contract, initialization and metric parameters
+are explicit. The solver contract fixes the existing complete periodic grid,
+lossless ASM domain, FFT convention, zero tie, final-iterate selection and
+pre-projection amplitude-residual history (§3.13). M5 changes none of them.
+
+Validate plain native arrays, then take owned C-contiguous snapshots before
+computation. Preserve dtype and logical element bits, including signed zero;
+do not preserve caller strides, cast, scale or normalize. Reduction order can
+depend on memory layout. Compute M4 values from the same C-order reconstruction
+intensity snapshot that is persisted, making capture layout reproducible.
+
+Store target intensity and its actual M2 square-root amplitude separately;
+squaring rounded amplitude need not recover intensity bits. Store the actual
+final complex source field and actual complex reconstruction, both complex128,
+plus float64 phase, reconstruction intensity and the complete `N+1` residual
+history. Phase/intensity are checked derived outputs. Amplitude and extracted
+phase cannot generally reconstruct the exact original complex bits.
+
+Seed initialization records the exact integer seed and environment and calls
+M3 with that seed on replay. Explicit initialization stores the raw finite
+radian array, with its original phase branch and bits. Do not duplicate M3's
+RNG or replace seeded initialization with phase recovered from an N=0 solve.
+
+Metric configuration preserves exact function names, explicit PSNR range and
+separate Boolean fraction/CV masks when requested. Values belong to M4's
+existing arithmetic contract, including an unmodified finite fraction that
+rounds slightly above one; the artifact layer does not clamp it. An empty
+metric request is explicit and valid. A requested undefined metric fails the
+save instead of being omitted or replaced by a generic quality score.
+
+#### 3.15.2 Serialization and integrity
+
+Strict version-1 JSON uses UTF-8, sorted keys, fixed indentation, LF and a final
+newline. Finite binary64 scalars use JSON numbers and must round-trip with
+identical bits. Booleans are not numeric parameters. PSNR positive infinity
+uses only the string `"+inf"` in its named value field. Reject duplicate,
+missing, unknown and unsupported-version fields, nonstandard JSON constants,
+nonfinite parsed numbers and undeclared nonfinite representations. RunConfig
+retains immutable canonical bytes; exporting settings returns a defensive copy.
+
+Typed arrays use NPY 1.0: C-order float64, complex128 or Boolean according to
+their fixed logical roles. Check the bounded header, exact expected shape,
+dtype/byte order, order and total payload length independently of manifest
+claims, then load verified bytes with `allow_pickle=False`. Reject object and
+structured dtypes, NPZ, unsupported versions, truncation and trailing bytes.
+Loading returns owned arrays marked read-only, without hidden byte-order casts.
+
+SHA-256 covers complete file bytes, including NPY headers, config and metrics
+JSON. The manifest lists sorted, unique fixed relative filenames, byte lengths
+and digests plus array metadata. It does not hash itself. Reject changed,
+missing, extra or conditionally inconsistent artifacts, unsafe paths,
+directories, symlinks and Windows reparse points. Verify all file hashes before
+interpreting numerical artifact contents; decode those same snapshots.
+Integrity is relative to the unsigned manifest, not authorship or authenticity.
+
+An optional original PNG is copied byte-for-byte, hashed and checked against
+the captured target through the strict M2 loader before publication. It is
+provenance; replay uses the numerical arrays. No external original path or
+original bundle directory is necessary. PNG previews are not authoritative.
+
+#### 3.15.3 Qualification and comparisons
+
+Record package version plus source `{revision, state, method}`. A clean exact
+Git SHA matters because the development version alone is not unique. The
+reusable I/O API accepts caller-supplied metadata and never invokes Git. The
+example optionally detects Git from the checkout providing imported `ohlab`.
+A supplied SHA is a declaration, not attestation of executing source bytes.
+
+Required environment fields are Python implementation/full version, NumPy and
+SciPy versions, conditional Pillow version when PNG decoding occurred,
+platform, machine, processor, byte order, pointer width and `numpy.fft`
+identifier. Package version and clean matching source revisions are required
+as well. Python executable location, logical CPU count and provenance method
+are informational; the last remains visible so supplied and detected claims
+are distinguishable. No universal determinism follows from metadata equality.
+
+Collect current environment independently and require separately supplied or
+detected current provenance. Never copy "current" values from the saved bundle.
+Dirty, unavailable or mismatched required information yields `unqualified`.
+Default replay then reports numerical comparison `not_run`. Explicit
+diagnostic replay may compare, but remains unqualified even if outputs match.
+Foreign-endian arrays remain inspectable; the native-array core is not run
+or silently fed converted arrays. Even diagnostic replay then reports
+comparison `not_run`, with the failed native-byte-order gate visible.
+
+Replay uses saved actual amplitude inputs and the original initialization
+mode. Compare source field, phase, reconstruction field, reconstruction
+intensity and history individually by dtype, shape and C-order bytes. Check
+stored amplitude/phase/intensity derivations, recompute metrics from saved
+data, and separately recompute them from the new reconstruction. Finite
+metric scalars compare binary64 bits; positive-infinite PSNR is handled
+separately. There is no `allclose`, automatic tolerance relaxation, substituted
+seed or environment repair. Changed numerical outputs fail comparison even
+when qualification fields match. Exactness is the tested property, not a
+zero-roundoff assertion about the underlying optics.
+
+#### 3.15.4 Publication and limitations
+
+Write to an exclusively created temporary sibling. Create files exclusively,
+register cleanup ownership only after creation, flush/fsync/close files, write
+manifest last, validate staged contents and rename on the same filesystem.
+Public readers reject reserved `.ohlab-partial-` directories; private staged
+validation shares the same content checks. Refuse existing destinations.
+Windows rename also rejects a destination appearing during publication; this
+is not a cross-platform concurrent-writer guarantee. Preserve unrelated files
+and original exceptions, and report leftover staging paths if cleanup fails.
+
+On the tested Windows host, ordinary directory rename intermittently returned
+error 5 after application handles had closed; its external cause was not
+established. Retry only that error while the destination remains absent, at
+most four rename attempts with 10, 30 and 100 ms waits (140 ms total explicit
+waiting). Recheck destination absence after each wait. Exhaustion preserves
+the first error; other errors propagate immediately. This adds no overwrite,
+locking or cross-filesystem fallback, and cannot guarantee eventual success.
+
+File fsync and rename are not a power-loss durability guarantee. Hard termination
+can leave a visibly partial directory. M5 provides no signing, locks, schema
+migrations, hostile concurrent-filesystem protection or universal cross-CPU/
+cross-version replay. Run UUIDs identify directories, not scientific differences.
+Measured evidence and remaining limits are in the M5 handoff; M0–M4 scientific
+contracts and their historical measurements remain unchanged.
+
+---
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -827,6 +966,7 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.8 | 2026-09-23 | **§3.10 refined; §3.15 added** — separate artifact integrity, provenance qualification and exact replay; define schema-v1 capture/serialization, metric persistence and transactional I/O. | Approved Milestone 5. M0–M4 algorithms, physical conventions, normalization, RNG and historical evidence remain unchanged. |
 | 0.7 | 2026-09-20 | **§3.14 added** — five intensity metrics, explicit target/range/region semantics, population CV, validated exact cases and float64 failure policies. **§2.1 clarified** — raw MSE retains squared intensity scale; PSNR cancels common scale only with coordinated data range. | Approved Milestone 4. Field normalization, units, propagation, M3 solver/residual history and historical evidence remain unchanged. |
 | 0.6 | 2026-09-16 | **§3.13 added** — complete periodic lossless ASM GS, explicit power/initialization/zero contracts, inverse versus adjoint, fixed cycle count, last-iterate reconstruction and pre-projection residual history. | Approved Milestone 3. M0/M1/M2 implementations and conventions remain unchanged; no hidden normalization, physical-device calibration, or general convergence claim. |
 | 0.5 | 2026-09-16 | **§3.12 added** — fixed grayscale-to-intensity `/255` and amplitude square-root contracts, strict array ownership/dtypes, size/orientation rules and static 8-bit grayscale PNG boundary. | Approved Milestone 2. No hidden radiometric or spatial conversion; no phase assignment. Existing optical signs, grid/FFT conventions, field/propagation behavior and precision remain unchanged. |

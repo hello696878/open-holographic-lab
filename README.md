@@ -24,15 +24,16 @@ A CGH simulator that can:
 4. Generate a phase-only hologram using **Gerchberg–Saxton**.
 5. Numerically reconstruct the target image.
 6. Measure reconstruction quality.
-7. Export the phase map, reconstruction, configuration, metrics, and loss
-   history — such that any run is reproducible from its saved configuration.
+7. Preserve exact inputs, outputs, configuration, metrics and history in
+   integrity-checked bundles with an explicit replay criterion and
+   source/environment qualification.
 8. Expose these functions through a minimal application.
 
 ---
 
 ## Status
 
-**Milestones 0, 1, 2, 3 and 4 complete.** See the authoritative
+**Milestones 0, 1, 2, 3, 4 and 5 complete.** See the authoritative
 [milestone ledger](docs/milestones.md) for dated acceptance evidence.
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
@@ -43,13 +44,16 @@ single-plane phase-only Gerchberg–Saxton synthesis on a complete periodic,
 lossless angular-spectrum grid, with explicit illumination and residual history.
 Milestone 4 adds explicit intensity MSE/NMSE/PSNR, signal-region power fraction
 and regional population CV, evaluated on the actual reconstruction.
+Milestone 5 adds immutable run settings, verified typed artifacts and actual
+replay with separate integrity, qualification and comparison reports.
 
 See [`docs/milestones.md`](docs/milestones.md) for the full ledger, and the
 handoff packages for [Milestone 0](docs/handoffs/milestone_0/) and
 [Milestone 1](docs/handoffs/milestone_1/) and
 [Milestone 2](docs/handoffs/milestone_2/) and
 [Milestone 3](docs/handoffs/milestone_3/) and
-[Milestone 4](docs/handoffs/milestone_4/) — implementation summary, code map,
+[Milestone 4](docs/handoffs/milestone_4/) and
+[Milestone 5](docs/handoffs/milestone_5/) — implementation summary, code map,
 mathematics, test evidence, known limitations, and figures.
 
 ```python
@@ -312,6 +316,61 @@ shared display limits include overshoot. CV is illustrated separately with
 fixed flat-region fixtures. The example does not change the solver or export
 a run-artifact bundle.
 
+## Save and replay a scientific run
+
+Milestone 5 adds a transparent directory bundle through
+`ohlab.io.config.RunConfig` and four functions in `ohlab.io.artifacts`:
+`run_and_save_bundle`, `verify_run_bundle`, `load_run_bundle`, and
+`replay_run_bundle`. The wrapper computes its own M2/M3/M4 results from owned
+C-order snapshots; it never accepts unrelated caller-supplied outputs.
+Schema v1 covers normalized M2 design intensity in `[0,1]`, with explicit
+source illumination, unchanged M3 initialization and exact metric parameters.
+
+```powershell
+.\.venv\Scripts\python.exe -B examples\run_bundle.py
+.\.venv\Scripts\python.exe -B examples\run_bundle.py --output runs\m5\my-new-run
+.\.venv\Scripts\python.exe -B scripts\make_m5_figures.py
+```
+
+The headless example creates a deterministic temporary grayscale PNG, supplies
+power-compatible illumination, synthesizes its phase, evaluates four named
+metrics, saves under ignored `runs/`, verifies, reloads and replays. A fresh
+UUID names each default run; it is only a directory label. An explicit output
+directory must not already exist and its parent must exist. The example
+prints exact parameters, software/source provenance, metrics and three
+distinct outcomes:
+
+- **Artifact integrity:** SHA-256 over every declared file, including config
+  and metrics, relative to an unsigned manifest.
+- **Source/environment qualification:** independently collected current
+  environment and current source provenance agree under the declared policy.
+- **Numerical comparison:** actual replay matches the recorded arrays and
+  finite scalar bits, with no tolerance fallback.
+
+The example anchors optional Git detection to the imported package's checkout.
+Dirty candidate source is recorded as dirty and uses an explicitly reported
+diagnostic replay; its comparison can pass while qualification remains
+unqualified. A clean checkout requires qualified replay. The reusable I/O API
+does not invoke Git; supplied revision metadata is a declaration, not code
+attestation. Without qualified provenance, default replay reports `not_run`.
+
+Bundles contain strict JSON metadata and NPY 1.0 numerical arrays, including
+both target intensity/amplitude, source amplitude, actual complex source and
+reconstruction, phase, intensity, history and requested masks. Seed mode
+records its seed; explicit mode preserves the raw initial phase. A retained
+input PNG is optional hashed provenance, never the sole replay input. No
+original absolute input path is required. Arrays load read-only with pickle
+disabled; invalid paths, files and schemas fail explicitly.
+
+An existing destination is refused. Temporary sibling publication and bounded
+cleanup are tested on Windows; they do not guarantee power-loss durability.
+Transient Windows rename error 5 receives at most three short waits while the
+destination remains absent; persistent errors still fail with bounded cleanup.
+Replay is measured in the recorded environment, with no cross-platform or
+cross-version bitwise promise. See the [complete API/schema contract](docs/handoffs/milestone_5/implementation_summary.md),
+[test evidence](docs/handoffs/milestone_5/tests_and_evidence.md), and
+[limitations](docs/handoffs/milestone_5/known_limitations.md).
+
 ## Test
 
 ```
@@ -352,6 +411,8 @@ src/
   ohlab/                    the importable package
     targets.py              pure intensity/amplitude array functions
     io/images.py            optional strict PNG decoder
+    io/config.py            immutable versioned scientific run settings
+    io/artifacts.py         verified run capture, loading and exact replay
     algorithms/             periodic single-plane Gerchberg–Saxton solver
     metrics.py              pure intensity errors and regional diagnostics
 tests/                      pytest suite
@@ -362,6 +423,8 @@ scripts/make_m3_figures.py   deterministic M3 figure generator
 scripts/probe_m3_evidence.py reproducible M3 numerical/performance evidence
 examples/evaluate_reconstruction.py standalone M4 metric demonstration
 scripts/make_m4_figures.py   deterministic M4 figure generator
+examples/run_bundle.py      standalone M5 capture/verify/replay example
+scripts/make_m5_figures.py   explanatory M5 bundle/replay diagrams
 ```
 
 ---

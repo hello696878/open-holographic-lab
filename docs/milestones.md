@@ -24,7 +24,7 @@ tested, its limitations recorded here, and its handoff package written to
 | 2 | Target image loading | **complete** (2026-09-16) | [`milestone_2/`](handoffs/milestone_2/) |
 | 3 | Gerchberg–Saxton phase retrieval | **complete** (2026-09-16) | [`milestone_3/`](handoffs/milestone_3/) |
 | 4 | Reconstruction quality metrics | **complete** (2026-09-20) | [`milestone_4/`](handoffs/milestone_4/) |
-| 5 | Configuration and run artifacts | not started | — |
+| 5 | Configuration and run artifacts | **complete** (2026-09-23) | [`milestone_5/`](handoffs/milestone_5/) |
 | 6 | Minimal application layer | not started | — |
 
 ---
@@ -412,11 +412,83 @@ started; no teaching completion is inferred.
 
 ## Milestone 5 — Configuration and run artifacts
 
-**Status:** not started.
+**Status: complete** (2026-09-23). **1291 tests passing, 1 skipped**: all
+904 accepted baseline cases plus 248 configuration and 139 artifact cases
+passing. One additional real-file-symlink case requires Windows privileges
+unavailable to this account; the separate real junction test passes.
 
-**Scope.** `src/ohlab/io/config.py` and `artifacts.py`. A run must be
-reproducible bit-for-bit from its saved configuration. Exports phase map,
-reconstruction, configuration, metrics, and loss history to `runs/`.
+**Scope.** Immutable `ohlab.io.config.RunConfig` and four functions in
+`ohlab.io.artifacts`: save a computed run, verify, load and replay. Schema v1
+captures normalized M2 design intensity, explicit source illumination,
+unchanged M3 initialization and requested M4 metrics. It stores actual complex
+source/reconstruction fields alongside inputs, derived outputs and history.
+Normative contract: `math_conventions.md` §3.15, version 0.8.
+
+**Acceptance evidence.**
+
+- [x] Existing numerical implementations, tests, architecture guards, package
+      initializers, dependencies and historical evidence remain unchanged
+- [x] Owned C-order input snapshots preserve dtype and element bits; nested
+      configuration ownership, caller nonmutation and single-solve capture tested
+- [x] Strict deterministic JSON, explicit PSNR infinity, NPY 1.0 header/payload
+      checks, conditional inventory and hashes-before-decoding validated
+- [x] Artifact integrity, independent source/environment qualification and
+      actual numerical comparison reported separately; no tolerance fallback
+- [x] Twelve cases cover both initialization modes, N=0/5 and signed/zero
+      distance; explicit metric ranges, distinct masks and complex signed zeros
+- [x] Rehashed wrong metrics, changed settings and changed complex outputs
+      demonstrate that integrity or matching metadata does not imply replay
+- [x] Exclusive sibling staging, manifest-last publication, owned-only cleanup,
+      write/fsync/manifest/rename failures and appearing destinations tested
+- [x] Seven in-memory negative controls detected by 23 intended assertions;
+      no collection/setup failures counted; 33 source/test files hash-identical
+      afterward and the complete suite passed after process-local restoration
+- [x] Fresh-process relocation retained all 12 bundle-file hashes and passed
+      14 comparisons after original PNG/bundle paths became unavailable
+- [x] Headless default example verified with dirty precommit provenance;
+      two explanatory figures visually inspected and regenerated identically
+- [x] Six handoff documents completed in
+      [`handoffs/milestone_5/`](handoffs/milestone_5/)
+
+Precommit example and relocation comparisons pass in explicit diagnostic mode
+while qualification correctly remains unqualified. Synthetic caller-source
+metadata in policy tests is not executing-code attestation. The approved
+publication workflow separately requires a fresh qualified example after the
+single clean M5 commit and before push; its actual SHA/output belongs in ignored
+run artifacts and the completion report, avoiding self-referential commits.
+
+Candidate validation intermittently encountered Windows directory-rename
+error 5, including outside the sandbox; a 100-save probe did not reproduce it.
+The cause is unconfirmed. Publication now retries only that error while the
+destination remains absent: at most four attempts and 10/30/100 ms waits.
+Eight direct cases verify retry success, exhaustion, destination appearance,
+later nonretryable errors and other errors/platforms. Final full-suite output
+and all observed failures remain distinguished in the
+[tests and evidence](handoffs/milestone_5/tests_and_evidence.md).
+
+**Recorded limitations.** Hashes are relative to an unsigned manifest, not
+authorship. Qualification is a metadata policy, not universal cross-platform
+determinism. Unqualified default replay reports `not_run`; explicit diagnostic
+comparison never upgrades qualification. Loading is bounded-format validation,
+not a general hostile-input resource framework. Publication has no locking,
+overwrite, cross-filesystem fallback or power-loss durability guarantee;
+Windows retry is bounded and can still fail. Existing optical and metric
+limitations remain. See the complete
+[API/schema](handoffs/milestone_5/implementation_summary.md) and
+[limitations](handoffs/milestone_5/known_limitations.md).
+
+Only the approved seventeen paths are included; all 97 protected pre-existing
+tracked files remain byte-identical. Generated bundles remain ignored. M6 and
+deferred enhancements are not started; teaching completion is not inferred.
+
+**Publication resumed — 2026-09-29.** Automatic approval review previously
+could not complete staging because of an account usage limit; no commit or
+push occurred then. On resumption, main/HEAD/live remote still matched the
+accepted M4 baseline, the 33 source/test file hashes matched the validated
+candidate, and all 97 protected files remained unchanged. A fresh full suite
+returned **1291 passed, 1 skipped in 16.11s**. This separately dated rerun
+preserves the original September 22–23 evidence. Clean-commit replay and
+three-way publication verification are recorded in the completion report.
 
 ---
 
