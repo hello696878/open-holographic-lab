@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.8 — 2026-09-23
+**Version:** 0.9 — 2026-09-30
 
 ---
 
@@ -927,6 +927,184 @@ contracts and their historical measurements remain unchanged.
 
 ---
 
+### 3.16 Editable 2D designs and deterministic rasterization
+
+Milestone 7 adds desired-intensity authoring, not a new optical model.
+`TargetDesign2D` describes dimensionless pixel/sample coordinates. Optical
+lengths supplied to existing field, grid, solver and artifact APIs remain SI.
+An editable drawing is neither a complex field nor an arrangement of coherent
+sources, optical components or calibrated hardware.
+
+#### 3.16.1 Versioned design and validation
+
+The immutable model has exactly these top-level fields:
+
+| Field | Contract |
+|---|---|
+| `schema_version` | Built-in integer `1` |
+| `rasterizer_version` | `"center_sample_overwrite_v1"` |
+| `coordinate_system` | `"centered_pixels_y_down_v1"` |
+| `canvas` | Exactly `ny`, `nx`, built-in integers in `[1,512]` |
+| `background_intensity` | Finite binary64 intensity in `[0,1]` |
+| `objects` | Ordered list of at most 64 supported objects |
+
+Each object contains exactly `id`, `type`, `parameters` and `intensity`.
+IDs are unique 32-character lowercase hexadecimal strings. Supported parameter
+sets are disk `{cx_px,cy_px,radius_px}`, rectangle
+`{cx_px,cy_px,width_px,height_px}`, and segment
+`{x0_px,y0_px,x1_px,y1_px,width_px}`. Object intensity has the same contract as
+background intensity. Coordinates lie in `[-4096,4096]`; radii, widths and
+heights are positive and no greater than 8192 pixels. Real scalar settings
+accept built-in integers/floats, excluding booleans, and must be representable
+as finite binary64. Validation preserves represented scalar bits, including
+signed zero. Unknown/missing fields, duplicate IDs, unsupported kinds/versions,
+nonfinite values and invalid limits fail explicitly. Wrong types raise
+`TypeError`; invalid values/domains raise `ValueError`.
+
+`TargetDesign2D(spec)` takes an owned validated snapshot. `to_dict()` returns
+fresh nested containers; changing the caller's original or returned dictionary
+does not change the model. Object ordering and stored endpoint orientation are
+part of that editable record. Selection is UI state and is not design content.
+
+#### 3.16.2 Pixel centers, canvas and physical interpretation
+
+For canvas `(ny,nx)`, evaluate each pixel at
+
+```text
+x_px[j] = j - nx//2       j = 0,...,nx-1
+y_px[i] = i - ny//2       i = 0,...,ny-1
+```
+
+The origin is index `[ny//2,nx//2]`, for odd and even sizes; `+x` follows
+columns rightward and `+y` follows rows downward. An even length `N` covers
+`-N/2,...,N/2-1`; odd lengths have symmetric center coordinates. Shapes remain
+in their stated coordinates when partly or wholly off-canvas. Evaluate only
+the declared canvas's centers, without wrapping or moving geometry.
+
+The design canvas is authoritative for the submitted grid shape. Resizing
+changes the centered-coordinate window but does not rescale/reposition/delete
+objects. Positive grid pitches assign physical coordinates
+`x_m = x_px * dx_m`, `y_m = y_px * dy_m`, with extents `nx*dx_m`, `ny*dy_m`.
+Changing either pitch does not change the raster. A disk in pixel coordinates
+can be physically elliptical when `dx_m != dy_m`.
+
+#### 3.16.3 Membership and ordered overwrite
+
+Membership includes the boundary. For a disk centered at `(cx,cy)` with radius
+`r`, include a center `(x,y)` when
+
+```text
+(x-cx)**2 + (y-cy)**2 <= r**2
+```
+
+For an axis-aligned rectangle of width `w` and height `h`, include it when
+
+```text
+abs(x-cx) <= w/2 and abs(y-cy) <= h/2
+```
+
+These are geometric dimensions, not promised counts of covered centers.
+For example, a centered width-2 rectangle can include `x=-1,0,1`.
+
+A segment has round end caps and total width `w`. Treat its endpoints as
+undirected geometry. Before projection, order endpoint pairs lexicographically
+by `(x,y)` using their exact finite values; this internal evaluation order does
+not rewrite the user's stored endpoint fields. Let the ordered endpoints be
+`A=(ax,ay)`, `B=(bx,by)`, `D=B-A`, and `P=(x,y)`. For distinct endpoints:
+
+```text
+length_squared = Dx*Dx + Dy*Dy
+t_raw = ((x-ax)*Dx + (y-ay)*Dy) / length_squared
+t = min(1, max(0, t_raw))
+qx = ax + t*Dx
+qy = ay + t*Dy
+distance_squared = (x-qx)**2 + (y-qy)**2
+included = distance_squared <= (w/2)**2
+```
+
+Clamping `t` selects the closest point on a finite segment; it is not an
+intensity correction. Exactly coincident endpoints use disk semantics with
+radius `w/2`. Distinct endpoints whose required binary64 arithmetic is unusable
+raise; they must not silently become coincident. No approximate endpoint
+equality, snapping, epsilon boundary expansion or alternate reversal path is
+allowed. Reversed stored endpoints therefore use the same evaluation order
+and must give the same raster under this rasterizer and tested environment.
+Required overflow, invalid/division errors and NumPy-reported underflow raise
+`ValueError` identifying the object. A local error-state context restores the
+caller's NumPy settings; a valid document can still fail rasterization when
+required geometry arithmetic is unusable.
+
+Membership arithmetic is binary64, not exact real arithmetic. A center at or
+adjacent to a mathematically described boundary can depend on its represented
+parameters and specified operation order. The boundary-sensitive regression
+`A=(-1.3,-0.2), B=(2.7,1.3), P=(0,0)` measures this effect in the current
+environment; planning values are not universal bit-identity claims. Independent
+membership references must not call the production membership/rasterizer.
+
+Initialize every output sample to `background_intensity`. Traverse objects
+in stored list order, assigning that object's intensity to all included
+centers. A later object overwrites earlier values, including assignment of
+zero intensity. Never sum, blend, normalize by a peak or clip brightness.
+There is no antialiasing, gamma mapping or conversion to/from 8-bit PNG.
+Assigned binary64 intensity bits are retained exactly. The result is a fresh,
+writable, C-contiguous plain native-float64 ndarray of shape `(ny,nx)`.
+Rasterization neither mutates the model nor aliases caller storage.
+
+#### 3.16.4 Editable persistence and numerical runs
+
+Design I/O is separate from numerical computation and M5 bundles. Strict UTF-8
+JSON is bounded to 256 KiB and rejects duplicate keys, nonstandard constants,
+unknown fields and unsupported versions. Canonical output sorts object keys,
+uses two-space indentation, LF and a final newline; array/list order retains
+the object's explicit layering. Supported finite binary64 scalars round-trip
+without 8-bit quantization. Zero/empty designs are valid editable documents.
+
+Write only to exclusive new destinations using owned temporary files and
+closed resources; cleanup must not remove unrelated data. Editable copies live
+under `runs/designs/`; submitted snapshots use
+`runs/designs/submissions/<run-uuid>.json`. These are external to completed
+M5 bundles. Do not insert design metadata into the fixed manifest inventory or
+change schema v1. Browser filenames never determine server destinations.
+The standalone file API requires an existing parent, rejects links/reparse
+paths and reserved partial filenames, and uses write/fsync/close plus an
+absence recheck before same-filesystem rename. It adds no directory creation,
+retry, overwrite or locking. Cleanup failure reports the owned leftover path
+while preserving the primary error. Windows destination refusal does not imply
+concurrent POSIX no-clobber or power-loss durability guarantees.
+
+An explicit generation first consumes its operation nonce, captures immutable
+design/scientific settings, validates and rasterizes the design, then persists
+the editable snapshot. Only successful snapshot persistence permits the one
+M5 run. The numerical path uses existing M2 amplitude conversion and explicit
+per-target uniform illumination. The prescribed amplitude is
+`sqrt(sum(A_target**2)/A_target.size)`, outside the solver. The actual float64
+intensity enters M5 with `input_png=None`, without a PNG quantization step.
+A zero target may preview/save/export; M3's positive-power requirement still
+rejects synthesis. No substitute target is allowed.
+
+A snapshot failure prevents generation. A subsequent M5 failure leaves the
+reported editable snapshot intact. M5 success is recorded before presentation;
+display failure neither deletes the completed run nor triggers another solve.
+Preview edits can rasterize only, without implicit persistence, artifact
+verification, synthesis or replay.
+
+An explicitly requested associated-design load verifies the numerical bundle
+through M5, validates/rasterizes the external design, then compares target
+shape, dtype and C-order element bytes. A matching UUID name alone proves
+nothing. Missing, malformed or raster-mismatched designs do not replace the
+editor or invalidate otherwise valid numerical bundles. A raster match is not
+authenticated authorship and does not identify a unique original drawing.
+Completed-run replay continues to use saved actual arrays, independently of
+the designer or external JSON; existing qualification/diagnostic rules remain.
+
+No M0–M6 optical model, physical sign, normalization, numerical threshold,
+artifact schema or historical evidence is changed by this section. M7
+membership and target-byte checks state exact discrete claims; they do not
+guarantee GS convergence or a quality threshold for arbitrary hard-edged
+targets. Evidence and limitations are in the [M7 handoff](handoffs/milestone_7/).
+
+---
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -966,6 +1144,7 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.9 | 2026-09-30 | **§3.16 added** — versioned pixel-coordinate designs, inclusive center-sampled geometry, internally ordered undirected segments, ordered intensity overwrite, bounded editable JSON and external design/run association. | Approved Milestone 7. Pixel coordinates are dimensionless authoring/sample coordinates; existing SI optical calls, M2–M5 scientific/serialization contracts, old mathematical sections and historical evidence remain unchanged. |
 | 0.8 | 2026-09-23 | **§3.10 refined; §3.15 added** — separate artifact integrity, provenance qualification and exact replay; define schema-v1 capture/serialization, metric persistence and transactional I/O. | Approved Milestone 5. M0–M4 algorithms, physical conventions, normalization, RNG and historical evidence remain unchanged. |
 | 0.7 | 2026-09-20 | **§3.14 added** — five intensity metrics, explicit target/range/region semantics, population CV, validated exact cases and float64 failure policies. **§2.1 clarified** — raw MSE retains squared intensity scale; PSNR cancels common scale only with coordinated data range. | Approved Milestone 4. Field normalization, units, propagation, M3 solver/residual history and historical evidence remain unchanged. |
 | 0.6 | 2026-09-16 | **§3.13 added** — complete periodic lossless ASM GS, explicit power/initialization/zero contracts, inverse versus adjoint, fixed cycle count, last-iterate reconstruction and pre-projection residual history. | Approved Milestone 3. M0/M1/M2 implementations and conventions remain unchanged; no hidden normalization, physical-device calibration, or general convergence claim. |

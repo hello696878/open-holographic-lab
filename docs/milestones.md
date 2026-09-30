@@ -25,7 +25,8 @@ tested, its limitations recorded here, and its handoff package written to
 | 3 | Gerchberg–Saxton phase retrieval | **complete** (2026-09-16) | [`milestone_3/`](handoffs/milestone_3/) |
 | 4 | Reconstruction quality metrics | **complete** (2026-09-20) | [`milestone_4/`](handoffs/milestone_4/) |
 | 5 | Configuration and run artifacts | **complete** (2026-09-23) | [`milestone_5/`](handoffs/milestone_5/) |
-| 6 | Minimal application layer | not started | — |
+| 6 | Minimal application layer | **complete** (2026-09-29; closeout recorded 2026-09-30) | [`milestone_6/`](handoffs/milestone_6/) |
+| 7 | Editable 2D target designer | precommit acceptance complete; clean-postcommit publication gate pending (2026-09-30) | [`milestone_7/`](handoffs/milestone_7/) |
 
 ---
 
@@ -560,6 +561,98 @@ Only the approved twenty paths change. All 111 protected pre-existing tracked
 files, including numerical source, existing tests/guards and historical evidence,
 remain byte-identical. Later milestones and deferred enhancements are not
 started; teaching completion is not inferred.
+
+---
+
+### M6 publication closeout — recorded 2026-09-30
+
+The preceding M6 section is the unchanged **2026-09-29 precommit snapshot**.
+The accepted publication gate subsequently completed on that date. The local
+`runs/m6_acceptance_20260929/postcommit_completion.md`,
+`postcommit_ui_verification.json` and `publication_verification.json` record:
+
+- Commit `cc93c949da23de4a6f98acc0c4954c3c2d7f6849`,
+  `feat(m6): add local holographic workbench`, was the single approved
+  twenty-path milestone commit. The 111 protected baseline files remained
+  byte-identical. The candidate suite was **1396 passed, 1 skipped in 57.91s**;
+  the existing Windows file-symlink privilege skip was retained.
+- An ordinary loopback server launched from that clean checkout. One real
+  Chrome UI action created `runs/m6/b3e4eacb6b5a41d9aac451a804ec9603`, using the
+  built-in 64×64 target, 8 µm pitches, 633 nm wavelength, 5 mm distance,
+  seed 0 and **two iterations**. The strict replay action with diagnostics
+  unchecked reported **passed / qualified / passed** at
+  `2026-09-29T15:48:02.622063+00:00` (23:48 Taipei).
+- Independent read-only verification checked saved settings/source, target and
+  display values, the three history samples, exact new-run membership and
+  unchanged bundle-file hashes. That verifier did not itself generate/replay.
+- Normal push succeeded. Local HEAD, live remote `main` and GitHub API `main`
+  SHA all matched the commit above; the checkout was clean and synchronized.
+  Only task-owned browser/server processes were closed, with no remaining
+  listener on port 8501.
+
+Server05 retained two Windows Proactor connection-close `WinError 10054`
+traces with unconfirmed cause; successful UI generation and strict replay do
+not erase that observation. Original precommit evidence, screenshots,
+limitations and the ignored completion records are preserved. This closeout
+corrects the stale summary row; it does not rerun or expand the M6 audit.
+
+---
+
+## Milestone 7 — Editable 2D target designer
+
+**Status: precommit acceptance complete; clean-postcommit publication gate
+pending** (2026-09-30). The starting
+revision is accepted M6 `cc93c949da23de4a6f98acc0c4954c3c2d7f6849`.
+The fresh baseline passed **1396 tests, 1 skipped in 79.07s (0:01:19)**.
+The same Windows file-symlink privilege skip remains. The final full candidate
+suite passed **1570 tests, 1 skipped in 111.67s (0:01:51)**, retaining the 1397
+baseline cases and adding 174 (117 model/I/O, 28 controller, 18 AppTest and 11
+architecture). Six isolated in-memory faults caused nine intended assertion
+failures; all 49 source/test Python hashes were unchanged before/after and
+matched the final tested state. Exact outputs, the preserved initial discovery
+failure and limitations are in [tests and evidence](handoffs/milestone_7/tests_and_evidence.md).
+
+The asymmetric 48×64 example retained exact design/raster/saved-target bytes
+and reported actual metrics, with strict candidate replay correctly unqualified
+and explicit diagnostic comparison passed. The measured boundary-sensitive
+segment probe confirms the specified internal endpoint order on the tested
+environment, not universally identical boundary arithmetic. Recorded browser
+checks confirm one actual 8×10/N=2 run, rejection of a received duplicate event,
+saved target-byte identity, stale-draft labels, external-association failures
+and recovery, strict/diagnostic statuses, and explicit reopen without rerun.
+Two genuine viewport captures are present. The final real-browser import
+sequence verified equal-size/equal-basename changed content, upload-only
+preservation, invalid-JSON preservation and explicit valid-import recovery.
+Earlier permission-dismissal attempts performed no import and remain separate
+from those completed checks. All 24 candidate paths are within scope; 125
+protected files and 53 distributions are unchanged. The later clean-postcommit
+publication gate remains separate and pending.
+
+**Approved scope.** A strict immutable `TargetDesign2D`, deterministic
+center-sampled overwrite rasterization, bounded versioned design JSON, an
+ordered numeric editor, exact float64 target integration and separate external
+submitted-design snapshots. Built-in/PNG modes and M2–M5 scientific contracts
+remain intact. Twenty-four paths are approved; six existing files may change.
+
+The design canvas owns submitted dimensions. Edits may preview but never
+implicitly solve/save/replay. One accepted action captures one immutable
+design, persists it separately and calls M5 once. Completed numerical bundles
+remain usable without their external editable design; explicit association
+requires verified target-byte agreement, not merely a matching UUID.
+
+Completed precommit acceptance includes pure/I/O and controller/API tests,
+installed Streamlit AppTest, real browser interactions, six detecting negative
+controls, the asymmetric example, two real screenshots, six handoffs and exact
+scope/protected-file checks. No arbitrary hard-edged target inherits the old
+Gaussian quality threshold. Candidate provenance remains dirty/unqualified.
+After one clean milestone commit, a fresh real-UI Designer run must retain
+exact submitted target bytes and strict `passed / qualified / passed` replay
+with diagnostics off, including independence from external design storage.
+Postcommit evidence stays in ignored captures and the completion report.
+
+The [roadmap](roadmap.md) orders existing M0–M6, M7 content design, then
+separately approved V0–V3 virtual-laboratory stages. Text, richer editing,
+hardware and all V-stages remain unstarted. No teaching progress is inferred.
 
 ---
 

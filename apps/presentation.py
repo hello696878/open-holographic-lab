@@ -17,6 +17,32 @@ import numpy as np
 from ohlab.io.config import RunConfig
 
 
+def build_target_preview(*, intensity: np.ndarray) -> Figure:
+    """Display desired float64 intensity on a fixed [0,1] scale, without edits.
+
+    Coordinates are dimensionless centered pixels, +y down. Preview pixels are
+    never numerical inputs; callers retain the actual raster independently.
+    """
+    if type(intensity) is not np.ndarray or intensity.dtype != np.dtype(np.float64) or not intensity.dtype.isnative:
+        raise TypeError("preview: expected plain native float64 intensity")
+    if intensity.ndim != 2 or not all(intensity.shape):
+        raise ValueError("preview: expected a nonempty 2-D target")
+    if not np.all(np.isfinite(intensity)) or np.any((intensity < 0) | (intensity > 1)):
+        raise ValueError("preview: expected finite intensity in [0,1]")
+    ny, nx = intensity.shape
+    figure = Figure(figsize=(6.5, 4.0), layout="constrained")
+    axis = figure.subplots()
+    picture = axis.imshow(intensity, origin="upper", interpolation="nearest",
+                          cmap="magma", vmin=0.0, vmax=1.0,
+                          extent=(-(nx//2)-0.5, nx-1-nx//2+0.5,
+                                  ny-1-ny//2+0.5, -(ny//2)-0.5))
+    axis.set_title("Desired target intensity — editable preview")
+    axis.set_xlabel("x (pixels)")
+    axis.set_ylabel("y (pixels, downward)")
+    figure.colorbar(picture, ax=axis, label="Design intensity [0,1]")
+    return figure
+
+
 def format_metric_value(name: str, value: float) -> str:
     """Format a saved metric; retain positive-infinite PSNR explicitly.
 

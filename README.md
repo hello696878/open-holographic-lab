@@ -3,10 +3,11 @@
 A reproducible **computer-generated holography (CGH)** simulator, built from
 first principles with verifiable numerics.
 
-The long-term system is a programmable holographic laboratory: a scene editor,
-a CGH compiler, a calibration engine, a fixed phase-only SLM optical system,
-and a device service. **This repository is currently pure software** — there is
-no hardware component, and none is being designed yet.
+The project develops holographic content-design tools, followed by a separately
+approved browser-accessible virtual optics laboratory. **This repository is
+currently pure software.** Physical SLM integration is a separate optional
+future track; a virtual laboratory does not require physical hardware. See the
+[roadmap](docs/roadmap.md) for the staged scope and model boundaries.
 
 Engineering work starts with [`AGENTS.md`](AGENTS.md), the active engineering
 entry point for scope approval, environment safeguards, validation, and Git
@@ -28,6 +29,7 @@ A CGH simulator that can:
    integrity-checked bundles with an explicit replay criterion and
    source/environment qualification.
 8. Expose these functions through a minimal application.
+9. Author editable 2D intensity targets for the same explicit run workflow.
 
 ---
 
@@ -35,6 +37,10 @@ A CGH simulator that can:
 
 **Milestones 0–6 implemented and validated within their documented scope.** See the authoritative
 [milestone ledger](docs/milestones.md) for dated acceptance evidence.
+Milestone 7's 2D Target Designer has completed the recorded automated and
+real-browser precommit acceptance. Clean postcommit generation and strict
+qualified replay remain a separate publication gate, documented in the
+[M7 handoff](docs/handoffs/milestone_7/tests_and_evidence.md).
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
@@ -58,6 +64,9 @@ handoff packages for [Milestone 0](docs/handoffs/milestone_0/) and
 [Milestone 5](docs/handoffs/milestone_5/) and
 [Milestone 6](docs/handoffs/milestone_6/) — implementation summary, code map,
 mathematics, test evidence, known limitations, and figures.
+The [M7 handoff](docs/handoffs/milestone_7/implementation_summary.md) documents
+editable design geometry, persistence and integration separately from the
+unchanged scientific run contract.
 
 ```python
 from ohlab import ComplexField, SamplingGrid
@@ -410,14 +419,15 @@ or silently change the binding. Stop your own server with Ctrl+C when finished.
    including overshoot; PSNR's declared range is separate. Editing the draft
    leaves the saved result labeled as the previous submission.
 3. Open an existing bundle, **Refresh**, or explicitly request **Strict replay**.
-   The bounded list covers direct completed-looking `runs/m5/` and `runs/m6/`
+   The bounded list covers direct completed-looking `runs/m5/`, `runs/m6/` and `runs/m7/`
    children; listing is not verification. The text field also accepts a path
    relative to `runs/` (for example `m5/run-id`) or a full path inside it.
    With no selection, actions use the currently displayed bundle. No external
    paths, links, junctions, archives, overwrites, repair or deletion are offered.
    Diagnostic replay requires both explicit opt-in and its separate action.
 
-New runs use UUID directories under ignored `runs/m6/`. App limits are
+New built-in/PNG runs use UUID directories under ignored `runs/m6/`; Designer
+runs use `runs/m7/`. App limits are
 1–512 pixels per side, 0–200 iterations, a work budget of
 `ny*nx*max(1,iterations) <= 13,107,200`, and a seed in `[0,2**32-1]`.
 Before opening, bundles are limited to 16 direct entries, 32 MiB per file
@@ -446,6 +456,76 @@ M6's [handoff](docs/handoffs/milestone_6/implementation_summary.md) and
 controller integration, installed-version AppTest and actual browser checks.
 The ideal phase is not a calibrated SLM drive image. Existing periodic-model,
 metric, integrity and replay limitations remain in force.
+
+## Editable 2D targets
+
+The M7 Designer target mode uses an ordered object list and numeric controls
+for disks, axis-aligned rectangles and round-capped finite-width segments.
+Select, add, edit, delete or reorder an object; selection alone does not alter
+the design. Background and object values specify **intensity** in `[0,1]`.
+Later objects overwrite earlier ones, including zero-valued objects. The live
+preview rasterizes the design; it does not predict a reconstruction, solve,
+save a run or replay anything.
+
+Coordinates are pixels, with `+x` right, `+y` down and zero at array index
+`[ny//2,nx//2]`. Pixel centers on a shape boundary are included. No antialiasing,
+alpha blending, peak normalization or conversion through PNG occurs. A width-2
+rectangle centered on zero can cover centers `-1,0,1`; geometric width is not a
+pixel-count promise. Reversing a segment's endpoints retains its raster; the
+rasterizer orders endpoints internally without rewriting the editable record.
+
+The design canvas supplies the submitted `(ny,nx)`. Resizing changes the
+centered sampling window and preserves all object coordinates and sizes;
+off-canvas objects are not moved, wrapped or deleted. Pitches interpret the
+fixed raster in metres and never rescale it. A pixel-space disk can therefore
+be physically elliptical when `dx != dy`.
+
+Save editable copies separately under ignored `runs/designs/`, or explicitly
+download/import versioned JSON. An import validates fully before replacing the
+editor; invalid input retains the previous design and selection. A design is
+limited to 512 pixels per side, 64 objects, and 256 KiB of encoded JSON.
+Coordinates lie in `[-4096,4096]` pixels and positive dimensions/radii are at
+most 8192 pixels. The existing run work budget applies separately.
+
+Press **Generate & Save** to capture one immutable design and scientific
+settings. The app derives target amplitude with public M2, explicitly chooses
+power-matched uniform illumination and calls M5 once with the actual float64
+target and `input_png=None`. The submitted editable snapshot is saved as
+`runs/designs/submissions/<run-uuid>.json`; the numerical bundle is a separate
+`runs/m7/<run-uuid>/` directory. A zero design can preview/save/export, but
+positive-power synthesis rejects it without substituting an image. If snapshot
+storage fails, no solve starts; if M5 fails later, the snapshot is retained and
+reported. Completed persistence remains distinct from presentation failure.
+
+The explicit **load associated design** action verifies the numerical bundle,
+validates and rasterizes its external design, then compares shape, dtype and
+C-order target bytes. A missing, invalid or mismatched external design does
+not prevent bundle inspection or replay and does not replace the editor. A
+match establishes equal raster samples, not authenticated authorship or a
+unique original drawing. Numerical replay uses saved actual arrays and never
+requires that design file. M5 manifests, schema v1 and completed bundles are
+unchanged. A newer source revision may leave an older run unqualified; explicit
+diagnostics never upgrade qualification.
+
+Built-in and strict uploaded-PNG modes remain available. Changing modes or
+bundles revokes diagnostic opt-in; changing a design labels the old result as
+an earlier submission instead of changing its identity. Text, fonts, dragging,
+freehand drawing, general transforms and the future virtual optics laboratory
+are outside M7. See [geometry conventions](docs/math_conventions.md#316-editable-2d-designs-and-deterministic-rasterization)
+and the [M7 handoff](docs/handoffs/milestone_7/implementation_summary.md).
+
+The standalone asymmetric example uses all three primitives on a 48×64 canvas,
+round-trips its editable JSON and target bytes, and reports actual reconstruction
+metrics. It writes new UUID destinations without opening the UI:
+
+```powershell
+.\.venv\Scripts\python.exe -B -X utf8 examples/design_target.py
+```
+
+Add `--diagnostic` only to explicitly request numerical comparison when source
+qualification does not pass. The captured candidate example, with 20 iterations
+and seed 0, is in [M7 evidence](docs/handoffs/milestone_7/tests_and_evidence.md#asymmetric-example--completed).
+It is not a quality guarantee for arbitrary hard-edged drawings.
 
 ## Test
 

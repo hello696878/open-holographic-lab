@@ -1,4 +1,4 @@
-"""Local M6 workbench. Launch from the checkout with ``python -m streamlit``."""
+"""Local M6/M7 workbench. Launch with ``python -m streamlit``."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -20,7 +20,9 @@ except ModuleNotFoundError as exc:
         "Use the approved project environment; no automatic installation occurs."
     ) from exc
 
-from apps import presentation
+from apps import presentation, designer
+from ohlab.io.designs import design_to_json
+from ohlab.target_design import rasterize_target_design
 from apps import workbench as wb
 
 REPO_ROOT = Path(__file__).absolute().parent.parent
@@ -41,6 +43,7 @@ def _draft_from_widgets() -> wb.RunDraft:
     state = st.session_state
     target_kind = state.get("draft_target_kind", "builtin")
     upload = state.get("draft_upload") if target_kind == "upload" else None
+    design = _editor().design if target_kind == "designer" else None
     return wb.RunDraft(
         target_kind=target_kind,
         ny=64 if target_kind == "builtin" else state.get("draft_ny", 64),
@@ -54,6 +57,7 @@ def _draft_from_widgets() -> wb.RunDraft:
         psnr_data_range=state.get("draft_psnr_data_range", 1.0),
         upload_bytes=None if upload is None else upload.getvalue(),
         upload_name=None if upload is None else upload.name,
+        design=design,
     )
 
 
@@ -74,9 +78,172 @@ def _selected_text() -> str:
 
 
 def _selection_changed() -> None:
-    """Changing the selected bundle revokes the explicit diagnostic opt-in."""
+    """Revoke opt-in and old replay statuses while retaining saved arrays."""
     st.session_state["diagnostic_enabled"] = False
-    _state().diagnostic_enabled = False
+    state = _state()
+    state.diagnostic_enabled = False
+    state.qualification = "not_evaluated"
+    state.comparison = "not_run"
+    state.replay_report = None
+
+
+def _mode_changed() -> None:
+    """Revoke diagnostic opt-in; saved arrays keep their original identity."""
+    _selection_changed()
+    if st.session_state.get("draft_target_kind") == "designer":
+        _editor()
+        _sync_editor_controls()
+    state = _state()
+    state.qualification = "not_evaluated"
+    state.comparison = "not_run"
+    state.replay_report = None
+    state.last_operation = "draft_mode_change"
+    state.last_operation_at = None
+
+
+def _editor() -> designer.EditorState:
+    if "designer_editor" not in st.session_state:
+        st.session_state["designer_editor"] = designer.EditorState()
+        _sync_editor_controls()
+    return st.session_state["designer_editor"]
+
+
+def _sync_editor_controls() -> None:
+    """Called before widget construction, or in callbacks, after atomic edits."""
+    editor = st.session_state["designer_editor"]
+    spec = editor.design.to_dict()
+    st.session_state["designer_ny"] = spec["canvas"]["ny"]
+    st.session_state["designer_nx"] = spec["canvas"]["nx"]
+    st.session_state["designer_background"] = spec["background_intensity"]
+    st.session_state["designer_selected"] = editor.selected_id or ""
+    selected = next((obj for obj in spec["objects"] if obj["id"] == editor.selected_id), None)
+    if selected is not None:
+        st.session_state["designer_intensity"] = selected["intensity"]
+        for name, value in selected["parameters"].items():
+            st.session_state["designer_" + name] = value
+
+
+def _edit_canvas() -> None:
+    editor = _editor()
+    designer.update_canvas(editor, st.session_state["designer_ny"],
+                           st.session_state["designer_nx"], st.session_state["designer_background"])
+    _sync_editor_controls()
+
+
+def _select_design_object() -> None:
+    designer.select_object(_editor(), st.session_state["designer_selected"] or None)
+    _sync_editor_controls()
+
+
+def _add_design_object() -> None:
+    designer.add_object(_editor(), st.session_state["designer_add_type"])
+    _sync_editor_controls()
+
+
+def _edit_design_object() -> None:
+    editor = _editor()
+    selected = next(obj for obj in editor.design.to_dict()["objects"] if obj["id"] == editor.selected_id)
+    params = {name: st.session_state["designer_" + name] for name in selected["parameters"]}
+    designer.update_object(editor, editor.selected_id, params, st.session_state["designer_intensity"])
+    _sync_editor_controls()
+
+
+def _delete_design_object() -> None:
+    designer.delete_object(_editor(), _editor().selected_id)
+    _sync_editor_controls()
+
+
+def _move_design_object(offset: int) -> None:
+    designer.move_object(_editor(), _editor().selected_id, offset)
+    _sync_editor_controls()
+
+
+def _import_design() -> None:
+    upload = st.session_state.get("designer_json_upload")
+    if upload is None:
+        _editor().error = "請先選擇 JSON 檔案。Choose a design JSON file first."
+        return
+    if designer.import_design(_editor(), upload.getvalue()):
+        _sync_editor_controls()
+
+
+def _save_design_copy() -> None:
+    designer.save_copy(_editor(), runs_root=RUNS_ROOT)
+
+
+def _render_designer(disabled: bool) -> None:
+    editor = _editor()
+    spec = editor.design.to_dict()
+    st.subheader("編輯目標 Designer")
+    a, b = st.columns(2)
+    a.number_input("畫布列數 ny", min_value=1, max_value=512, key="designer_ny", step=1,
+                   on_change=_edit_canvas, disabled=disabled)
+    b.number_input("畫布欄數 nx", min_value=1, max_value=512, key="designer_nx", step=1,
+                   on_change=_edit_canvas, disabled=disabled)
+    st.number_input("背景強度 Background intensity", min_value=0.0, max_value=1.0,
+                    key="designer_background", step=0.025, format="%.17g",
+                    on_change=_edit_canvas, disabled=disabled)
+    st.caption("調整畫布只改變置中視窗；物件位置與尺寸保留，不自動縮放或移動。")
+    st.selectbox("新增物件類型", ["disk", "rectangle", "segment"],
+                 format_func=lambda kind: {"disk": "圓盤 Disk", "rectangle": "矩形 Rectangle", "segment": "線段 Segment"}[kind],
+                 key="designer_add_type", disabled=disabled)
+    st.button("新增物件 Add object", key="designer_add", on_click=_add_design_object,
+              disabled=disabled or len(spec["objects"]) >= 64)
+    choices = [""] + [obj["id"] for obj in spec["objects"]]
+    labels = {obj["id"]: f"{index+1}. {obj['type']} · {obj['id'][:8]}" for index, obj in enumerate(spec["objects"])}
+    st.selectbox("物件順序（後者覆寫）", choices, key="designer_selected",
+                 format_func=lambda identifier: labels.get(identifier, "未選取 None"),
+                 on_change=_select_design_object, disabled=disabled)
+    selected = next((obj for obj in spec["objects"] if obj["id"] == editor.selected_id), None)
+    if selected is not None:
+        labels_px = {"cx_px": "cx (px)", "cy_px": "cy (px)", "radius_px": "半徑 Radius (px)",
+                     "width_px": "寬度 Width (px)", "height_px": "高度 Height (px)",
+                     "x0_px": "x0 (px)", "y0_px": "y0 (px)", "x1_px": "x1 (px)", "y1_px": "y1 (px)"}
+        for name in selected["parameters"]:
+            size = name in {"radius_px", "width_px", "height_px"}
+            st.number_input(labels_px[name], min_value=0.0 if size else -4096.0,
+                            max_value=8192.0 if size else 4096.0, step=0.5,
+                            format="%.17g", key="designer_" + name,
+                            on_change=_edit_design_object, disabled=disabled)
+        st.number_input("物件強度 Object intensity", min_value=0.0, max_value=1.0,
+                        key="designer_intensity", step=0.025, format="%.17g",
+                        on_change=_edit_design_object, disabled=disabled)
+        a, b, c = st.columns(3)
+        index = choices.index(editor.selected_id)-1
+        a.button("移前 Back", key="designer_back", on_click=_move_design_object, args=(-1,),
+                  disabled=disabled or index == 0)
+        b.button("移後 Front", key="designer_front", on_click=_move_design_object, args=(1,),
+                  disabled=disabled or index == len(spec["objects"])-1)
+        c.button("刪除 Delete", key="designer_delete", on_click=_delete_design_object, disabled=disabled)
+    st.caption("座標以 pixels 表示，+x 向右、+y 向下；含邊界，無反鋸齒。寬度是幾何尺寸，不是保證的像素數。")
+    with st.expander("儲存與載入設計 Design JSON"):
+        st.button("儲存設計副本 Save design copy", key="designer_save", on_click=_save_design_copy, disabled=disabled)
+        st.download_button("匯出設計 JSON Export", design_to_json(editor.design),
+                           file_name="target-design.json", mime="application/json", key="designer_export",
+                           on_click="ignore", disabled=disabled)
+        st.file_uploader("載入設計 JSON", type=["json"], key="designer_json_upload", disabled=disabled,
+                         help="最多 256 KiB；選檔不會改變設計，必須明確按 Import。")
+        st.button("匯入設計 Import", key="designer_import", on_click=_import_design, disabled=disabled)
+        if editor.saved_path is not None:
+            st.caption(f"Editable design saved: {editor.saved_path}")
+    if editor.error:
+        st.error(editor.error)
+
+
+def _render_design_preview(draft: wb.RunDraft) -> None:
+    if draft.target_kind != "designer":
+        return
+    st.subheader("目標預覽 Desired intensity preview")
+    try:
+        raster = rasterize_target_design(draft.design)
+        figure = presentation.build_target_preview(intensity=raster)
+        st.pyplot(figure, width="stretch")
+        figure.clear()
+        canvas = draft.design.to_dict()["canvas"]
+        st.caption(f"Desired target · shape ({canvas['ny']}, {canvas['nx']}) · intensity [0,1]。預覽不預測重建，不會計算或儲存實驗。")
+        st.caption(f"物理範圍：{canvas['nx']*draft.dx_um:g} × {canvas['ny']*draft.dy_um:g} μm。Pitch 不改變像素；dx ≠ dy 時 pixel-space disk 可呈物理橢圓。")
+    except (TypeError, ValueError) as exc:
+        st.error(f"目標預覽失敗；請修正幾何。Preview error: {exc}")
 
 
 def _queue_existing(action: str, nonce: str) -> None:
@@ -93,9 +260,9 @@ def _queue_existing(action: str, nonce: str) -> None:
 def _render_draft(state: wb.WorkbenchState, disabled: bool) -> wb.RunDraft:
     with st.sidebar:
         st.header("建立實驗 Create")
-        st.selectbox("目標來源 Target", ["builtin", "upload"],
-                     format_func=lambda value: {"builtin": "固定光斑 · 64 × 64", "upload": "上傳灰階 PNG"}[value],
-                     key="draft_target_kind", disabled=disabled)
+        st.selectbox("目標來源 Target", ["builtin", "upload", "designer"],
+                     format_func=lambda value: {"builtin": "固定光斑 · 64 × 64", "upload": "上傳灰階 PNG", "designer": "設計目標 Designer"}[value],
+                     key="draft_target_kind", on_change=_mode_changed, disabled=disabled)
         if st.session_state["draft_target_kind"] == "upload":
             st.file_uploader("8-bit 灰階 PNG", type=["png"], key="draft_upload",
                              max_upload_size=8, disabled=disabled)
@@ -105,6 +272,8 @@ def _render_draft(state: wb.WorkbenchState, disabled: bool) -> wb.RunDraft:
             c2.number_input("欄數 nx", min_value=1, max_value=512, value=64, step=1,
                             key="draft_nx", disabled=disabled)
             st.caption("僅接受靜態 8-bit 灰階、尺寸完全相符的 PNG；不縮放、不轉色、不裁切。上限 8 MiB。")
+        elif st.session_state["draft_target_kind"] == "designer":
+            _render_designer(disabled)
         else:
             st.caption("固定 64 × 64 像素；光斑寬度 σ = 7.5 pixels。僅在 8 μm pitch 時對應 60 μm；修改 pitch 不改變像素值。")
         c1, c2 = st.columns(2)
@@ -163,6 +332,8 @@ def _render_existing(state: wb.WorkbenchState, disabled: bool) -> None:
         st.button("執行診斷重播 Diagnostic replay", key=f"diagnostic_{nonce}",
                   on_click=_queue_existing, args=("diagnostic", nonce),
                   disabled=replay_disabled or not state.diagnostic_enabled)
+        st.button("載入關聯設計 Load associated design", key=f"associated_{nonce}",
+                  on_click=_queue_existing, args=("associated", nonce), disabled=disabled)
         st.caption("路徑與清單皆空白時，使用目前顯示的 bundle。開啟／刷新只檢查完整性，不自動重播。Strict replay 不符合來源／環境資格時維持 not_run。檔案不是持續監控；狀態屬於上次操作。")
 
 
@@ -182,6 +353,10 @@ def _execute_request(state: wb.WorkbenchState) -> bool:
             wb.open_bundle(state, selection, runs_root=RUNS_ROOT, offered_nonce=nonce)
         elif action == "refresh":
             wb.reverify_bundle(state, selection, runs_root=RUNS_ROOT, offered_nonce=nonce)
+        elif action == "associated":
+            design = wb.load_associated_design(state, selection, runs_root=RUNS_ROOT, offered_nonce=nonce)
+            if design is not None:
+                st.session_state["apply_associated_design"] = design
         else:
             wb.replay_bundle(state, selection, runs_root=RUNS_ROOT, offered_nonce=nonce,
                              diagnostic=diagnostic)
@@ -191,6 +366,15 @@ def _execute_request(state: wb.WorkbenchState) -> bool:
 def _render_result(state: wb.WorkbenchState, draft: wb.RunDraft) -> None:
     if state.error:
         st.error(state.error)
+    if state.design_snapshot_path is not None:
+        st.caption(f"Submitted editable snapshot saved: {state.design_snapshot_path}")
+        if not state.save_succeeded:
+            st.warning("設計快照已儲存，但數值實驗未完成；不會自動重試。Design saved; numerical run failed.")
+    if state.association_status != "not_evaluated":
+        if state.association_status == "match":
+            st.success("關聯設計的 raster bytes 與已驗證目標一致。Raster match；不代表作者認證或唯一原始設計。")
+        else:
+            st.warning(f"External design: {state.association_status} · {state.association_error}。數值 bundle 仍可檢視與重播；編輯器未被替換。")
     if state.bundle is None:
         st.info("設定左側草稿後按「產生並儲存」，或開啟既有 bundle。重新整理瀏覽器不會自動執行。")
         return
@@ -198,7 +382,9 @@ def _render_result(state: wb.WorkbenchState, draft: wb.RunDraft) -> None:
     st.subheader("已儲存結果 Saved result")
     st.code(str(bundle.path), language=None)
     if state.submitted is not None:
-        st.caption(f"Submitted ID: {state.submitted.token} · Upload SHA-256: {state.submitted.upload_sha256 or 'built-in raster'}")
+        identity = (f"Design SHA-256: {state.submitted.design_sha256}" if state.submitted.target_kind == "designer"
+                    else f"Upload SHA-256: {state.submitted.upload_sha256 or 'built-in raster'}")
+        st.caption(f"Submitted ID: {state.submitted.token} · {identity}")
         if wb.draft_fingerprint(draft) != state.submitted.draft_fingerprint:
             st.warning("目前草稿不同；下方仍是上次提交的已儲存結果。Previous submission — saved settings retained.")
     else:
@@ -258,6 +444,12 @@ def main() -> None:
     """Render a thin one-page interface; all scientific actions are explicit."""
     st.set_page_config(page_title="Open Holographic Lab", page_icon="🔬", layout="wide")
     state = _state()
+    associated = st.session_state.pop("apply_associated_design", None)
+    if associated is not None:
+        designer.replace_design(_editor(), associated)
+        _sync_editor_controls()
+        st.session_state["draft_target_kind"] = "designer"
+        _selection_changed()
     disabled = state.busy or st.session_state["pending_ui_action"] is not None
     st.title("全像重建工作台")
     st.caption("Open Holographic Lab · 單平面相位合成與可重現實驗 · Local workbench")
@@ -265,6 +457,7 @@ def main() -> None:
     _render_existing(state, disabled)
     if _execute_request(state):
         st.rerun()
+    _render_design_preview(draft)
     _render_result(state, draft)
     st.caption("僅供本機軟體實驗。每次操作只保證目前 session 內的重複事件防護；重新載入、崩潰或多個 session 不具持久 exactly-once 保證。")
 

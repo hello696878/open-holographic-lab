@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
 from datetime import datetime, timezone
+from contextlib import nullcontext
 import hashlib
 import json
 import math
@@ -30,6 +31,8 @@ from ohlab.io.artifacts import (
 )
 from ohlab.io.config import RunConfig
 from ohlab.io.images import load_target_intensity
+from ohlab.io.designs import design_to_json, load_design, save_design
+from ohlab.target_design import TargetDesign2D, rasterize_target_design
 from ohlab.targets import intensity_to_amplitude
 
 from apps.provenance import detect_source_revision
@@ -59,6 +62,7 @@ class RunDraft:
     psnr_data_range: float = 1.0
     upload_bytes: bytes | None = None
     upload_name: str | None = None
+    design: TargetDesign2D | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +77,8 @@ class SubmittedRun:
     upload_name: str | None
     upload_sha256: str | None
     draft_fingerprint: str
+    design: TargetDesign2D | None = None
+    design_sha256: str | None = None
 
 
 @dataclass
@@ -100,6 +106,10 @@ class WorkbenchState:
     last_operation: str | None = None
     last_operation_path: Path | None = None
     last_operation_at: str | None = None
+    design_snapshot_path: Path | None = None
+    association_status: str = "not_evaluated"
+    association_error: str | None = None
+    association_path: Path | None = None
 
 
 def draft_fingerprint(draft: RunDraft) -> str:
@@ -107,6 +117,15 @@ def draft_fingerprint(draft: RunDraft) -> str:
     if not isinstance(draft, RunDraft):
         raise TypeError("draft: expected RunDraft")
     values = {item.name: getattr(draft, item.name) for item in fields(draft)}
+    design = values.pop("design")
+    if design is not None and not isinstance(design, TargetDesign2D):
+        raise TypeError("design: expected immutable TargetDesign2D or None")
+    values["design_sha256"] = None if design is None else hashlib.sha256(design_to_json(design)).hexdigest()
+    if draft.target_kind == "designer" and design is not None:
+        # The document is the sole canvas authority; inactive upload/grid
+        # widget values cannot relabel or reshape this submitted target.
+        values.update(design.to_dict()["canvas"])
+        values["upload_name"] = None
     payload = values.pop("upload_bytes")
     if payload is not None and type(payload) is not bytes:
         raise TypeError("upload_bytes: expected immutable bytes or None")
@@ -147,14 +166,22 @@ def _real(value: object, name: str, *, positive: bool) -> float:
 def _draft_config(draft: RunDraft) -> RunConfig:
     if not isinstance(draft, RunDraft):
         raise TypeError("draft: expected RunDraft")
-    ny = _count(draft.ny, "ny", 1, SIDE_LIMIT)
-    nx = _count(draft.nx, "nx", 1, SIDE_LIMIT)
+    if draft.target_kind == "designer":
+        if not isinstance(draft.design, TargetDesign2D):
+            raise TypeError("design: expected immutable TargetDesign2D")
+        canvas = draft.design.to_dict()["canvas"]
+        ny, nx = canvas["ny"], canvas["nx"]
+    else:
+        if draft.design is not None:
+            raise ValueError("design: only Designer mode accepts an editable design")
+        ny = _count(draft.ny, "ny", 1, SIDE_LIMIT)
+        nx = _count(draft.nx, "nx", 1, SIDE_LIMIT)
     iterations = _count(draft.iterations, "iterations", 0, ITERATION_LIMIT)
     if ny * nx * max(1, iterations) > WORK_LIMIT:
         raise ValueError(f"grid/iterations: app work limit is {WORK_LIMIT} pixel-cycles")
     seed = _count(draft.seed, "seed", 0, 2**32 - 1)
-    if draft.target_kind not in ("builtin", "upload"):
-        raise ValueError("target_kind: expected 'builtin' or 'upload'")
+    if draft.target_kind not in ("builtin", "upload", "designer"):
+        raise ValueError("target_kind: expected 'builtin', 'upload' or 'designer'")
     if draft.upload_name is not None and type(draft.upload_name) is not str:
         raise TypeError("upload_name: expected str or None")
     if draft.target_kind == "builtin":
@@ -162,11 +189,13 @@ def _draft_config(draft: RunDraft) -> RunConfig:
             raise ValueError("builtin target: fixed shape is (64, 64); pitch changes only reinterpret pixels")
         if draft.upload_bytes is not None:
             raise ValueError("builtin target: unexpected upload_bytes")
-    else:
+    elif draft.target_kind == "upload":
         if type(draft.upload_bytes) is not bytes:
             raise TypeError("upload_bytes: expected immutable PNG bytes")
         if not 0 < len(draft.upload_bytes) <= UPLOAD_LIMIT:
             raise ValueError(f"upload_bytes: app limit is 1..{UPLOAD_LIMIT} encoded bytes")
+    elif draft.upload_bytes is not None or draft.upload_name is not None:
+        raise ValueError("Designer target: unexpected uploaded PNG data")
     # This is the single UI-unit -> SI boundary. RunConfig checks the converted
     # values, including conversion underflow, without changing scientific rules.
     distance_mm = _real(draft.distance_mm, "distance_mm", positive=False)
@@ -238,10 +267,10 @@ def preflight_bundle(path: str | Path, *, runs_root: Path) -> None:
 
 
 def list_bundle_candidates(*, runs_root: Path) -> tuple[Path, ...]:
-    """List direct M5/M6 completed-looking children; selection still needs M5 verification."""
+    """List direct M5/M6/M7 children; selection still needs M5 verification."""
     root = _lexical_absolute(runs_root)
     result: list[Path] = []
-    for name in ("m5", "m6"):
+    for name in ("m5", "m6", "m7"):
         directory = root / name
         try:
             _reject_link_ancestors(directory)
@@ -291,6 +320,10 @@ def _begin(state: WorkbenchState, nonce: str, operation: str, path: Path | None)
     state.bundle = state.submitted = state.replay_report = None
     state.saved_path = None
     state.save_succeeded = False
+    state.design_snapshot_path = None
+    state.association_status = "not_evaluated"
+    state.association_error = None
+    state.association_path = None
     state.integrity = state.qualification = "not_evaluated"
     state.comparison = "not_run"
     if state.selected_path != path:
@@ -329,12 +362,15 @@ def submit_generate(
         config = _draft_config(draft)
         fingerprint = draft_fingerprint(draft)
         root = _lexical_absolute(runs_root)
-        _reject_link_ancestors(root / "m6")
+        directory = "m7" if draft.target_kind == "designer" else "m6"
+        _reject_link_ancestors(root / directory)
         submitted = SubmittedRun(
-            offered_nonce, root / "m6" / uuid4().hex, config, draft.target_kind,
+            offered_nonce, root / directory / uuid4().hex, config, draft.target_kind,
             draft.upload_bytes, draft.upload_name,
             None if draft.upload_bytes is None else hashlib.sha256(draft.upload_bytes).hexdigest(),
             fingerprint,
+            draft.design,
+            None if draft.design is None else hashlib.sha256(design_to_json(draft.design)).hexdigest(),
         )
     except Exception as exc:
         result = _failure(state, exc)
@@ -368,9 +404,12 @@ def execute_pending_run(state: WorkbenchState) -> bool:
         _reject_link_ancestors(parent)
         parent.mkdir(parents=True, exist_ok=True)
         state.stage = "loading_target"
-        with TemporaryDirectory(prefix=".upload-", dir=parent) as temporary:
-            png_path = Path(temporary) / "target.png"
-            if submitted.target_kind == "upload":
+        context = nullcontext(None) if submitted.target_kind == "designer" else TemporaryDirectory(prefix=".upload-", dir=parent)
+        with context as temporary:
+            png_path = None if temporary is None else Path(temporary) / "target.png"
+            if submitted.target_kind == "designer":
+                intensity = rasterize_target_design(submitted.design)
+            elif submitted.target_kind == "upload":
                 png_path.write_bytes(submitted.upload_bytes)
             else:
                 # Optional encoding dependency is loaded only for this explicit
@@ -379,7 +418,8 @@ def execute_pending_run(state: WorkbenchState) -> bool:
 
                 with Image.fromarray(builtin_grayscale()) as image:
                     image.save(png_path, format="PNG", optimize=False, compress_level=6)
-            intensity = load_target_intensity(png_path, grid=grid)
+            if png_path is not None:
+                intensity = load_target_intensity(png_path, grid=grid)
             amplitude = intensity_to_amplitude(intensity, grid=grid)
             with np.errstate(over="raise", under="raise", invalid="raise", divide="raise"):
                 energy = float(np.sum(amplitude**2))
@@ -390,6 +430,13 @@ def execute_pending_run(state: WorkbenchState) -> bool:
                 powers = (energy * grid.pixel_area, float(np.sum(source**2)) * grid.pixel_area)
                 if not all(math.isfinite(power) and power > 0 for power in powers):
                     raise ValueError("illumination: target/source powers must be positive and finite")
+            if submitted.target_kind == "designer":
+                snapshot = parent.parent / "designs" / "submissions" / f"{submitted.destination.name}.json"
+                _reject_link_ancestors(snapshot.parent)
+                snapshot.parent.mkdir(parents=True, exist_ok=True)
+                state.stage = "saving_design"
+                save_design(snapshot, design=submitted.design)
+                state.design_snapshot_path = snapshot
             state.stage = "saving"
             bundle = run_and_save_bundle(
                 submitted.destination, config=submitted.config, target_intensity=intensity,
@@ -414,6 +461,61 @@ def execute_pending_run(state: WorkbenchState) -> bool:
 def record_presentation_failure(state: WorkbenchState, exc: Exception) -> None:
     """Retain published bundle and submitted identity when only rendering fails."""
     state.presentation_error = f"{type(exc).__name__}: {exc}"
+
+
+def load_associated_design(
+    state: WorkbenchState, selection: str | Path, *, runs_root: Path, offered_nonce: str,
+) -> TargetDesign2D | None:
+    """Explicitly compare external design raster bytes with a freshly verified run.
+
+    A missing, invalid or mismatched external design leaves the valid numerical
+    bundle inspectable. Raster match establishes neither unique design history
+    nor authenticated authorship. This function never solves or replays.
+    """
+    if not _available(state, offered_nonce):
+        return None
+    _begin(state, offered_nonce, "associated_design", state.selected_path)
+    state.stage = "loading"
+    try:
+        path = selected_bundle_path(selection, runs_root=runs_root)
+        if state.selected_path != path:
+            state.diagnostic_enabled = False
+        state.selected_path = state.last_operation_path = path
+        preflight_bundle(path, runs_root=runs_root)
+        bundle = load_run_bundle(path)
+        state.bundle = bundle
+        state.integrity = "passed"
+        snapshot = _lexical_absolute(runs_root) / "designs" / "submissions" / f"{path.name}.json"
+        state.association_path = snapshot
+        try:
+            _reject_link_ancestors(snapshot)
+            design = load_design(snapshot)
+            raster = rasterize_target_design(design)
+        except FileNotFoundError as exc:
+            state.association_status = "missing"
+            state.association_error = str(exc)
+            return None
+        except (OSError, TypeError, ValueError) as exc:
+            state.association_status = "invalid"
+            state.association_error = f"{type(exc).__name__}: {exc}"
+            return None
+        target = bundle.arrays["target_intensity"]
+        if (raster.shape != target.shape or raster.dtype != target.dtype
+                or raster.tobytes(order="C") != target.tobytes(order="C")):
+            state.association_status = "mismatch"
+            state.association_error = "External design raster differs from the verified saved target."
+            return None
+        state.association_status = "match"
+        return design
+    except Exception as exc:
+        state.bundle = None
+        state.integrity = "not_evaluated"
+        _failure(state, exc)
+        return None
+    finally:
+        if state.bundle is not None:
+            state.stage = "completed"
+        _finish(state)
 
 
 def _inspect(
