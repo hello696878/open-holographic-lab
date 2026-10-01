@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.9 — 2026-09-30
+**Version:** 0.10 — 2026-10-01
 
 ---
 
@@ -1105,6 +1105,172 @@ targets. Evidence and limitations are in the [M7 handoff](handoffs/milestone_7/)
 
 ---
 
+### 3.17 V0 aligned sequential optics — API and schema contract
+
+The V0 contract is `v0_aligned_scalar_forward_v1`, schema version integer 1.
+It describes a single scalar monochromatic forward train in air on one complete
+fixed grid, distinct from M3 synthesis, M5 RunConfig and M7 TargetDesign2D.
+All positions, pitches, wavelengths and dimensions below are metres; phase is
+radians and amplitude is arbitrary field units. No disk persistence is included.
+
+**Exact schema keys (no optional/defaulted scientific parameters):**
+
+| Object / tag | Required keys |
+|---|---|
+| Experiment | `schema_version`, `model_contract`, `wavelength_m`, `grid`, `source`, `components`, `observation` |
+| Grid | `ny`, `nx`, `dy`, `dx` |
+| Source `kind="uniform"` | `kind`, `amplitude`, `phase_rad` |
+| Source `kind="gaussian"` | `kind`, `amplitude`, `phase_rad`, `waist_radius_m`, `waist_z_m`, `center_x_m`, `center_y_m` |
+| Component `kind="circular_aperture"` | `id`, `kind`, `z_m`, `radius_m` |
+| Component `kind="rectangular_aperture"` | `id`, `kind`, `z_m`, `width_m`, `height_m` |
+| Component `kind="thin_lens"` | `id`, `kind`, `z_m`, `focal_length_m` |
+| Observation | `id`, `z_m` |
+
+`SequentialExperiment.from_dict(mapping)` accepts a Mapping with these exact
+keys and a list/tuple of component mappings. Missing/unknown keys or unsupported
+tags/versions raise ValueError; incorrect kinds/types raise TypeError.
+Real scalars accept Python int/float and NumPy integer/floating scalars, excluding
+both Python and NumPy booleans, complex values, strings and arrays. Counts and
+schema version accept integers only, excluding booleans. All real scalars must
+convert to finite binary64. Dimensions/pitches/wavelength are positive; amplitude
+is nonnegative; focal length is nonzero; waist position/centers/phase may be signed.
+IDs are ASCII `[A-Za-z][A-Za-z0-9_-]{0,63}`, with component and observation IDs
+unique and `source` reserved. The source plane is z=0. Component z positions
+must be nonnegative and nondecreasing in stored order; observation must be at
+or beyond the last component. Never sort. Colocated list entries act in order.
+At most 2048 samples per axis and 16 components are accepted; derived arithmetic
+must be usable in binary64. These resource bounds do not guarantee sampling.
+
+The constructor is `SequentialExperiment(*, wavelength_m, grid, source,
+components, observation, schema_version=1,
+model_contract="v0_aligned_scalar_forward_v1")`. Frozen source/component/plane
+records use keyword-only parameters named exactly as their schema keys (the
+fixed kind tag is derived). Parsed nested mappings become immutable records;
+`to_dict()` exports fresh independent nested Python dictionaries/lists.
+
+Exact public record constructors (all keyword-only, no defaults):
+
+```python
+UniformSource(*, amplitude, phase_rad)
+GaussianSource(*, amplitude, phase_rad, waist_radius_m, waist_z_m,
+               center_x_m, center_y_m)
+CircularAperture(*, id, z_m, radius_m)
+RectangularAperture(*, id, z_m, width_m, height_m)
+ThinLens(*, id, z_m, focal_length_m)
+ObservationPlane(*, id, z_m)
+StageRecord(*, selector, z_m, norm, previous_norm)
+StageField(*, selector, field)
+SequentialResult(*, experiment, observation, stages, recorded_fields)
+```
+
+`Component` is the union of the three supported element records. Scientific
+classes/functions are imported from `ohlab.optics`; root exports are unchanged.
+
+Public functions (type hints use these immutable records and existing fields):
+
+```python
+sample_source(experiment: SequentialExperiment) -> ComplexField
+apply_component(field: ComplexField, component: Component) -> ComplexField
+run_experiment(experiment: SequentialExperiment, *,
+               record_fields: tuple[str, ...] = ()) -> SequentialResult
+```
+
+`apply_component` applies only transmission on the supplied plane; `component.z_m`
+never causes propagation. The runner derives each separation once and calls the
+existing public M1 propagator with pad_factor=1, including the terminal interval.
+No intermediate crop, embedding, normalization or second production kz/FFT path.
+Forward evanescent decay is retained. Source/element/grid metadata are unchanged.
+
+Stage selectors are `source`, `before:<component-id>`, `after:<component-id>`
+and `observation`. Every stage has its own identity even at equal z. All stages
+receive scalar StageRecord entries; `record_fields` must be a tuple of at most
+four distinct source/before/after selector strings. Unknown, duplicate and
+`observation` recording requests raise ValueError (the terminal field is always
+available). SequentialResult stores the experiment, actual `observation` field,
+`stages` tuple and `recorded_fields` tuple of StageField(selector, field).
+`field_at(selector)` retrieves the terminal or explicitly recorded field and
+raises ValueError otherwise. StageRecord has selector, z_m, norm,
+previous_norm, delta_norm and transmission_ratio. The source has None for the
+last three. Each later record compares with the immediately preceding stage;
+delta_norm is after minus previous, signed and never clamped. A ratio is None
+when the previous norm is zero; it is not calibrated efficiency. Fields have
+owned read-only complex128 storage, and derived intensity uses existing field
+semantics. No large unrequested stage field is retained.
+
+Source Gaussian: let s=-waist_z_m at the source, zR=pi*w0**2/lambda,
+b=1+i*s/zR and r2=(x-cx)**2+(y-cy)**2. Then
+`U=(A0/b)*exp(-r2/(w0**2*b))*exp(i*(k*s+phase_rad))`, where A0 is the
+waist peak field amplitude and w0 the 1/e amplitude / 1/e^2 intensity radius.
+Uniform source is `A0*exp(i*phase_rad)` over the complete periodic window.
+No image-design Gaussian width or unit-power normalization is used. The
+sign-matched paraxial Gaussian parameter is q=s-i*zR.
+
+**Independent Gaussian/lens reference.** A centered Gaussian at a lens plane
+can be written `C*exp(-a*r2)`, including its actual complex on-axis prefactor C.
+The lens leaves C unchanged and updates `a -> a+i*k/(2*f)`. After a distance d,
+define `B=1+2*i*d*a/k`; the complete paraxial field is
+`C*exp(i*k*d)/B * exp(-a*r2/B)`. The amplitude prefactor and its complex phase
+continuity must be retained; no fitted amplitude or global-phase alignment.
+For a waist at the lens, `a=1/w0**2+i*k/(2*f)` and
+`w(d)=w0*sqrt((1-d/f)**2+(d/zR)**2)`. Its minimum for positive f is at
+`d=f/(1+(f/zR)**2)`, not necessarily f. Exact ASM and this paraxial reference
+have a model-dependent agreement floor.
+
+Verified primary references (accessed 2026-10-01): Konijnenberg, Adam and
+Urbach, [Angular Spectrum Method §6.3, displayed Eqs. (6)–(7)](https://phys.libretexts.org/Bookshelves/Optics/BSc_Optics_%28Konijnenberg_Adam_and_Urbach%29/06%3A_Scalar_diffraction_optics/6.04%3A_Angular_Spectrum_Method)
+fixes the negative time exponent and positive forward exponent;
+[Fourier Optics §6.8.1, displayed Eqs. (3)–(7)](https://phys.libretexts.org/Bookshelves/Optics/BSc_Optics_%28Konijnenberg_Adam_and_Urbach%29/06%3A_Scalar_diffraction_optics/6.09%3A_Fourier_Optics)
+derives the negative quadratic lens phase in the small-aperture limit.
+MIT [Gaussian Beams and Resonators, printed pp. 104–106, Eqs. (2.259)–(2.263)](https://ocw.mit.edu/courses/6-974-fundamentals-of-photonics-quantum-electronics-spring-2006/e9852c138493233bc2813f683da5b199_gaussian_bem_res.pdf)
+gives ABCD evolution and `1/q_after=1/q_before-1/f`; its field uses the
+opposite phase convention and positive imaginary waist q, so the field/q
+are conjugated for the present convention. These verified sources do not
+upgrade the earlier unverified Goodman attribution.
+
+Circular transmission is `x*x+y*y <= radius_m**2`; rectangular transmission
+is `abs(x)<=width_m/2 and abs(y)<=height_m/2`, inclusive center-sampled 0/1
+field-amplitude masks using physical coordinates on both axes. Lens transmission
+is `exp(-i*k*(x*x+y*y)/(2*f))`, f finite nonzero signed, no implicit aperture
+or constant phase correction. It changes phase immediately; focusing requires
+propagation. Thin lenses and Gaussian sources are ideal paraxial models.
+
+The ideal observation records U and |U|**2, without camera integration, exposure,
+noise, saturation, calibrated irradiance or watts. Sampled norm is
+`sum(abs(U)**2)*dx*dy` in amplitude-unit^2*m^2; no target metric is required.
+Dark sources/blocked fields are valid. Validate all parameters and usable derived
+geometry before exact-zero shortcuts. Overflow/invalid arithmetic and unusable
+geometry raise ValueError. Only decaying Gaussian exponential tails, products
+of finite fields with bounded unit-modulus/zero-one transmission, squared
+magnitudes in norm reduction, and existing forward evanescent decay may
+underflow to zero. Norm must reject a nonzero field whose complete sampled norm
+underflows to zero. Error handling is local; caller settings remain unchanged,
+and no blanket all-errors-raise policy is applied around M1 propagation.
+
+Full-window periodic norm changes are distinct from physical aperture loss and
+selected observation-region norm. Do not assign escaped power or call tiny lens
+roundoff absorption. Adequate isolated-optics accuracy needs separately reported
+window and pitch convergence. No universal sampling or paraxial-validity badge.
+
+**Bounded aperture reference acceptance.** For unit incident amplitude and zero
+phase through a continuous centered rectangle of width 80e-6 and height 120e-6 m,
+use lambda=633e-9 m and d=5e-3 m. For each axis v and full width D, set
+`t_plus=sqrt(2/(lambda*d))*(D/2-v)` and
+`t_minus=sqrt(2/(lambda*d))*(-D/2-v)`. With F=C+i*S (standard Fresnel integrals),
+the reference is `exp(i*k*d)/(2*i) * (F(tx_plus)-F(tx_minus)) *
+(F(ty_plus)-F(ty_minus))`. This follows the sign-matched
+[Fresnel kernel, page 6.6, subsection 6.5.1, displayed diffraction integral](https://phys.libretexts.org/Bookshelves/Optics/BSc_Optics_%28Konijnenberg_Adam_and_Urbach%29/06%3A_Scalar_diffraction_optics/6.07%3A_Fresnel_and_Fraunhofer_Approximations)
+and the separable C/S definitions in
+[UT Austin, Eqs. (10.119)–(10.124)](https://farside.ph.utexas.edu/teaching/315/Waveshtml/node101.html).
+The exact ROI selects sample centers with `abs(x)<=100e-6` and
+`abs(y)<=100e-6`, inclusive, on each grid. Compare
+`sqrt(sum_ROI(abs(U_numeric-U_reference)**2)/sum_ROI(abs(U_reference)**2))`
+without alignment, fitted scaling, peak normalization or reference-aperture
+enlargement. Finest acceptance is 2048² at 1e-6 m pitch with error <=0.035;
+also retain 512²/4e-6, 1024²/4e-6, 1024²/2e-6 and 2048²/2e-6 cases.
+It is a regional complex-field L2 criterion, not intensity error, worst-pixel
+bound or percent accuracy. Sampled-area bias and omitted Fresnel terms are
+separate; no sub-percent claim is made for this hard-edged fixture.
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -1131,12 +1297,16 @@ targets. Evidence and limitations are in the [M7 handoff](handoffs/milestone_7/)
 
 Not assumed, not implemented, and not to be added without an explicit decision:
 
-polarization; partial coherence; multiple wavelengths or RGB; multiple depth
-planes or 3D scenes; refractive index ≠ 1; tilted or non-parallel planes;
-different sampling on source and destination planes; paraxial (Fresnel) or
-far-field (Fraunhofer) approximations; SLM non-idealities (phase quantization,
+polarization; partial coherence; multiple wavelengths or RGB; 3D scenes;
+refractive index ≠ 1; tilted or non-parallel planes; different sampling on source
+and destination planes; production Fresnel or Fraunhofer propagators;
+SLM non-idealities (phase quantization,
 fill factor, inter-pixel crosstalk, nonlinear phase response); any hardware
 model.
+
+V0 (§3.17) adds sequential observations on parallel planes using unchanged ASM,
+with explicitly paraxial ideal Gaussian/lens models and independent Fresnel
+validation references. It does not add M3 multi-plane synthesis or a 3D scene.
 
 ---
 
@@ -1144,6 +1314,7 @@ model.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.10 | 2026-10-01 | **§3.17 added** — exact SI sequential-experiment schema/API, immutable stage identities, source/element actions, complete-window forward ASM reuse, dark/norm arithmetic and bounded independent reference criteria. **§5 clarified** — V0's explicit ideal paraxial elements/reference formulas are distinct from an unimplemented alternate propagator or 3D scene. | Approved V0 implementation. Existing M0–M7 numerical implementations, selected signs, sampling, GS and M5 bundle contracts remain unchanged; original evidence and the earlier unverified Goodman attribution are preserved. |
 | 0.9 | 2026-09-30 | **§3.16 added** — versioned pixel-coordinate designs, inclusive center-sampled geometry, internally ordered undirected segments, ordered intensity overwrite, bounded editable JSON and external design/run association. | Approved Milestone 7. Pixel coordinates are dimensionless authoring/sample coordinates; existing SI optical calls, M2–M5 scientific/serialization contracts, old mathematical sections and historical evidence remain unchanged. |
 | 0.8 | 2026-09-23 | **§3.10 refined; §3.15 added** — separate artifact integrity, provenance qualification and exact replay; define schema-v1 capture/serialization, metric persistence and transactional I/O. | Approved Milestone 5. M0–M4 algorithms, physical conventions, normalization, RNG and historical evidence remain unchanged. |
 | 0.7 | 2026-09-20 | **§3.14 added** — five intensity metrics, explicit target/range/region semantics, population CV, validated exact cases and float64 failure policies. **§2.1 clarified** — raw MSE retains squared intensity scale; PSNR cancels common scale only with coordinated data range. | Approved Milestone 4. Field normalization, units, propagation, M3 solver/residual history and historical evidence remain unchanged. |

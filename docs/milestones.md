@@ -26,7 +26,8 @@ tested, its limitations recorded here, and its handoff package written to
 | 4 | Reconstruction quality metrics | **complete** (2026-09-20) | [`milestone_4/`](handoffs/milestone_4/) |
 | 5 | Configuration and run artifacts | **complete** (2026-09-23) | [`milestone_5/`](handoffs/milestone_5/) |
 | 6 | Minimal application layer | **complete** (2026-09-29; closeout recorded 2026-09-30) | [`milestone_6/`](handoffs/milestone_6/) |
-| 7 | Editable 2D target designer | precommit acceptance complete; clean-postcommit publication gate pending (2026-09-30) | [`milestone_7/`](handoffs/milestone_7/) |
+| 7 | Editable 2D target designer | **complete** (2026-09-30; closeout recorded 2026-10-01) | [`milestone_7/`](handoffs/milestone_7/) |
+| V0 | Aligned sequential virtual optics foundation | implementation acceptance complete; publication checks follow (2026-10-01) | [`v0/`](handoffs/v0/) |
 
 ---
 
@@ -653,6 +654,68 @@ Postcommit evidence stays in ignored captures and the completion report.
 The [roadmap](roadmap.md) orders existing M0–M6, M7 content design, then
 separately approved V0–V3 virtual-laboratory stages. Text, richer editing,
 hardware and all V-stages remain unstarted. No teaching progress is inferred.
+
+---
+
+### M7 publication closeout — recorded 2026-10-01
+
+The preceding section remains the original 2026-09-30 precommit snapshot.
+The user accepted M7 within its reported validation scope. Existing ignored
+`runs/m7_acceptance_20260930/postcommit_ui_verification.json` and
+`publication_verification.json`, read back during V0, record publication at
+`3b94a2262ae11f7d2316ac4fc5d168fa4881c859` with one actual 4×5/N=2 Designer
+submission, one new editable snapshot and one new numerical bundle. The saved
+target bytes matched the submitted raster; source state was clean. Strict UI
+replay reported `passed / qualified / passed` with diagnostics off, including
+while external design storage was absent. The snapshot was restored exactly
+and numerical bundle hashes stayed unchanged. Normal push and local/live
+remote/GitHub API SHA agreement were recorded, with a clean final tree.
+These are dated M7 records, not a new browser/replay run during V0. Original
+precommit counts, screenshots, limitations and handoff documents are unchanged.
+
+---
+
+## V0 — Aligned sequential virtual optics foundation
+
+**Status: implementation acceptance complete (2026-10-01).**
+Accepted baseline is M7 `3b94a2262ae11f7d2316ac4fc5d168fa4881c859`.
+One scalar monochromatic forward train in air uses one complete SamplingGrid,
+Gaussian/uniform sources, inclusive physical circular/rectangular apertures,
+signed ideal thin lenses and a terminal ideal observation plane. Absolute
+positions and list order are authoritative; colocated stages remain distinct.
+Existing public M1 ASM uses pad_factor=1 per interval, with no intermediate
+crop or power matching. Dark fields and forward evanescent decay remain valid.
+
+The exact schema/API, narrow arithmetic policy and bounded independent
+reference criteria are normative in §3.17 of [math conventions](math_conventions.md).
+The [V0 handoff](handoffs/v0/implementation_summary.md) records actual test,
+optical/convergence, negative-control, demonstration and figure evidence.
+Exactly 27 paths are approved. Old numerical modules/tests/guards, applications,
+M5 contracts, dependencies, settings and historical handoffs remain protected.
+The baseline suite passed 1570 tests with one retained Windows symlink skip;
+the final suite passed **1702 tests, 1 skipped in 184.06s (0:03:04)**. Independent
+mixed-parity direct-DFT train errors were below 4.2e-12. Full optical validation
+actually ran the required 2048²/1-µm rectangular-aperture case: fixed-ROI complex
+L2 error **0.027085064479543036 <= 0.035**. All five coarser/finest measurements,
+signed Gaussian lens comparisons, minimum-plane neighbors and clipped-Gaussian
+window/pitch studies are retained without fitting or normalization. Nine
+isolated deliberate faults failed their independent assertions; production
+files were never mutated. The default 512² demonstration ran, and all three
+numerical figures were inspected and regenerated with identical bytes.
+
+All 145 pre-existing tracked files outside the four allowed documentation
+modifications have unchanged hashes. The 52 installed-distribution inventory
+records match the starting versions, METADATA hashes and source locations;
+the initial inventory did not hash editable ohlab's separate PKG-INFO bytes.
+No dependencies, settings, instructions, old source/tests or historical
+handoffs were modified. Commit and normal push are explicitly approved after
+acceptance. A clean postcommit import/demo smoke check precedes pushing;
+three-way publication verification follows. Those postcommit outcomes stay
+in ignored evidence and the completion report, not predicted in this record.
+There is no V0 bundle/replay schema and no new qualified-replay gate.
+
+V1/V2/V3, hardware, target-editor extensions and teaching progress are outside
+this milestone. The port-8501 server is not task-owned and remains untouched.
 
 ---
 

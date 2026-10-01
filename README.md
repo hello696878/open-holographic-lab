@@ -35,12 +35,14 @@ A CGH simulator that can:
 
 ## Status
 
-**Milestones 0–6 implemented and validated within their documented scope.** See the authoritative
+**Milestones 0–7 implemented and validated within their documented scope.** See the authoritative
 [milestone ledger](docs/milestones.md) for dated acceptance evidence.
-Milestone 7's 2D Target Designer has completed the recorded automated and
-real-browser precommit acceptance. Clean postcommit generation and strict
-qualified replay remain a separate publication gate, documented in the
-[M7 handoff](docs/handoffs/milestone_7/tests_and_evidence.md).
+Milestone 7's clean-postcommit Designer generation and strict qualified replay
+completed on 2026-09-30; the dated [publication closeout](docs/milestones.md#m7-publication-closeout--recorded-2026-10-01)
+preserves the original precommit record. V0's sequential-optics foundation is
+implemented and validated within its documented scope, with 1702 passing tests
+and one retained Windows symlink skip. It is separate from CGH synthesis
+and the future 3D bench; publication verification follows acceptance.
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
@@ -527,6 +529,50 @@ qualification does not pass. The captured candidate example, with 20 iterations
 and seed 0, is in [M7 evidence](docs/handoffs/milestone_7/tests_and_evidence.md#asymmetric-example--completed).
 It is not a quality guarantee for arbitrary hard-edged drawings.
 
+## Sequential virtual optics (V0)
+
+`ohlab.optics` supplies immutable `SequentialExperiment` specifications,
+Gaussian/uniform sources, centered circular/rectangular apertures, signed ideal
+thin lenses and an actual terminal observation field. One complete periodic
+SI grid is retained through every forward interval using existing ASM with
+`pad_factor=1`. Aperture loss is preserved; zero sources/blocked fields are valid.
+There is no GS normalization, camera electronics, 3D viewer or new persistence.
+
+```python
+from ohlab import SamplingGrid
+from ohlab.optics import (GaussianSource, ObservationPlane,
+                         SequentialExperiment, ThinLens, run_experiment)
+
+experiment = SequentialExperiment(
+    wavelength_m=633e-9,
+    grid=SamplingGrid(ny=512, nx=512, dy=4e-6, dx=4e-6),
+    source=GaussianSource(amplitude=1, phase_rad=0, waist_radius_m=100e-6,
+                          waist_z_m=0, center_x_m=0, center_y_m=0),
+    components=(ThinLens(id="lens", z_m=0, focal_length_m=20e-3),),
+    observation=ObservationPlane(id="screen", z_m=20e-3),
+)
+result = run_experiment(experiment, record_fields=("source", "after:lens"))
+result.observation.data       # actual complex field, not an earlier-stage preview
+result.observation.intensity  # arbitrary intensity units, not W/m²
+result.stages                 # full-window sampled norms, signed changes/ratios
+```
+
+Standalone demonstration and explicit large optical acceptance (use a fresh
+owned output directory for each invocation):
+
+```powershell
+.\.venv\Scripts\python.exe -B -X utf8 examples/sequential_optics.py
+.\.venv\Scripts\python.exe -B -X utf8 scripts/validate_v0_optics.py --full --output runs/v0-full-new
+```
+
+The second command actually includes 2048²/1-µm bounded aperture acceptance.
+The Gaussian and ideal lens models are paraxial; ASM still solves a periodic
+sampled problem. Window/pitch convergence and independent references establish
+only the documented cases. See the [exact schema/API and mathematical contract](docs/math_conventions.md#317-v0-aligned-sequential-optics--api-and-schema-contract)
+and [V0 handoff](docs/handoffs/v0/implementation_summary.md) for tolerances,
+arithmetic policy, full commands and limitations. No observation is calibrated
+optical power or a simulated camera exposure.
+
 ## Test
 
 ```
@@ -571,6 +617,7 @@ src/
     io/artifacts.py         verified run capture, loading and exact replay
     algorithms/             periodic single-plane Gerchberg–Saxton solver
     metrics.py              pure intensity errors and regional diagnostics
+    optics/                 aligned sequential sources, elements and observation
 tests/                      pytest suite
 apps/                       local controller, provenance, presentation and Streamlit UI
 .streamlit/config.toml      loopback-only application configuration
@@ -592,7 +639,7 @@ scripts/make_m5_figures.py   explanatory M5 bundle/replay diagrams
 Two rules shape the codebase:
 
 **1. The numerical optics core is independent of UI, plotting, and file I/O.**
-`grid.py`, `field.py`, `propagation.py`, `targets.py`, `algorithms/`, and `metrics.py` take
+`grid.py`, `field.py`, `propagation.py`, `targets.py`, `algorithms/`, `optics/`, and `metrics.py` take
 arrays/fields and return numerical arrays, fields or scalars. Anything touching
 disk or screen lives in `ohlab/io/`, `scripts/`, `examples/`, or `apps/`.
 
