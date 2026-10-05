@@ -573,6 +573,64 @@ and [V0 handoff](docs/handoffs/v0/implementation_summary.md) for tolerances,
 arithmetic policy, full commands and limitations. No observation is calibrated
 optical power or a simulated camera exposure.
 
+## Interactive virtual optical bench (V1)
+
+V1 connects the existing public V0 model to a local Three.js/WebGL2 bench and
+ordinary Traditional Chinese panels. Load one of three presets, select a
+component, edit its supported parameters or use the constrained z rail, then
+press **Simulate**. Edits validate without solving. Orbit/pan/zoom, selection,
+resize and color limits affect presentation only. Earlier results remain
+separately labeled after an optical edit; their texture leaves the editable bench.
+
+Use the existing project Python and reviewed local Node/npm installation. The
+bench extra records already installed Starlette/Uvicorn; these commands do not
+authorize rebuilding or installing into the existing Python environment.
+
+```powershell
+Set-Location C:\holographiclab\frontend\bench
+& 'C:\Program Files\nodejs\npm.cmd' run --ignore-scripts build
+Set-Location C:\holographiclab
+.\.venv\Scripts\python.exe -B -X utf8 -m apps.virtual_bench.server
+```
+
+Open [the local bench](http://127.0.0.1:8510). It serves only this checkout's
+owned production assets and API at that origin. It stops if assets are missing
+or port 8510 is occupied; it does not manage another service. Ordinary use needs
+no Node server or external asset/CDN access. Stop the owned terminal with Ctrl+C.
+
+The display uses transverse 1 mm/world-unit and longitudinal 10 mm/world-unit
+schematic scales. Cosmetic lens housings impose no physical aperture. The
+initial shared intensity range is 0–10 amplitude-unit²; raw float64 readouts,
+maximum, saturation notices and V0 scalar stage records remain visible.
+Explicit automatic color limits change colors only. Optical accuracy still
+depends on the unchanged V0 periodic-grid, paraxial and sampling assumptions.
+There is no experiment persistence or new scientific replay qualification.
+
+Development/acceptance commands use the reviewed tools with lifecycle hooks
+disabled; no browser download or automatic tool repair is part of the workflow:
+
+```powershell
+Set-Location C:\holographiclab\frontend\bench
+& 'C:\Program Files\nodejs\npm.cmd' run --ignore-scripts typecheck
+& 'C:\Program Files\nodejs\npm.cmd' run --ignore-scripts test:unit
+Set-Location C:\holographiclab
+.\.venv\Scripts\python.exe -B -X utf8 scripts\validate_v1_bench.py --output runs\v1-new\api_evidence_1.json
+.\.venv\Scripts\python.exe -B -X utf8 scripts\v1_negative_controls.py --output-dir runs\v1-controls-new
+Set-Location C:\holographiclab\frontend\bench
+# These variables belong to this disposable acceptance terminal only.
+$env:V1_EVIDENCE_DIR = 'runs/v1-new'
+$env:V1_API_EVIDENCE = 'api_evidence_1.json'
+& 'C:\Program Files\nodejs\npm.cmd' run --ignore-scripts test:browser
+```
+
+Browser acceptance requires an already running owned production service and a
+fresh `V1_EVIDENCE_DIR` containing the independently generated API evidence.
+Choose new evidence names for each run; raw captures are never overwritten.
+The controlled disconnect case uses a separate owned synchronization harness,
+not a production test-control endpoint. See the [V1 handoff](docs/handoffs/v1/implementation_summary.md)
+and [exact evidence/reproduction notes](docs/handoffs/v1/tests_and_evidence.md).
+The existing Streamlit application is unchanged. V2/V3 and hardware remain deferred.
+
 ## Test
 
 ```
@@ -620,6 +678,8 @@ src/
     optics/                 aligned sequential sources, elements and observation
 tests/                      pytest suite
 apps/                       local controller, provenance, presentation and Streamlit UI
+  virtual_bench/            V1 loopback adapter and owned production asset service
+frontend/bench/             V1 TypeScript/Three.js source and locked development tools
 .streamlit/config.toml      loopback-only application configuration
 examples/load_target.py     standalone target demonstration
 scripts/make_m2_figures.py   deterministic M2 figure generator

@@ -40,3 +40,12 @@ runs/
 Thumbs.db
 desktop.ini
 .DS_Store
+
+# --- Owned V1 frontend build/test output ----------------------------------
+/frontend/bench/node_modules/
+/frontend/bench/.npm-cache/
+/frontend/bench/.vite/
+/frontend/bench/.vitest/
+/frontend/bench/dist/
+/frontend/bench/test-results/
+/frontend/bench/playwright-report/

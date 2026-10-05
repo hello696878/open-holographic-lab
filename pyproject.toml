@@ -53,6 +53,10 @@ ui = [
     "pillow>=10.0",
     "matplotlib>=3.8",
 ]
+bench = [
+    "starlette==1.7.0",
+    "uvicorn==0.54.0",
+]
 dev = [
     "pytest>=8.0",
     "matplotlib>=3.8",

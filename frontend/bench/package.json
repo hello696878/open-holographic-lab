@@ -1,0 +1,23 @@
+{
+  "name": "ohlab-virtual-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "npm@11.17.0",
+  "engines": {"node": ">=24.15.0 <25", "npm": "11.17.0"},
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "build": "vite build",
+    "test:browser": "playwright test"
+  },
+  "dependencies": {"three": "0.186.1"},
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "6.0.3",
+    "vite": "8.3.2",
+    "vitest": "5.0.3",
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.12.0"
+  }
+}

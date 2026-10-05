@@ -27,7 +27,8 @@ tested, its limitations recorded here, and its handoff package written to
 | 5 | Configuration and run artifacts | **complete** (2026-09-23) | [`milestone_5/`](handoffs/milestone_5/) |
 | 6 | Minimal application layer | **complete** (2026-09-29; closeout recorded 2026-09-30) | [`milestone_6/`](handoffs/milestone_6/) |
 | 7 | Editable 2D target designer | **complete** (2026-09-30; closeout recorded 2026-10-01) | [`milestone_7/`](handoffs/milestone_7/) |
-| V0 | Aligned sequential virtual optics foundation | implementation acceptance complete; publication checks follow (2026-10-01) | [`v0/`](handoffs/v0/) |
+| V0 | Aligned sequential virtual optics foundation | **complete** (2026-10-01; closeout recorded 2026-10-05) | [`v0/`](handoffs/v0/) |
+| V1 | Interactive 3D virtual optical bench | precommit acceptance complete; clean-build/publication gate follows (2026-10-05) | [`v1/`](handoffs/v1/) |
 
 ---
 
@@ -716,6 +717,70 @@ There is no V0 bundle/replay schema and no new qualified-replay gate.
 
 V1/V2/V3, hardware, target-editor extensions and teaching progress are outside
 this milestone. The port-8501 server is not task-owned and remains untouched.
+
+---
+
+### V0 publication closeout — recorded 2026-10-05
+
+The preceding V0 section remains its original precommit snapshot. The user
+accepted V0 within its reported validation scope. Read-back of the existing
+ignored `runs/v0_acceptance_20261001/publication_verification.json` records
+commit `ce4fe39eee2213dec993e09b25492e01f9d16497`, clean postcommit source/demo
+checks, normal push and local/live remote/GitHub API agreement. That same SHA
+was freshly verified as clean synchronized V1 starting state. These are dated
+publication records, not replacement measurements of the historical optics
+evidence. The V0 handoff, numerical source and tests remain unchanged.
+
+---
+
+## V1 — Interactive 3D virtual optical bench
+
+**Status: precommit acceptance complete; clean-build/publication gate follows
+(2026-10-05).** Accepted starting revision is V0
+`ce4fe39eee2213dec993e09b25492e01f9d16497`. Exactly 44 paths are approved:
+five existing documentation/configuration changes and 39 new application,
+frontend, test, validation and handoff/screenshot files.
+
+Plain TypeScript/Three.js/WebGL2/Vite supplies the schematic bench. Existing
+Starlette/Uvicorn serves owned production assets/API only on 127.0.0.1:8510.
+Authoritative public V0 validates the SI specification and computes once per
+accepted intentional simulation with `record_fields=()`. No new optics,
+JavaScript solver, physical component model, persistence or replay badge exists.
+The existing Streamlit application and M0–V0 scientific code/contracts remain
+unchanged. The port-8501 service is not task-owned and stays untouched.
+
+Numeric editing and constrained z-only ghost dragging preserve component IDs,
+order and colocated stages. Camera/selection/color/viewport state changes no
+scientific parameter or solver request. Optical edits detach the editable bench
+texture immediately; old results retain their original submitted specification.
+Complete bounded little-endian float64 frame validation precedes publication.
+Display products never replace numerical values; shared 0–10 color limits preserve
+loss, with raw maximum, saturation notice and undefined ratios retained as null.
+
+The computation gate follows the actual private worker lifetime across client
+disconnect, success, numerical/encoding failure and submission/cancellation
+paths. HTTP abort does not cancel running Python work. Body/grid/component,
+header/response/connection and drawing-buffer caps are application limits,
+not guarantees of sufficient physical sampling or hardware performance.
+
+The fresh retained baseline was 1702 passed, 1 skipped in 160.62s. V1 adds 100 Python
+tests, 65 frontend unit tests, real HTTP/direct-V0 comparison, actual production
+Chrome/WebGL acceptance, nine isolated detecting faults and three genuine
+screenshots. Exact final outputs, controlled cancellation scope, resource
+measurements, prior failed attempts and limitations are in the
+[V1 evidence](handoffs/v1/tests_and_evidence.md). The existing Windows file-symlink
+skip remains unchanged. No privileges are elevated to remove it.
+
+All 167 protected tracked files and 52 Python distribution records, including
+editable PKG-INFO, remain unchanged. The reviewed npm tree adds only owned V1
+frontend tools; install scripts stay disabled. The full 44-path inventory and
+unchanged lock/source checks precede the one approved milestone commit. Fresh
+dist recreation, source/served-asset and genuine browser/direct-V0 smoke checks
+must pass from the clean commit before normal push. Publication outcomes remain
+in ignored evidence and the completion report rather than being predicted here.
+
+V2/V3, hardware and later enhancements remain unstarted. Teaching is separate;
+no learning completion is inferred.
 
 ---
 
