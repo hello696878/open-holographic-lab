@@ -28,7 +28,8 @@ tested, its limitations recorded here, and its handoff package written to
 | 6 | Minimal application layer | **complete** (2026-09-29; closeout recorded 2026-09-30) | [`milestone_6/`](handoffs/milestone_6/) |
 | 7 | Editable 2D target designer | **complete** (2026-09-30; closeout recorded 2026-10-01) | [`milestone_7/`](handoffs/milestone_7/) |
 | V0 | Aligned sequential virtual optics foundation | **complete** (2026-10-01; closeout recorded 2026-10-05) | [`v0/`](handoffs/v0/) |
-| V1 | Interactive 3D virtual optical bench | precommit acceptance complete; clean-build/publication gate follows (2026-10-05) | [`v1/`](handoffs/v1/) |
+| V1 | Interactive 3D virtual optical bench | **complete** (2026-10-05; dated publication closeout below) | [`v1/`](handoffs/v1/) |
+| V2a | Coherent two-path interference foundation | precommit numerical acceptance complete; source/demo/publication gate follows (2026-10-05) | [`v2a/`](handoffs/v2a/) |
 
 ---
 
@@ -781,6 +782,75 @@ in ignored evidence and the completion report rather than being predicted here.
 
 V2/V3, hardware and later enhancements remain unstarted. Teaching is separate;
 no learning completion is inferred.
+
+---
+
+### V1 publication closeout — recorded 2026-10-05
+
+The preceding V1 section remains its original precommit snapshot. The user
+accepted V1 within its reported validation scope. Read-back of the existing
+ignored `runs/v1_acceptance_20261005/publication_verification.json`,
+`postcommit_build_verification.json` and
+`postcommit_browser/postcommit_browser_smoke.json` records commit
+`303a312fcbddfc9abefcef8c1424ae374ef872fe`, recreation of owned production
+assets from the clean commit, source/served-asset checks, genuine Chrome/WebGL
+direct-V0 smoke, a normal push and matching local/live remote/GitHub API SHAs.
+That revision was freshly verified as clean synchronized V2a starting state.
+These are dated read-backs of separately executed publication checks, not a
+new frontend build or browser run. The historical 10-pass/1-skip browser batch
+and separately passed controlled-disconnect check retain their original scope.
+No historical V1 handoff or measurement has been rewritten.
+
+---
+
+## V2a — Coherent two-path interference foundation
+
+**Status: precommit numerical acceptance complete; clean-postcommit source/demo
+and publication gates follow (2026-10-05).** Accepted starting revision:
+`303a312fcbddfc9abefcef8c1424ae374ef872fe`. Exactly 22 paths are approved:
+four existing documentation updates and eighteen new numerical, test, script,
+example, handoff and figure paths.
+
+Direct `ohlab.optics.interference` supplies ideal B/B_dagger ordered coherent
+mixing, uniform phase, fixed frozen two-arm records and the runner. Existing
+public ASM is called once per arm at pad1, preserving carrier/decay and zero
+distance. Extra signed phase applies only on arm 1; both actual complex outputs
+remain. Public constructors preserve independent complex128 read-only ndarray
+ownership without storage hardening. Ten sampled norms, signed differences and
+original-input fractions derive without clamping or hidden normalization.
+Equal-arm fractions include propagation survival tau; mixer algebra is not
+calibrated evanescent electromagnetic energy transport.
+
+The fresh unchanged baseline was 1802 passed, 1 skipped in 126.67 s. First retained/new
+suite was 2006 passed, 1 skipped in 223.75 s. Final after all twelve isolated scientific
+fault detections/restoration: **2006 passed, 1 skipped in 254.93s (0:04:14)**. The original Windows
+file-symlink privilege skip remains; junction behavior is tested separately.
+All eight declared phases plus four near-dark sides, asymmetric independent
+physical-coordinate DFT, simultaneous coherent inputs, unequal carrier,
+common/relative phase, forward evanescence and blocked quarter/quarter/half
+budget passed unchanged bounds. Worst complete asymmetric input-scaled complex
+DFT error was 1.1562283221955914e-15. Equal 100 nm mixed-spectrum tau was
+0.9275310453988844; unequal 80/130 nm ratio 0.9278073476242655. Exact current
+measurements, probe provenance and the preserved new-fixture message failure
+are in the [V2a evidence](handoffs/v2a/tests_and_evidence.md).
+
+Both modest 64²/128² demos and bounded 512² runtime/memory probes ran on shipped
+functions. All three actual numerical figures were inspected and regenerated
+byte-identically. No browser/frontend/server acceptance was run or required.
+Historical V1 results remain historical. All 207 protected pre-existing tracked
+files and installed distribution versions, metadata hashes and source locations
+remain unchanged. Existing code/tests/guards/exports, M5 contracts, apps/frontend,
+dependencies, settings, instructions and historical handoffs were not modified.
+
+One commit and normal push are explicitly approved after acceptance. A clean
+postcommit import/source-location and 64² demo smoke precede pushing; local/live
+remote/GitHub API matching and final clean status are recorded afterward in
+ignored evidence/completion report, not predicted here. No new replay gate,
+persistence schema, general topology, physical mirror model or UI is added.
+
+V2a numerical foundation -> separately approved V2b dual-output 3D integration
+-> later reflection geometry, polarization and instruments. V2b/later stages
+remain unstarted; teaching and historical learning records remain separate.
 
 ---
 

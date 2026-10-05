@@ -44,6 +44,8 @@ implemented and validated within its documented scope, with 1702 passing tests
 and one retained Windows symlink skip. It is separate from CGH synthesis
 and the future 3D bench; publication verification follows acceptance.
 
+Dated current closeout (2026-10-05): V1 publication is complete, with its original browser/build evidence preserved. V2a numerical acceptance is complete within the [new handoff](docs/handoffs/v2a/implementation_summary.md); its source/demo/publication gates follow acceptance. Earlier V0 measurements above remain historical. V2b and later stages remain deferred.
+
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
 the **Angular Spectrum Method**. Milestone 2 adds strict grayscale PNG loading
@@ -629,7 +631,59 @@ Choose new evidence names for each run; raw captures are never overwritten.
 The controlled disconnect case uses a separate owned synchronization harness,
 not a production test-control endpoint. See the [V1 handoff](docs/handoffs/v1/implementation_summary.md)
 and [exact evidence/reproduction notes](docs/handoffs/v1/tests_and_evidence.md).
-The existing Streamlit application is unchanged. V2/V3 and hardware remain deferred.
+The existing Streamlit application is unchanged. V2a adds the independent
+numerical foundation below; V2b/V3 and hardware remain deferred.
+
+## Coherent two-path interference (V2a)
+
+V2a adds a classical scalar monochromatic, ideal unfolded two-path model.
+It uses a balanced B splitter, existing forward ASM in each arm, an extra
+uniform phase only on arm 1, and the explicitly selected inverse B_dagger
+recombiner. Both ordered complex outputs are retained. It is independent of
+the V1 bench and adds no mirror geometry, polarization, coating model,
+instrument, persistence or browser integration.
+
+Import its APIs from the new module directly; package exports are unchanged:
+
+```python
+from ohlab import ComplexField, SamplingGrid
+from ohlab.optics.interference import TwoArmSpec, run_two_arm
+
+grid = SamplingGrid(ny=64, nx=64, dy=4e-6, dx=4e-6)
+incident = ComplexField.uniform(grid=grid, wavelength_m=633e-9)
+spec = TwoArmSpec(arm_0_distance_m=2e-3, arm_1_distance_m=2e-3,
+                  relative_phase_rad=0.37)
+result = run_two_arm(incident, spec=spec)
+port_0, port_1 = result.outputs
+print(result.norms.output_fractions, result.norms.total_output_ratio)
+```
+
+Fields must have exactly matching grid metadata, coordinate convention and
+wavelength. Public constructors provide independent complex128 read-only
+arrays. The runner caps each axis at 512; this is a resource policy, not proof
+of adequate optical sampling. Norms are sampled amplitude-unit²·m², not watts.
+Output fractions use original total input as their denominator. Equal-arm
+fractions are `tau*cos(phi/2)**2` and `tau*sin(phi/2)**2`, where tau is the
+propagation survival ratio; bare cos²/sin² requires lossless propagation.
+Zero input gives undefined ratios (`None`), and tiny dark-port residuals remain.
+Uniform phase on equal spatial modes changes brightness, not spatial stripes.
+
+Using the existing environment, run the modest standalone example (64² by
+default, optional `--size 128`), independent validation and isolated controls.
+Each evidence destination must be fresh under ignored `runs/`:
+
+```powershell
+.\.venv\Scripts\python.exe -B -X utf8 examples\two_path_interference.py --output runs\v2a-demo-new
+.\.venv\Scripts\python.exe -B -X utf8 scripts\validate_v2a_interference.py --output runs\v2a-validation-new
+.\.venv\Scripts\python.exe -B -X utf8 scripts\v2a_negative_controls.py --output-dir runs\v2a-controls-new
+```
+
+The exact APIs, port/phase translation, ten stage norms and signed diagnostic
+properties are normative in [§3.18](docs/math_conventions.md#318-v2a-coherent-two-path-interference).
+See the [V2a handoff](docs/handoffs/v2a/implementation_summary.md) and
+[evidence/reproduction commands](docs/handoffs/v2a/tests_and_evidence.md).
+V2a is followed only by separately approved V2b dual-output 3D integration,
+then later reflection geometry, polarization and instruments.
 
 ## Test
 

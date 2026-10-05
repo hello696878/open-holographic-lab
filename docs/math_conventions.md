@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.10 — 2026-10-01
+**Version:** 0.11 — 2026-10-05
 
 ---
 
@@ -1271,6 +1271,171 @@ It is a regional complex-field L2 criterion, not intensity error, worst-pixel
 bound or percent accuracy. Sampled-area bias and omitted Fresnel terms are
 separate; no sub-percent claim is made for this hard-edged fixture.
 
+### 3.18 V2a coherent two-path interference
+
+V2a is an ideal classical scalar monochromatic two-port model in the existing
+negative-time convention `exp(-i*omega*t)`. It is unfolded: each arm has its
+own forward local z, with identity transverse-frame mapping. It does not model
+mirrors, reflected coordinate frames, polarization, coatings, quantum vacuum,
+noise or calibrated radiometry. Distances are nonnegative finite metres;
+extra phase is finite signed radians, stored without wrapping.
+
+**Public module and ordering.** Import directly from `ohlab.optics.interference`:
+`mix_balanced`, `apply_uniform_phase`, `TwoArmSpec`, `TwoArmNorms`,
+`TwoArmResult`, and `run_two_arm`. Existing package exports remain unchanged.
+Every field/scalar pair is ordered `(0,1)`. Select the mixer explicitly with
+`matrix="B"` or `matrix="B_dagger"`:
+
+```text
+B        = [[1, +i], [+i, 1]] / sqrt(2)
+B_dagger = [[1, -i], [-i, 1]] / sqrt(2).
+```
+
+Same-channel coefficients are called logical transmission `t=1/sqrt(2)`;
+crossed coefficients are logical reflection `r=+i/sqrt(2)` for B and
+`-i/sqrt(2)` for its inverse. These labels describe this port ordering, not
+physical ray tracing or a universal coating law. The second mixer explicitly
+implements the inverse; rotating an arbitrary physical cube is not claimed to
+implement B_dagger. Direct multiplication gives `B_dagger B = I`.
+
+`TwoArmSpec(*, arm_0_distance_m, arm_1_distance_m, relative_phase_rad)` fixes
+the two paths. `run_two_arm(incident, *, spec)` supplies `(incident, zero)`,
+applies B, calls public `propagate_angular_spectrum` once per arm with
+`pad_factor=1`, applies `exp(i*relative_phase_rad)` only on arm 1, then applies
+B_dagger. Zero distances still call the public propagator and preserve its
+identity behavior. The arm travels already include `exp(i*kz*L)`; never add
+another carrier, reset an arm's phase, or normalize an arm after travel.
+The principal-root evanescent decay of §3.9 remains unchanged.
+
+Reference planes are immediately after B and immediately before/after
+B_dagger. For unscaled incident-field propagations `A=P(L0)U` and `V=P(L1)U`,
+the actual ordered outputs are
+
+```text
+U0 = (A + exp(i*phi)*V)/2
+U1 = i*(exp(i*phi)*V - A)/2.
+```
+
+For equal arms `W=P(L)U`, these become
+`exp(i*phi/2)*cos(phi/2)*W` and `-exp(i*phi/2)*sin(phi/2)*W`.
+Port 0 is bright at zero extra phase; at pi, port 1 is `-i*W`.
+Common input phase multiplies both complex outputs by that phase while
+leaving intensities unchanged. Relative arm phase changes their distribution.
+Equal spatial modes under uniform phase redistribute brightness; they do not
+create spatial stripes. Unequal modes need not reach complete cancellation.
+
+**Compatibility and ownership.** Both ports require the canonical
+`SamplingGrid` coordinate convention (§3.4), using the canonical class rather
+than subclasses that can override coordinates, equal ny/nx/dy/dx, equal
+wavelength, matching shape, complex128 finite data and usable derived
+geometry. Shape alone is insufficient. No approximate matching, resampling,
+registration, flip or conjugation is performed. Metadata cannot establish
+physical alignment; identity frame mapping is an explicit modelling assumption.
+The same valid field may be supplied to both logical ports. Inputs and scalar
+parameters are validated before identity/dark shortcuts. The runner alone caps
+each grid axis at 512, before snapshots/FFT work; this is a resource limit, not
+a sampling guarantee.
+
+All returned fields use supported public `ComplexField` construction: fresh
+independently owned complex128 arrays, read-only stored data, and no numerical
+storage sharing with input or the other output. Zero-phase application also
+returns an independent field. This preserves the existing ndarray contract;
+it does not promise byte-backed storage or irreversible write-flag locking.
+Records are frozen and keyword-only; the field-bearing result has `eq=False`.
+The result retains only the two final fields and ten scalar stage norms.
+
+**Norm records and ratios.** Define
+`N(U)=sum(abs(U)**2, dtype=float64)*dx*dy`, in that evaluation order and in
+amplitude-unit^2*m^2, not watts. `TwoArmNorms` stores exactly five ordered pairs:
+
+| Pair | Measurement plane |
+|---|---|
+| `inputs` | incident port 0 and exact zero port 1 |
+| `split` | immediately after B |
+| `propagated` | after each ASM, before the extra phase |
+| `combiner` | after the extra arm-1 phase, immediately before B_dagger |
+| `outputs` | immediately after B_dagger |
+
+Derived `inputs_total`, `split_total`, `propagated_total`, `combiner_total`,
+and `outputs_total` sum their respective pairs. Signed after-minus-before
+properties are `split_delta=split_total-inputs_total`,
+`propagation_delta=propagated_total-split_total`,
+`phase_delta=combiner_total-propagated_total`,
+`recombination_delta=outputs_total-combiner_total`, and
+`total_delta=outputs_total-inputs_total`. No duplicate totals are stored.
+Tiny signed floating-point differences are retained, not relabelled absorption.
+
+`output_fractions` means `outputs[j]/inputs_total` for each ordered port;
+`total_output_ratio` means `outputs_total/inputs_total`. For an exactly zero
+input total they return `(None,None)` and `None`; exact zero fields are valid.
+No clamping or normalization by the surviving output total occurs. Any
+explanatory output-normalized fractions must label their different denominator
+and be undefined for zero output. With equal arms and positive input, let
+`tau=N(W)/N(U)`:
+
+```text
+eta0 = tau*cos(phi/2)**2
+eta1 = tau*sin(phi/2)**2.
+```
+
+Bare input-normalized cos²/sin² requires tau=1. Mixed propagating/evanescent
+fields generally have tau<1. Mixer unitarity is algebraic conservation of the
+combined sampled norm, not a calibrated beam-splitter law for evanescent
+electromagnetic energy transport. Whole-run conservation additionally assumes
+lossless propagating-spectrum evolution on the complete periodic window.
+More generally, with `C=dx*dy*sum(conj(A)*V)`,
+`Nout0/1=(N(A)+N(V) +/- 2*Re(exp(i*phi)*C))/4` and
+`Nout0+Nout1=(N(A)+N(V))/2`.
+
+Scalar pairs are fixed tuples of finite nonnegative real numbers; booleans,
+arrays and complex values are not real scalar parameters. Aggregates/ratios
+must remain usable. Result construction checks compatible independently owned
+output fields, exact agreement with the same declared output-norm reduction,
+and the fixed zero second
+input. User-constructed intermediate scalars cannot authenticate their own
+measurement provenance; the runner supplies actual stage measurements.
+
+**Darkness and arithmetic.** Preserve represented cancellation residuals;
+floating-point pi/2pi do not imply bit-exact cancellation. Use input-scaled
+absolute tolerances near dark ports, with separate exact-zero-input assertions.
+Local overflow/invalid arithmetic or a nonzero whole field whose complete norm
+underflows to zero raises ValueError. Bounded field products, squared tails and
+existing forward evanescent decay may underflow; positive ratios must not
+silently underflow to zero. Caller NumPy settings remain unchanged.
+
+Blocking an arm is a primitive/integration control, not a shutter in
+`TwoArmSpec`. For a lossless balanced input of norm Pin, remove one split arm
+of norm Pin/2. Each recombined output is Pin/4 and the surviving total Pin/2.
+A uniform phase on the sole survivor changes neither output intensity. Do not
+attribute the removed norm to the phase stage or normalize the removal away.
+
+**Finite-case acceptance bounds.** Numeric matrix unitarity uses rtol=0,
+atol=2e-15. Hand/equal-arm/common-phase complex checks use rtol=2e-14 and
+atol=2e-14*Ain; independent complete-path DFT uses rtol=1e-11 and
+atol=1e-11*Ain; sampled norms use rtol=2e-13 and atol=2e-13*Pin. Ain is maximum
+input amplitude across the relevant inputs, and Pin their combined input norm.
+The eight declared phases are 0, pi/2, pi, 3pi/2, 2pi, .37, -.83, 2.41;
+additional near-dark phases are +/-1e-4 and pi+/-1e-4. These are measured
+fixture bounds, not universal accuracy guarantees; no fitting/phase alignment
+or reference normalization is permitted.
+
+**Primary-reference translation.** MIT's
+[Mirrors, Interferometers and Thin-Film Structures, printed pp. 70–76,
+Eqs. (2.171)–(2.185)](https://live.ocw.mit.edu/courses/6-974-fundamentals-of-photonics-quantum-electronics-spring-2006/98fcc94d2216c26db424e294c28d459a_mirror_inter_thn.pdf)
+uses positive time, negative travel phase and
+`S=[[r,j*t],[j*t,r]]`; its diagonal-reflection/geometric port labels differ.
+For the balanced case, conjugate fields to negative time, set
+`R=diag(1,-1)` and `Q=[[0,i],[-i,0]]`, then
+`R*S.conj()*R=B` and `Q*S.conj()*R=B_dagger`.
+Our outputs are `U0=i*b8.conj()` and `U1=-i*b7.conj()` in that translated
+ordering. Thus MIT's bright b8/dark b7 correspond to our ordered bright 0/dark 1;
+its raw labels and coating interpretation are not copied. The independent
+translation and full complex checks are preserved in the validation script.
+The existing [ASM reference §6.3, Eqs. (6)–(9)](https://phys.libretexts.org/Bookshelves/Optics/BSc_Optics_%28Konijnenberg_Adam_and_Urbach%29/06%3A_Scalar_diffraction_optics/6.04%3A_Angular_Spectrum_Method)
+supplies the negative time/positive forward exponent and decaying principal
+branch. V2b dual-output 3D presentation, later reflection geometry,
+polarization and instruments require separate approval.
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -1314,6 +1479,7 @@ validation references. It does not add M3 multi-plane synthesis or a 3D scene.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.11 | 2026-10-05 | **§3.18 added** — ideal B/B_dagger ordered two-path API, uniform arm-1 phase, public ASM reuse, public constructor ownership, ten sampled norms and input-normalized ratios including propagation survival, contextual arithmetic, independent complex/near-dark/reference bounds and explicit primary-reference translation. | Approved V2a numerical foundation. Existing M0–V1 code/contracts, physical signs, initializers, tests and historical evidence remain unchanged; V2b and richer geometry remain deferred. |
 | 0.10 | 2026-10-01 | **§3.17 added** — exact SI sequential-experiment schema/API, immutable stage identities, source/element actions, complete-window forward ASM reuse, dark/norm arithmetic and bounded independent reference criteria. **§5 clarified** — V0's explicit ideal paraxial elements/reference formulas are distinct from an unimplemented alternate propagator or 3D scene. | Approved V0 implementation. Existing M0–M7 numerical implementations, selected signs, sampling, GS and M5 bundle contracts remain unchanged; original evidence and the earlier unverified Goodman attribution are preserved. |
 | 0.9 | 2026-09-30 | **§3.16 added** — versioned pixel-coordinate designs, inclusive center-sampled geometry, internally ordered undirected segments, ordered intensity overwrite, bounded editable JSON and external design/run association. | Approved Milestone 7. Pixel coordinates are dimensionless authoring/sample coordinates; existing SI optical calls, M2–M5 scientific/serialization contracts, old mathematical sections and historical evidence remain unchanged. |
 | 0.8 | 2026-09-23 | **§3.10 refined; §3.15 added** — separate artifact integrity, provenance qualification and exact replay; define schema-v1 capture/serialization, metric persistence and transactional I/O. | Approved Milestone 5. M0–M4 algorithms, physical conventions, normalization, RNG and historical evidence remain unchanged. |

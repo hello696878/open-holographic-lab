@@ -1,6 +1,6 @@
 # Roadmap — content design, then a virtual optics laboratory
 
-Recorded **2026-09-30**, V0 update **2026-10-01**, V1 update **2026-10-05**. The [milestone ledger](milestones.md) is authoritative
+Recorded **2026-09-30**, V0 update **2026-10-01**, V1/V2a update **2026-10-05**. The [milestone ledger](milestones.md) is authoritative
 for current acceptance. This roadmap records product direction and approval
 boundaries; listing a future stage does not authorize its implementation.
 
@@ -37,7 +37,9 @@ content-design work and is delivered in independently approved stages.
 |---|---|---|
 | V0 | Approved aligned sequential scalar computation foundation: exact SI experiment schema, Gaussian/uniform sources, binary apertures, ideal thin lenses and terminal observation | Existing fixed-grid forward ASM, immutable stages, independent direct-DFT/Gaussian/Fresnel references, explicit window/pitch convergence and bounded aperture acceptance; implementation acceptance is recorded in the ledger |
 | V1 | Approved local TypeScript/Three.js/WebGL2 bench connected to public V0 through Starlette/Uvicorn | Production assets/API on 127.0.0.1:8510; orbit/pan/zoom, selection, numeric editing and constrained z rail; explicit simulation, original detector float64 readout, stale-result separation and resource limits |
-| V2 | Separately validated mirrors, beam splitters, interference paths, polarization components and richer instruments | Branching/recombination, tilted planes, noise and absolute radiometry require explicit models and tests; unsupported geometry stays unsupported |
+| V2a | Approved coherent two-path numerical foundation: ordered ideal B/B_dagger mixing, two forward ASM arms, extra arm-1 phase and both complex outputs | Exact compatible grids, public constructor ownership, ten sampled norms, independent complex/DFT/evanescent/blocked controls and standalone numerical figures; no V1 connection |
+| V2b | Separately approved dual-output 3D interferometer integration | Future frontend/protocol/server/browser acceptance and stale-result separation; no implementation is included in V2a |
+| Later V2 | Separately modelled reflection geometry, polarization and richer instruments | Tilted/reflected frames, coating laws, noise and absolute radiometry each need explicit physical models and tests; unsupported geometry stays unsupported |
 | V3 | A remotely accessible service with saved/shared experiments and educational templates | Separate security, authentication/authorization, storage, resource limits and remote-compute planning before deployment |
 
 `TargetDesign2D` describes sampled content. V1 edits the existing V0
@@ -59,13 +61,16 @@ train on parallel planes; it is not `OpticalExperimentScene3D`, a viewer or
 generic M5 bundle. Absolute z positions are authoritative, element actions and
 travel are separate, and physical aperture loss is never normalized away.
 The existing Streamlit application remains unchanged. V1 is independently
-approved; V2/V3, remote service and hardware work require later authorization.
+approved. V2a has its own [two-path contract](math_conventions.md#318-v2a-coherent-two-path-interference)
+and [handoff](handoffs/v2a/implementation_summary.md); it does not change V0 or
+V1's contracts. V2b/later V2/V3, remote service and hardware work require later authorization.
 
 Reuse existing field/propagation conventions and validation practices where
 their assumptions apply. The current periodic, lossless GS contract is not a
 general optical-bench solver. A physical aperture can remove power; a future
 optical train must not normalize that loss away to fit the present GS model.
-Arbitrary tilted planes, branching/recombination, polarization, detector noise,
+V2a's narrowly fixed unfolded branching/recombination does not establish a
+generic topology or reflected-frame solver. Arbitrary tilted planes, polarization, detector noise,
 absolute radiometry and hardware twins remain later explicit modelling work.
 
 Physical SLM integration, calibration, vendor SDKs and device services form a
