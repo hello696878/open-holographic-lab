@@ -7,7 +7,7 @@ import type { Experiment, RequestEnvelope } from '../src/contracts';
 const root = resolve('../..');
 const evidence = resolve(root, process.env.V1_EVIDENCE_DIR ?? 'runs/v1_acceptance_20261005');
 const api = JSON.parse(readFileSync(resolve(evidence, process.env.V1_API_EVIDENCE ?? 'api_evidence_1.json'), 'utf8'));
-const figures = resolve(root, 'docs/handoffs/v1/figures');
+const figures = resolve(root, process.env.V1_FIGURE_DIR ?? 'docs/handoffs/v1/figures');
 const smokeOnly = process.env.V1_SMOKE === '1';
 const snap = (page: Page): Promise<any> => page.evaluate(() => window.__benchDebug.snapshot());
 async function ready(page: Page): Promise<void> {

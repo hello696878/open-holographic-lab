@@ -23,7 +23,7 @@ def imports(path):
 
 
 def test_backend_uses_public_optics_without_replacement_or_unrelated_science():
-    allowed = {"ohlab.optics"}
+    allowed = {"ohlab.optics", "ohlab.optics.interference"}
     for path in BACKEND.glob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for name in imports(path):
@@ -38,7 +38,19 @@ def test_backend_uses_public_optics_without_replacement_or_unrelated_science():
              isinstance(node.func, ast.Name) and node.func.id == "run_experiment"]
     assert len(calls) == 1
     assert any(keyword.arg == "record_fields" and isinstance(keyword.value, ast.Tuple)
-               and not keyword.value.elts for keyword in calls[0].keywords)
+                and not keyword.value.elts for keyword in calls[0].keywords)
+
+
+def test_two_path_adapter_uses_only_public_source_sampler_and_runner():
+    tree = ast.parse((BACKEND / "two_path_adapter.py").read_text(encoding="utf-8"))
+    forbidden = {"run_experiment", "mix_balanced", "apply_uniform_phase", "_norm", "_geometry"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            assert node.func.id not in forbidden
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("ohlab"):
+            assert all(not alias.name.startswith("_") for alias in node.names)
+    assert any(isinstance(node, ast.ImportFrom) and node.module == "ohlab.optics.interference"
+               and any(alias.name == "run_two_arm" for alias in node.names) for node in ast.walk(tree))
 
 
 def test_adapter_import_does_not_need_server_browser_or_existing_optional_ui():

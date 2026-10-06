@@ -35,6 +35,12 @@ from .adapter import (NumericalError, ValidatedSubmission, simulate_submission, 
                       validate_submission)
 from .protocol import (MAX_BODY_BYTES, MAX_RESPONSE_BYTES, PROTOCOL_VERSION,
                        validate_request_id)
+from . import two_path_adapter
+from .two_path_protocol import (MAX_RESPONSE_BYTES as MAX_TWO_PATH_RESPONSE_BYTES,
+                                MAX_SWEEP_RESPONSE_BYTES, SweepReply)
+
+Submission = ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission | two_path_adapter.ValidatedSweepSubmission
+WorkerResult = bytes | SweepReply
 
 HOST = "127.0.0.1"
 PORT = 8510
@@ -82,7 +88,7 @@ Submission failure releases the reservation immediately. No result history is
 retained by this object. ``wait_idle`` exists for controlled synchronization.
 """
 
-    def __init__(self, worker: Callable[[ValidatedSubmission], bytes],
+    def __init__(self, worker: Callable[[Submission], WorkerResult],
                  executor: Executor | None = None) -> None:
         self._worker = worker
         self._executor = executor if executor is not None else ThreadPoolExecutor(
@@ -98,7 +104,7 @@ retained by this object. ``wait_idle`` exists for controlled synchronization.
         with self._lock:
             return self._reserved
 
-    def submit(self, submission: ValidatedSubmission) -> Future[bytes]:
+    def submit(self, submission: Submission) -> Future[WorkerResult]:
         """Reserve and submit once; reject concurrently accepted work."""
         with self._lock:
             if self._reserved:
@@ -115,7 +121,7 @@ retained by this object. ``wait_idle`` exists for controlled synchronization.
         future.add_done_callback(self._completed)
         return future
 
-    def _completed(self, future: Future[bytes]) -> None:
+    def _completed(self, future: Future[WorkerResult]) -> None:
         with self._lock:
             self._reserved = False
             self._idle.set()
@@ -286,7 +292,7 @@ async def _wait_disconnect(request: Request) -> None:
             return
 
 
-async def _worker_response(request: Request, future: Future[bytes]) -> bytes | None:
+async def _worker_response(request: Request, future: Future[WorkerResult]) -> WorkerResult | None:
     # asyncio.wait does not cancel its inputs when the handler is cancelled.
     # Explicit shielding documents that no cancellation may reach the worker.
     wrapped = asyncio.wrap_future(future)
@@ -320,6 +326,8 @@ async def _worker_response(request: Request, future: Future[bytes]) -> bytes | N
 
 def create_app(*, assets_dir: Path | None = None,
                worker: Callable[[ValidatedSubmission], bytes] | None = None,
+               two_path_worker: Callable[[two_path_adapter.ValidatedTwoPathSubmission], bytes] | None = None,
+               sweep_worker: Callable[[two_path_adapter.ValidatedSweepSubmission], SweepReply] | None = None,
                executor: Executor | None = None) -> Starlette:
     """Create the local service; no numerical work or network listeners start.
 
@@ -330,7 +338,16 @@ always uses this checkout's fixed built directory and public V0 adapter.
     index_path, index_stat = assets.lookup_path("index.html")
     if not index_path or index_stat is None or not stat.S_ISREG(index_stat.st_mode):
         raise RuntimeError("Build V1 frontend assets before starting the bench")
-    gate = ComputationGate(worker if worker is not None else simulate_submission, executor)
+    def dispatch(submission: Submission) -> WorkerResult:
+        if isinstance(submission, ValidatedSubmission):
+            return (worker if worker is not None else simulate_submission)(submission)
+        if isinstance(submission, two_path_adapter.ValidatedTwoPathSubmission):
+            return (two_path_worker if two_path_worker is not None else two_path_adapter.simulate_submission)(submission)
+        if isinstance(submission, two_path_adapter.ValidatedSweepSubmission):
+            return (sweep_worker if sweep_worker is not None else two_path_adapter.sweep_submission)(submission)
+        raise TypeError("unsupported immutable submission")
+
+    gate = ComputationGate(dispatch, executor)
 
     @asynccontextmanager
     async def lifespan(app: Starlette):
@@ -393,14 +410,83 @@ always uses this checkout's fixed built directory and public V0 adapter.
     async def http_error(request: Request, exception: HTTPException) -> Response:
         return _error(exception.status_code, "http_error", "Request path or method is unavailable")
 
+    def two_path_error(status: int, code: str, message: str,
+                       request_id: str | None = None) -> JSONResponse:
+        return JSONResponse({"protocol_version": 1, "message_type": "two_path_error",
+                             "request_id": request_id,
+                             "error": {"code": code, "message": message[:300]}}, status_code=status)
+
+    async def two_path_validate(request: Request) -> Response:
+        return await two_path_process(request, operation="validate")
+
+    async def two_path_simulate(request: Request) -> Response:
+        return await two_path_process(request, operation="simulate")
+
+    async def two_path_sweep(request: Request) -> Response:
+        return await two_path_process(request, operation="sweep")
+
+    async def two_path_process(request: Request, *, operation: str) -> Response:
+        request_id = None
+        try:
+            payload = await _read_json(request)
+            request_id = _parsed_id(payload)
+            submission = (two_path_adapter.validate_sweep_submission(payload) if operation == "sweep"
+                          else two_path_adapter.validate_submission(payload))
+        except BodyError as exc:
+            return two_path_error(exc.status, exc.code, str(exc), request_id)
+        except ClientDisconnect:
+            return two_path_error(499, "disconnected", "Client disconnected before submission", request_id)
+        except (ValueError, TypeError, OverflowError) as exc:
+            return two_path_error(422, "invalid_experiment", str(exc), request_id)
+        if operation == "validate":
+            return JSONResponse({"protocol_version": 1, "message_type": "two_path_validation",
+                                 "request_id": submission.request_id,
+                                 "experiment_sha256": submission.experiment_sha256,
+                                 "experiment": submission.experiment.to_dict()})
+        try:
+            future = gate.submit(submission)
+        except BusyError:
+            return two_path_error(409, "busy", "A Python computation is still running; submit again deliberately later",
+                                  submission.request_id)
+        except Exception:
+            return two_path_error(500, "submission_failed", "Could not submit the computation", submission.request_id)
+        try:
+            encoded = await _worker_response(request, future)
+        except asyncio.CancelledError:
+            raise
+        except CancelledBeforeStart:
+            return two_path_error(503, "cancelled_before_start", "Computation did not start; no result was produced",
+                                  submission.request_id)
+        except NumericalError as exc:
+            return two_path_error(422, "numerical_failure", str(exc), submission.request_id)
+        except Exception:
+            return two_path_error(500, "simulation_failed", "Numerical computation or result encoding failed",
+                                  submission.request_id)
+        if encoded is None:
+            return two_path_error(499, "disconnected", "Client disconnected; backend completion is unknown",
+                                  submission.request_id)
+        if operation == "sweep":
+            if (not isinstance(encoded, SweepReply) or encoded.status_code not in (200, 422, 500) or
+                    not isinstance(encoded.body, bytes) or not 2 <= len(encoded.body) <= MAX_SWEEP_RESPONSE_BYTES):
+                return two_path_error(500, "simulation_failed", "Sweep encoding failed", submission.request_id)
+            return Response(encoded.body, status_code=encoded.status_code, media_type="application/json")
+        if (not isinstance(encoded, bytes) or
+                not 16 <= len(encoded) <= MAX_TWO_PATH_RESPONSE_BYTES):
+            return two_path_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
+        return Response(encoded, media_type="application/octet-stream")
+
     async def unavailable_api(request: Request) -> Response:
         status = 405 if request.url.path in {
-            "/api/v1/health", "/api/v1/validate", "/api/v1/simulate"} else 404
+            "/api/v1/health", "/api/v1/validate", "/api/v1/simulate",
+            "/api/v2b/validate", "/api/v2b/simulate", "/api/v2b/sweep"} else 404
         return _error(status, "http_error", "Request path or method is unavailable")
 
     app = Starlette(routes=[Route("/api/v1/health", health, methods=["GET"]),
                             Route("/api/v1/validate", validate, methods=["POST"]),
                             Route("/api/v1/simulate", simulate, methods=["POST"]),
+                            Route("/api/v2b/validate", two_path_validate, methods=["POST"]),
+                            Route("/api/v2b/simulate", two_path_simulate, methods=["POST"]),
+                            Route("/api/v2b/sweep", two_path_sweep, methods=["POST"]),
                             Route("/api/{path:path}", unavailable_api,
                                   methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"]),
                             Mount("/", app=assets)],

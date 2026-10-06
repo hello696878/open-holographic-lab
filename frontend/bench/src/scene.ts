@@ -4,11 +4,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Experiment, DecodedResult } from './contracts';
 import { structuralEqual } from './contracts';
 import { detectorEdges, pixelFromUV, worldPosition } from './mapping';
-import { createDetectorTexture, type ColorLimits } from './detector';
+import { createDetectorTexture, prepareDualTextures, type ColorLimits } from './detector';
+import type { DecodedTwoPathResult, TwoPathExperiment } from './two_path_contracts';
 
 export interface SceneCallbacks {
   select: (ids: string[]) => void;
   pixel: (row: number, column: number) => void;
+  dualPixel?: (port: 0 | 1, row: number, column: number) => void;
   commitZ: (id: string, z_m: number) => void;
   notice: (message: string) => void;
   presentationFailure: (message: string | null) => void;
@@ -32,6 +34,12 @@ export class BenchScene {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private experiment: Experiment | null = null;
+  private mode: 'sequential' | 'two_path' = 'sequential';
+  private twoPathExperiment: TwoPathExperiment | null = null;
+  private dualDetectors: readonly [DetectorMesh, DetectorMesh] | null = null;
+  private dualTextures: readonly [THREE.DataTexture, THREE.DataTexture] | null = null;
+  private dualResult: DecodedTwoPathResult | null = null;
+  private dualColorKey = '';
   private selection = 'source';
   private detector: DetectorMesh | null = null;
   private texture: THREE.DataTexture | null = null;
@@ -138,7 +146,7 @@ export class BenchScene {
 
   /** Accept only the validated draft. Camera position is preserved on edits. */
   updateExperiment(experiment: Experiment, selection: string): void {
-    if (!this.experiment || !structuralEqual(this.experiment, experiment)) {
+    if (this.mode !== 'sequential' || !this.experiment || !structuralEqual(this.experiment, experiment)) {
       const edges = detectorEdges(experiment.grid);
       this.ensureDisplayFinite([
         edges.width * 1000, edges.height * 1000, edges.centerX * 1000,
@@ -160,7 +168,11 @@ export class BenchScene {
         ]);
       }
       this.updateResult(null, { min: 0, max: 10 });
+      this.detachDualResult();
       this.disposeGroup(this.bench);
+      this.mode = 'sequential';
+      this.twoPathExperiment = null;
+      this.dualDetectors = null;
       this.experiment = experiment;
       this.detector = null;
       const width = edges.width * 1000;
@@ -235,6 +247,122 @@ export class BenchScene {
     }
     this.selection = selection;
     this.updateRail();
+  }
+
+  /** Fixed unfolded topology. Mesh spacing does not represent propagation. */
+  updateTwoPathExperiment(experiment: TwoPathExperiment, selection: string): void {
+    if (this.mode !== 'two_path' || !structuralEqual(this.twoPathExperiment, experiment)) {
+      const edges = detectorEdges(experiment.grid);
+      const width = edges.width * 1000, height = edges.height * 1000;
+      const lane = Math.max(width * 0.8, 0.26);
+      const end = Math.max(width * 3, height * 2, 1.4);
+      const radius = Math.max(width * 0.13, 0.045);
+      // Preflight derived schematic geometry before disposing the prior scene.
+      this.ensureDisplayFinite([width, height, radius, lane, end, end * 1.6, end * 100,
+        edges.centerX * 1000 - lane, edges.centerX * 1000 + lane,
+        edges.centerY * 1000, lane * 2]);
+      const changedMode = this.mode !== 'two_path';
+      this.updateResult(null, { min: 0, max: 10 });
+      this.detachDualResult();
+      this.disposeGroup(this.bench); this.disposeGroup(this.rail);
+      this.handle = null; this.experiment = null; this.detector = null;
+      this.mode = 'two_path'; this.twoPathExperiment = experiment;
+      const positions: [string, number, number, string][] = [
+        ['source', 0, 0, '#ce922e'], ['B', 0, end * 0.22, '#50a3c0'],
+        ['arm_0', -lane, end * 0.47, '#087f89'], ['arm_1', lane, end * 0.47, '#9665a8'],
+        ['phase', lane, end * 0.64, '#c08028'], ['B_dagger', 0, end * 0.78, '#50a3c0'],
+      ];
+      for (const [id, x, z, color] of positions) {
+        const mesh = new THREE.Mesh(this.geometry(new THREE.CircleGeometry(radius, 32)),
+          this.material(new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, toneMapped: false })));
+        mesh.position.set(x, 0, z); mesh.userData.identity = id; this.bench.add(mesh);
+      }
+      const guide = (points: number[][]) => {
+        const line = new THREE.Line(this.geometry(new THREE.BufferGeometry().setFromPoints(
+          points.map(([x, z]) => new THREE.Vector3(x, 0, z)))),
+        this.material(new THREE.LineDashedMaterial({ color: '#779ba9', dashSize: 0.05, gapSize: 0.03 })));
+        line.computeLineDistances(); this.bench.add(line);
+      };
+      guide([[0, 0], [0, end * 0.22]]);
+      for (const sign of [-1, 1]) {
+        guide([[0, end * 0.22], [sign * lane, end * 0.38], [sign * lane, end * 0.68], [0, end * 0.78]]);
+        guide([[0, end * 0.78], [sign * lane, end]]);
+      }
+      const detectors = ([0, 1] as const).map((port) => {
+        const material = this.material(new THREE.MeshBasicMaterial({ color: '#d4e6ed', side: THREE.DoubleSide, toneMapped: false }));
+        const mesh = new THREE.Mesh(this.geometry(new THREE.PlaneGeometry(width, height)), material);
+        mesh.position.set((port === 0 ? -lane : lane) + edges.centerX * 1000, -edges.centerY * 1000, end);
+        mesh.userData.identity = `port_${port}`; mesh.userData.detector = true; mesh.userData.portId = port;
+        this.bench.add(mesh);
+        const border = new THREE.LineSegments(this.geometry(new THREE.EdgesGeometry(mesh.geometry)),
+          this.material(new THREE.LineBasicMaterial({ color: port === 0 ? '#087f89' : '#9665a8' })));
+        border.position.copy(mesh.position); border.userData.identity = `port_${port}`; this.bench.add(border);
+        return mesh;
+      });
+      this.dualDetectors = detectors as [DetectorMesh, DetectorMesh];
+      if (changedMode || !this.initializedCamera) { this.resetCamera(); this.initializedCamera = true; }
+    }
+    this.selection = selection;
+  }
+
+  /** Prepare both new textures; commit synchronously, dispose old only in finalize. */
+  prepareTwoPathResult(result: DecodedTwoPathResult, limits: ColorLimits): {
+    commit: () => void; dispose: () => void; finalize: () => void;
+  } {
+    if (this.mode !== 'two_path' || !this.twoPathExperiment || !this.dualDetectors
+        || !structuralEqual(result.experiment, this.twoPathExperiment)) {
+      throw new Error('兩埠結果不屬於目前草稿；未附加任何輸出。');
+    }
+    const prepared = prepareDualTextures(result, limits);
+    const meshes = this.dualDetectors, oldTextures = this.dualTextures, oldResult = this.dualResult;
+    const oldKey = this.dualColorKey;
+    let committed = false, closed = false;
+    return {
+      commit: () => {
+        if (closed || committed || this.dualDetectors !== meshes) throw new Error('兩埠顯示交易已失效。');
+        for (const port of [0, 1] as const) {
+          meshes[port].material.map = prepared.textures[port];
+          meshes[port].material.color.set('#ffffff'); meshes[port].material.needsUpdate = true;
+          this.textures.add(prepared.textures[port]);
+        }
+        this.dualTextures = prepared.textures; this.dualResult = result;
+        this.dualColorKey = `${limits.min}:${limits.max}`; committed = true;
+      },
+      finalize: () => {
+        if (closed || !committed) return;
+        closed = true;
+        for (const texture of oldTextures ?? []) { texture.dispose(); this.textures.delete(texture); }
+      },
+      dispose: () => {
+        if (closed) return;
+        closed = true;
+        if (committed && this.dualTextures === prepared.textures) {
+          for (const port of [0, 1] as const) {
+            meshes[port].material.map = oldTextures?.[port] ?? null;
+            meshes[port].material.color.set(oldTextures ? '#ffffff' : '#d4e6ed');
+            meshes[port].material.needsUpdate = true;
+          }
+          this.dualTextures = oldTextures; this.dualResult = oldResult; this.dualColorKey = oldKey;
+        }
+        for (const texture of prepared.textures) this.textures.delete(texture);
+        prepared.dispose();
+      },
+    };
+  }
+
+  detachDualResult(): void {
+    for (const texture of this.dualTextures ?? []) { texture.dispose(); this.textures.delete(texture); }
+    this.dualTextures = null; this.dualResult = null; this.dualColorKey = '';
+    for (const mesh of this.dualDetectors ?? []) {
+      mesh.material.map = null; mesh.material.color.set('#d4e6ed'); mesh.material.needsUpdate = true;
+    }
+  }
+
+  updateTwoPathResult(result: DecodedTwoPathResult | null, limits: ColorLimits): void {
+    if (!result) { this.detachDualResult(); return; }
+    if (result === this.dualResult && this.dualColorKey === `${limits.min}:${limits.max}`) return;
+    const prepared = this.prepareTwoPathResult(result, limits);
+    try { prepared.commit(); prepared.finalize(); } catch (error) { prepared.dispose(); throw error; }
   }
 
   private addCircle(id: string, z: number, radius: number, color: string, translucent: boolean): void {
@@ -335,7 +463,7 @@ export class BenchScene {
   }
 
   private pointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || this.lost || !this.experiment) return;
+    if (event.button !== 0 || this.lost || (!this.experiment && !this.twoPathExperiment)) return;
     this.setRay(event);
     if (this.handle && this.raycaster.intersectObject(this.handle).length) {
       if (!this.draftValidated) {
@@ -397,6 +525,11 @@ export class BenchScene {
       const pixel = pixelFromUV(this.experiment.grid, detectorHit.uv.x, detectorHit.uv.y);
       if (pixel) this.callbacks.pixel(pixel.row, pixel.column);
     }
+    if (detectorHit?.uv && this.dualResult && this.twoPathExperiment) {
+      const port = detectorHit.object.userData.portId as 0 | 1;
+      const pixel = pixelFromUV(this.twoPathExperiment.grid, detectorHit.uv.x, detectorHit.uv.y);
+      if (pixel && (port === 0 || port === 1)) this.callbacks.dualPixel?.(port, pixel.row, pixel.column);
+    }
   }
 
   private cancelDrag(): void {
@@ -407,14 +540,15 @@ export class BenchScene {
   }
 
   resetCamera(): void {
-    if (!this.experiment) return;
+    if (!this.experiment && !this.twoPathExperiment) return;
     // Consume residual public OrbitControls damping before assigning the reset view.
     // Otherwise a prior gesture continues moving the camera after a manual reset.
     const damping = this.controls.enableDamping;
     this.controls.enableDamping = false;
     this.controls.update();
-    const edges = detectorEdges(this.experiment.grid);
-    const end = this.experiment.observation.z_m * 100;
+    const edges = detectorEdges((this.experiment ?? this.twoPathExperiment!).grid);
+    const end = this.experiment ? this.experiment.observation.z_m * 100
+      : Math.max(edges.width * 3000, edges.height * 2000, 1.4);
     const span = Math.max(edges.width * 1000, edges.height * 1000, end, 1);
     this.camera.near = Math.max(span / 10000, 0.00001);
     this.camera.far = Math.max(span * 100, 10);
@@ -473,6 +607,15 @@ export class BenchScene {
       y: rect.top + (1 - projected.y) / 2 * rect.height, visible: projected.z >= -1 && projected.z <= 1 };
   }
 
+  dualPixelWorld(port: 0 | 1, row: number, column: number): { x: number; y: number; z: number } | null {
+    const grid = this.twoPathExperiment?.grid, mesh = this.dualDetectors?.[port];
+    if (!grid || !mesh || row < 0 || row >= grid.ny || column < 0 || column >= grid.nx
+        || !Number.isInteger(row) || !Number.isInteger(column)) return null;
+    const edges = detectorEdges(grid);
+    return { x: mesh.position.x + ((column - Math.floor(grid.nx / 2)) * grid.dx - edges.centerX) * 1000,
+      y: mesh.position.y - ((row - Math.floor(grid.ny / 2)) * grid.dy - edges.centerY) * 1000, z: mesh.position.z };
+  }
+
   /** Read-only browser evidence, without simulation or state-mutation hooks. */
   snapshot(): object {
     const gl = this.renderer.getContext();
@@ -485,6 +628,13 @@ export class BenchScene {
     });
     return {
       available: true, contextLost: this.lost, textureRequestId: this.result?.requestId ?? null,
+      mode: this.mode,
+      dualTextureRequestIds: this.dualTextures ? [this.dualResult?.requestId, this.dualResult?.requestId] : [null, null],
+      dualDetectors: this.dualDetectors?.map((mesh, port) => ({ port, position: mesh.position.toArray(),
+        width: mesh.geometry.parameters.width, height: mesh.geometry.parameters.height,
+        texture: this.dualTextures ? { flipY: this.dualTextures[port].flipY,
+          minFilter: this.dualTextures[port].minFilter, magFilter: this.dualTextures[port].magFilter,
+          generateMipmaps: this.dualTextures[port].generateMipmaps, colorSpace: this.dualTextures[port].colorSpace } : null })) ?? [],
       owned: { geometries: this.geometries.size, materials: this.materials.size,
         textures: this.textures.size, controls: this.disposed ? 0 : 1, listeners: this.disposed ? 0 : 6,
         resizeObservers: this.disposed ? 0 : 1 },
@@ -522,6 +672,7 @@ export class BenchScene {
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.controls.dispose();
     this.updateResult(null, { min: 0, max: 10 });
+    this.detachDualResult();
     this.disposeGroup(this.rail);
     this.disposeGroup(this.bench);
     this.renderer.dispose();

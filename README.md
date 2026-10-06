@@ -44,7 +44,7 @@ implemented and validated within its documented scope, with 1702 passing tests
 and one retained Windows symlink skip. It is separate from CGH synthesis
 and the future 3D bench; publication verification follows acceptance.
 
-Dated current closeout (2026-10-05): V1 publication is complete, with its original browser/build evidence preserved. V2a numerical acceptance is complete within the [new handoff](docs/handoffs/v2a/implementation_summary.md); its source/demo/publication gates follow acceptance. Earlier V0 measurements above remain historical. V2b and later stages remain deferred.
+Dated current closeout (2026-10-06): V2a publication was accepted at `a215da74cb0f85e8727bbbdffb6408da4d3df3d4`. V2b adds the separately approved two-path bench described below and in its [handoff](docs/handoffs/v2b/implementation_summary.md). Earlier measurements remain historical; the authoritative acceptance and publication boundaries are in [the milestone ledger](docs/milestones.md).
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
@@ -632,7 +632,7 @@ The controlled disconnect case uses a separate owned synchronization harness,
 not a production test-control endpoint. See the [V1 handoff](docs/handoffs/v1/implementation_summary.md)
 and [exact evidence/reproduction notes](docs/handoffs/v1/tests_and_evidence.md).
 The existing Streamlit application is unchanged. V2a adds the independent
-numerical foundation below; V2b/V3 and hardware remain deferred.
+numerical foundation below; V2b extends this same local bench in a separate mode. Later stages and hardware remain deferred.
 
 ## Coherent two-path interference (V2a)
 
@@ -682,8 +682,53 @@ The exact APIs, port/phase translation, ten stage norms and signed diagnostic
 properties are normative in [§3.18](docs/math_conventions.md#318-v2a-coherent-two-path-interference).
 See the [V2a handoff](docs/handoffs/v2a/implementation_summary.md) and
 [evidence/reproduction commands](docs/handoffs/v2a/tests_and_evidence.md).
-V2a is followed only by separately approved V2b dual-output 3D integration,
+V2a is used by the separately approved V2b dual-output 3D integration,
 then later reflection geometry, polarization and instruments.
+
+## Interactive two-path mode (V2b)
+
+Use the same installed production build and loopback launch commands as V1.
+Sequential optics remains the default. Select **Two-path**, choose a uniform
+or Gaussian source, set the SI-labelled grid/wavelength controls, both arm
+distances and the extra arm-1 phase in radians, then explicitly **Simulate**.
+The two screens are immediate ordered B_dagger outputs in a common transverse
+frame. Dashed paths are an ideal unfolded schematic; mesh spacing adds no
+physical travel, mirrors or phase.
+
+Both outputs share one grayscale range. The explicit joint automatic range
+changes display only. Inspect either port's original float64 pixel, coordinates,
+raw maximum, original-input fractions, all ten norms and signed residuals.
+Dark-port residuals and undefined ratios remain visible as returned by V2a.
+Scientific edits detach both current screens; prior results retain their
+original request/specification in a labelled area. Mode switches invalidate
+pending attachment eligibility. No edit, preset, selection or reload calculates.
+
+**Run Phase Sweep** makes exactly 17 actual V2a calls on a frozen source/grid/
+distance specification, including distinct calls at 0 and 2*pi. It returns
+scalar rows, without image stacks. Lines between calculated markers are visual
+interpolation; clicking a marker does not compute. **Simulate selected phase**
+is a separate explicit request. Failed sweeps show only a genuine completed
+prefix, with a failed/partial label and non-2xx status. Browser-authored phase
+`-0` canonicalizes to `+0`; nonzero radians are preserved without modulo reduction.
+
+Single axes are capped at 512, sweep axes at 128. All numerical routes share
+one worker-lifetime gate; disconnect does not release running work. The new
+`OHLAB2P` result and strict sweep schema are documented in the
+[V2b handoff](docs/handoffs/v2b/implementation_summary.md). Legacy V1 transport
+remains unchanged. App-owned data budgets are 16 MiB persistent / 32 MiB
+transient, with explicit exclusions for renderer/GPU/whole-process memory.
+
+With that task-owned local server running, create fresh independent evidence:
+
+```powershell
+.\.venv\Scripts\python.exe -B -X utf8 scripts\validate_v2b_bench.py --output runs\v2b-new\api_evidence.json
+.\.venv\Scripts\python.exe -B -X utf8 scripts\v2b_negative_controls.py --output-dir runs\v2b-controls-new
+```
+
+See [tests and reproduction commands](docs/handoffs/v2b/tests_and_evidence.md)
+for installed-tool browser checks, controlled failures and genuine screenshots.
+Reflection geometry, polarization, instruments, persistence and deployment
+remain outside V2b.
 
 ## Test
 

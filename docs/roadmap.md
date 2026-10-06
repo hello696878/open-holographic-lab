@@ -38,7 +38,7 @@ content-design work and is delivered in independently approved stages.
 | V0 | Approved aligned sequential scalar computation foundation: exact SI experiment schema, Gaussian/uniform sources, binary apertures, ideal thin lenses and terminal observation | Existing fixed-grid forward ASM, immutable stages, independent direct-DFT/Gaussian/Fresnel references, explicit window/pitch convergence and bounded aperture acceptance; implementation acceptance is recorded in the ledger |
 | V1 | Approved local TypeScript/Three.js/WebGL2 bench connected to public V0 through Starlette/Uvicorn | Production assets/API on 127.0.0.1:8510; orbit/pan/zoom, selection, numeric editing and constrained z rail; explicit simulation, original detector float64 readout, stale-result separation and resource limits |
 | V2a | Approved coherent two-path numerical foundation: ordered ideal B/B_dagger mixing, two forward ASM arms, extra arm-1 phase and both complex outputs | Exact compatible grids, public constructor ownership, ten sampled norms, independent complex/DFT/evanescent/blocked controls and standalone numerical figures; no V1 connection |
-| V2b | Separately approved dual-output 3D interferometer integration | Future frontend/protocol/server/browser acceptance and stale-result separation; no implementation is included in V2a |
+| V2b | Approved dual-output 3D interferometer integration | Separate two-path mode, strict OHLAB2P frames, actual 17-call scalar sweep, atomic paired displays, cross-mode stale separation and shared worker-lifetime gate; current acceptance is recorded in the ledger |
 | Later V2 | Separately modelled reflection geometry, polarization and richer instruments | Tilted/reflected frames, coating laws, noise and absolute radiometry each need explicit physical models and tests; unsupported geometry stays unsupported |
 | V3 | A remotely accessible service with saved/shared experiments and educational templates | Separate security, authentication/authorization, storage, resource limits and remote-compute planning before deployment |
 
@@ -63,7 +63,10 @@ travel are separate, and physical aperture loss is never normalized away.
 The existing Streamlit application remains unchanged. V1 is independently
 approved. V2a has its own [two-path contract](math_conventions.md#318-v2a-coherent-two-path-interference)
 and [handoff](handoffs/v2a/implementation_summary.md); it does not change V0 or
-V1's contracts. V2b/later V2/V3, remote service and hardware work require later authorization.
+V1's contracts. V2b reuses public V0 source sampling and V2a computation in the
+[separate two-path UI](handoffs/v2b/implementation_summary.md), preserving
+sequential defaults and protocol behavior. Later V2/V3, remote service and
+hardware work require separate authorization.
 
 Reuse existing field/propagation conventions and validation practices where
 their assumptions apply. The current periodic, lossless GS contract is not a

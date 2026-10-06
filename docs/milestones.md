@@ -29,7 +29,8 @@ tested, its limitations recorded here, and its handoff package written to
 | 7 | Editable 2D target designer | **complete** (2026-09-30; closeout recorded 2026-10-01) | [`milestone_7/`](handoffs/milestone_7/) |
 | V0 | Aligned sequential virtual optics foundation | **complete** (2026-10-01; closeout recorded 2026-10-05) | [`v0/`](handoffs/v0/) |
 | V1 | Interactive 3D virtual optical bench | **complete** (2026-10-05; dated publication closeout below) | [`v1/`](handoffs/v1/) |
-| V2a | Coherent two-path interference foundation | precommit numerical acceptance complete; source/demo/publication gate follows (2026-10-05) | [`v2a/`](handoffs/v2a/) |
+| V2a | Coherent two-path interference foundation | **complete** (accepted; dated publication closeout below, 2026-10-06) | [`v2a/`](handoffs/v2a/) |
+| V2b | Interactive two-path interference and dual-output display | precommit acceptance complete; clean-postcommit build/browser/publication gates follow (2026-10-06) | [`v2b/`](handoffs/v2b/) |
 
 ---
 
@@ -851,6 +852,93 @@ persistence schema, general topology, physical mirror model or UI is added.
 V2a numerical foundation -> separately approved V2b dual-output 3D integration
 -> later reflection geometry, polarization and instruments. V2b/later stages
 remain unstarted; teaching and historical learning records remain separate.
+
+---
+
+### V2a publication closeout — recorded 2026-10-06
+
+The preceding V2a section remains its dated precommit evidence. The user
+accepted V2a within its reported validation scope. Read-back of the existing
+ignored `runs/v2a_acceptance_20261005/publication_verification.json` records
+commit `a215da74cb0f85e8727bbbdffb6408da4d3df3d4`, clean-postcommit public source
+imports and a 64² demo, normal push, matching local/live remote/GitHub API
+SHAs and a clean synchronized main. These are separately recorded publication
+checks, not new numerical measurements or rewritten historical evidence.
+That exact revision was freshly verified as the clean V2b starting state.
+
+---
+
+## V2b — Interactive two-path interference and dual-output display
+
+**Status: implementation and precommit acceptance complete; clean-postcommit
+build/browser and publication gates follow (2026-10-06).** Accepted starting
+revision: `a215da74cb0f85e8727bbbdffb6408da4d3df3d4`. Exactly 36 paths were
+approved: 12 modifications and 24 creations, recorded in the
+[V2b implementation handoff](handoffs/v2b/implementation_summary.md).
+
+Sequential optics remains the default. Separate two-path scientific drafts
+use public V0 source-plane sampling and unchanged public V2a computation;
+one explicit single run calls run_two_arm once. Both actual immediate
+B_dagger outputs share coordinates and color limits, retain original float64
+readouts/maxima, ten sampled norms and signed original-input diagnostics.
+The fixed unfolded schematic adds no travel, flip, conjugation or mirror law.
+Browser-authored negative-zero phase canonicalizes to positive zero before
+identity; nonzero signed radians are not reduced or altered.
+
+OHLAB2P and the typed /api/v2b routes are separate from unchanged legacy V1
+framing and limits. Whole-frame validation precedes preparation of both
+textures/canvases and readout state, then one immutable publication. A failed
+second preparation disposes partial resources and retains the old submission
+separately, without numerical replay. Scientific edits detach both outputs;
+mode switches invalidate late attachment even after an away/back sequence.
+
+The separate scalar-only sweep freezes source/grid/distances and performs
+exactly 17 genuine calls, including distinct 0 and 2*pi calls. Failed numerical
+sweeps return 422, unexpected internal failures 500, with only a genuine
+contiguous prefix and explicit failed/partial labels. All three compute routes
+share one gate tied to actual worker and encoding completion, including after
+HTTP disconnect. Single axes cap 512; sweep axes cap 128. App-owned persistent
+16 MiB/transient 32 MiB budgets explicitly exclude whole heap/process/GPU
+memory and renderer caches; repeated replacement/disposal is tested.
+
+The fresh unchanged baseline was **2006 passed, 1 skipped in 110.00s (0:01:50)**.
+The final restored full suite was **2079 passed, 1 skipped in 256.93s (0:04:16)**.
+The original Windows file-symlink privilege skip remains; junctions are tested
+separately. Frontend baseline: 65 tests in four files. Final: **129 tests in
+seven files**, typecheck exit 0 and production build exit 0, with its retained
+large-chunk warning. Final genuine Chrome/WebGL production batch: **18 passed,
+3 skipped** (the separate controlled cases). Controlled partial failure and
+sequential/dual/sweep disconnect checks each passed separately. All legacy V1
+API fixtures and all ten ordinary V1 browser tests were rerun unchanged.
+
+Independent actual HTTP acceptance matched all arrays/axes/scalars exactly
+against public V2a on 18 captured fixtures and three actual 17-call sweeps.
+Known-phase, near-dark, common-phase, carrier and lossy cases passed explicit
+analytic bounds. Worst periodic fraction closure was 4.440892098500626e-16
+with rtol=atol=2e-13, retaining independent endpoints. The controlled fourth-call
+failure returned three genuine rows, failed_index 3 and HTTP 422. All 14
+isolated fault variants across the eleven requested categories plus atomic
+second-texture failure triggered intended assertions and passed restoration;
+production was never mutated by that harness. The new camera-fixture failures
+and setup failures remain separately recorded, not counted as detections.
+
+Three genuine UI screenshots and the six-document handoff are in
+[`docs/handoffs/v2b/`](handoffs/v2b/). Exact commands, unedited output,
+provenance, scope and limitations are in
+[tests and evidence](handoffs/v2b/tests_and_evidence.md). All 217 protected
+pre-existing tracked files remain unchanged, including V0/V2a numerical
+source/scientific tests, normative conventions, exports, M5 schemas, Streamlit
+apps, dependencies/lockfile and historical handoffs/figures. Installed Python
+distribution versions/metadata/source locations and installed Node versions
+match the captured baseline. No install or global configuration change occurred.
+
+One commit and normal origin/main push are explicitly approved. Clean-postcommit
+rebuilt assets, imported source/served-asset ownership, fresh sequential/dual
+browser smoke and one genuine 17-point sweep precede pushing. Actual SHAs and
+final clean state are recorded afterward in ignored evidence and the completion
+report; this precommit section does not predict publication success. Reflection
+geometry, polarization, instruments, persistence, deployment, hardware and later
+stages remain unstarted. Teaching and historical learning records stay separate.
 
 ---
 

@@ -2,16 +2,37 @@ import { cloneExperiment, createFetchAPI, decodeResult, freezeExperiment, struct
   validateValidationReply, type BenchAPI, type DecodedResult, type Experiment, type RequestEnvelope } from './contracts';
 export type { BenchAPI } from './contracts';
 
+/** One synchronous client operation slot, shared by both modes and sweep. */
+export class ClientOperationGate {
+  private operation: Readonly<{ requestId: string; mode: 'sequential' | 'two_path'; kind: 'single' | 'sweep' }> | null = null;
+  private listeners = new Set<() => void>();
+  get active() { return this.operation; }
+  get busy(): boolean { return this.operation !== null; }
+  subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  private notify(): void {
+    for (const listener of this.listeners) { try { listener(); } catch { /* Viewing cannot strand a client operation. */ } }
+  }
+  acquire(requestId: string, mode: 'sequential' | 'two_path', kind: 'single' | 'sweep'): boolean {
+    if (this.operation) return false;
+    this.operation = Object.freeze({ requestId, mode, kind }); this.notify(); return true;
+  }
+  release(requestId: string): void {
+    if (this.operation?.requestId !== requestId) return;
+    this.operation = null; this.notify();
+  }
+}
+
 export interface BenchState {
   readonly candidate: Experiment;
   readonly validatedDraft: Experiment | null;
   readonly pendingValidation: boolean;
   readonly invalidEdits: Readonly<Record<string, string>>;
   readonly revision: number;
+  readonly attachmentEpoch: number;
   readonly status: 'idle' | 'validating' | 'ready' | 'simulating' | 'error';
   readonly error: string | null;
   readonly selection: string;
-  readonly active: Readonly<{ requestId: string; experiment: Experiment; revision: number }> | null;
+  readonly active: Readonly<{ requestId: string; experiment: Experiment; revision: number; attachmentEpoch: number }> | null;
   readonly lastResult: DecodedResult | null;
   readonly currentResult: DecodedResult | null;
   readonly renderError: string | null;
@@ -27,12 +48,21 @@ export class BenchController {
   private validationGeneration = 0;
   private validatedHash: string | null = null;
   constructor(initial: Experiment, private api: BenchAPI = createFetchAPI(),
-      private idFactory: () => string = () => crypto.randomUUID()) {
+      private idFactory: () => string = () => crypto.randomUUID(), readonly gate = new ClientOperationGate()) {
     this.snapshot = Object.freeze({ candidate: freezeExperiment(initial), validatedDraft: null,
-      pendingValidation: false, invalidEdits: Object.freeze({}), revision: 0, status: 'idle', error: null,
+      pendingValidation: false, invalidEdits: Object.freeze({}), revision: 0, attachmentEpoch: 0, status: 'idle', error: null,
       selection: 'source', active: null, lastResult: null, currentResult: null, renderError: null });
   }
   get state(): BenchState { return this.snapshot; }
+  /** Mode switches invalidate attachment even when switching away and back. */
+  deactivate(): void {
+    ++this.validationGeneration; this.validatedHash = null;
+    this.publish({ attachmentEpoch: this.snapshot.attachmentEpoch + 1, validatedDraft: null,
+      pendingValidation: false, currentResult: null });
+  }
+  async activate(): Promise<void> {
+    if (!Object.keys(this.snapshot.invalidEdits).length) await this.validateInitial();
+  }
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener); this.notify(listener);
     return () => { this.listeners.delete(listener); };
@@ -120,19 +150,20 @@ export class BenchController {
   clearRenderFailure(): void { this.reportRenderFailure(null); }
   /** Busy is acquired synchronously before the first await and never retries itself. */
   async simulate(): Promise<boolean> {
-    if (this.snapshot.active || this.snapshot.pendingValidation || !this.snapshot.validatedDraft || !this.validatedHash
+    if (this.gate.busy || this.snapshot.active || this.snapshot.pendingValidation || !this.snapshot.validatedDraft || !this.validatedHash
         || Object.keys(this.snapshot.invalidEdits).length) return false;
     const active = Object.freeze({ requestId: this.idFactory(), experiment: freezeExperiment(this.snapshot.validatedDraft),
-      revision: this.snapshot.revision });
+      revision: this.snapshot.revision, attachmentEpoch: this.snapshot.attachmentEpoch });
     const envelope = Object.freeze({ request_id: active.requestId, experiment: active.experiment });
     const submittedHash = this.validatedHash;
+    if (!this.gate.acquire(active.requestId, 'sequential', 'single')) return false;
     this.publish({ active, error: null, renderError: null });
     try {
       const frame = await this.api.simulate(envelope);
       const result = decodeResult(frame, envelope);
       if (result.experimentSha256 !== submittedHash) throw new Error('V1 protocol: experiment hash differs from validated snapshot');
       if (this.state.active?.requestId !== active.requestId) return false;
-      const fresh = this.snapshot.revision === active.revision && !this.snapshot.pendingValidation
+      const fresh = this.snapshot.revision === active.revision && this.snapshot.attachmentEpoch === active.attachmentEpoch && !this.snapshot.pendingValidation
         && Object.keys(this.snapshot.invalidEdits).length === 0
         && structuralEqual(this.snapshot.validatedDraft, active.experiment);
       this.publish({ active: null, lastResult: result, currentResult: fresh ? result : null,
@@ -142,6 +173,8 @@ export class BenchController {
       if (this.state.active?.requestId !== active.requestId) return false;
       this.publish({ active: null, error: messageOf(error) });
       return false;
+    } finally {
+      this.gate.release(active.requestId);
     }
   }
 }
