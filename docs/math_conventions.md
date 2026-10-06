@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.11 — 2026-10-05
+**Version:** 0.12 — 2026-10-06
 
 ---
 
@@ -25,6 +25,11 @@ Everything in this repository assumes:
 The refractive index is fixed at `n = 1` in version 0.1. It is **not** a free
 parameter and does not appear in any function signature. Introducing it later
 is a convention change requiring a Change Log entry.
+
+The preceding assumptions remain the scalar-model contract. Separately approved
+V2c (§3.19) adds two transverse Jones components and uniform ideal element action
+at one common plane. It does not change any scalar solver or claim vector-wave
+propagation, arbitrary-spectrum transversality, or material modelling.
 
 ---
 
@@ -1436,6 +1441,159 @@ supplies the negative time/positive forward exponent and decaying principal
 branch. V2b dual-output 3D presentation, later reflection geometry,
 polarization and instruments require separate approval.
 
+### 3.19 V2c ideal Jones polarization at one reference plane
+
+**Scope and public API.** Import `JonesField`, `apply_linear_polarizer`,
+`apply_linear_retarder`, and `transmission_ratio` directly from
+`ohlab.optics.polarization`. Existing package initializers/exports remain unchanged.
+This is deterministic, fully coherent monochromatic thin-element action on
+one common transverse plane, not a vector propagator. There is no new z schema,
+sequence runner, matrix API, plugin registry, spatially varying element, or
+statistical polarization framework.
+
+`JonesField(*, x: ComplexField, y: ComplexField)` is frozen, keyword-only and
+`eq=False`. Its fixed ordered basis is (+x,+y) of §3.4–3.5. Components are at the
+same positions, not V2a optical ports: a future polarized interferometer would
+need both port and polarization indices. The common plane and identity basis
+mapping are stipulated; equal metadata does not establish physical alignment.
+
+Require canonical `SamplingGrid` instances, exactly equal ny/nx/dy/dx, shapes
+and vacuum wavelengths, native complex128 finite data and usable positive
+pixel area. There is no approximate comparison, resampling, registration,
+flip, conjugation, or propagation-frequency/wavenumber restriction.
+Each component is independently snapshot through public `ComplexField`
+construction; the same input object may supply both components. Stored arrays
+are read-only and independently owned, including against caller storage.
+Operations return new independently owned components even for identities and
+dark inputs. Derived intensity is fresh writable float64 storage. This retains
+the existing reversible ndarray write-flag contract, not byte-backed storage
+or an irreversible immutability guarantee.
+
+**Scalar types and construction.** Coefficients accept Python `int`, `float`,
+`complex` and NumPy integer, floating and complex-floating numeric scalars.
+Angles accept Python `int`/`float` and NumPy integer/floating numeric scalars.
+Python/NumPy booleans, temporal scalars (including `np.timedelta64`), arrays,
+strings and other objects are rejected. Conversion uses binary64, with finite
+real/imaginary parts required; wider NumPy precision is downcast. A nonzero
+wider angle that would round to zero is rejected rather than snapped to zero.
+Type errors raise TypeError; nonfinite/unusable values raise contextual ValueError.
+
+`JonesField.from_scalar(scalar, *, x_coefficient, y_coefficient)` preserves
+`Ux=cx*U`, `Uy=cy*U` with arbitrary finite coefficients. It does not normalize,
+clip, make a component real, or reset common/relative phase. Formally intensity
+and sampled norm scale by `abs(cx)**2+abs(cy)**2`; coefficients may cause gain
+or loss. Zero coefficients and zero scalar fields are valid after metadata,
+data and coefficient validation. A scalar whose own norm is unusable may still
+produce a usable zero Jones field with both coefficients zero. Products follow
+the bounded arithmetic policy below.
+
+**Basis, time and phase reference.** Retain `exp(-i*omega*t)`. Define
+
+```text
+e_theta = (cos(theta), sin(theta))
+e_perp  = (-sin(theta), cos(theta))
+R = [e_theta, e_perp]
+```
+
+Passive conversion into element coordinates uses `R.T`; conversion back uses
+`R`. Increasing physical-axis angle goes algebraically from +x toward +y,
+appearing clockwise with the existing +y-down display. Rotating element axes,
+changing coordinate basis and rotating a later viewing camera are distinct.
+Nonzero finite angles/retardances are evaluated as supplied, without modulo
+wrapping or snapping. Floating pi/2 and pi retain ordinary trig/phase residuals.
+Exactly +/-0 retardance is an identity-copy case only after validation; signed
+zero has no separate physical meaning. Identity copies preserve stored bytes;
+other operations do not promise preservation of signed-zero bits.
+
+Projection onto a real transmission axis retains `e_theta.T @ U` and removes
+its orthogonal component. Retardance leaves the selected axis at reference
+phase zero and gives its perpendicular axis phase +delta. Therefore
+
+```text
+P(theta)       = e_theta e_theta.T
+W(theta,delta) = e_theta e_theta.T + exp(i*delta) e_perp e_perp.T
+              = R diag(1,exp(i*delta)) R.T
+```
+
+Quarter-wave and half-wave cases use delta=pi/2 and pi through the same generic
+retarder. These are ideal supplied parameters at the stated wavelength, not
+fast/slow material, thickness, walk-off, coating or dispersion predictions.
+No omitted common plate-path phase is inferred. The selected returned phase
+is preserved; multiplying by exp(-i*delta/2), phase fitting, or making one
+component real would violate this contract even when isolated intensities agree.
+
+Exact analytic fixtures include `P(0)(1,1)=(1,0)`,
+`W(0,pi/2)(1,1)/sqrt(2)=(1,i)/sqrt(2)` and
+`W(pi/8,pi)(1,0)=(1,1)/sqrt(2)`, subject to ordinary evaluation residuals.
+The rotated QWP gives `W(pi/4,pi/2)(1,0)=((1+i)/2,(1-i)/2)`;
+do not replace it with a common-phase-reset circular representative.
+For `(1,+/-i)/sqrt(2)`, real time at the plane is
+`(cos(tau),+/-sin(tau))/sqrt(2)` with dimensionless tau. Use component labels
+and declared rotation direction, not ambiguous right/left circular labels.
+
+**Intensity, norm and diagnostic ratio.** Define polarization-insensitive
+intensity `I=abs(Ux)**2+abs(Uy)**2`, in amplitude-unit^2, without the cross term
+in `abs(Ux+Uy)**2`. An analyzer first acts on the actual vector; derive intensity
+from that output, never apply a cos-squared intensity factor to field amplitude.
+`sampled_norm` is `sum(I,dtype=float64)*dx*dy`, evaluated left-to-right,
+in amplitude-unit^2*m^2, not watts. Ideal retarders preserve it within tolerance;
+polarizers can reduce it and no normalization restores that loss.
+
+`transmission_ratio(incident, transmitted)` validates both Jones fields and
+exact metadata compatibility before any zero case. It returns the dimensionless
+transmitted/incident sampled norm, or None for exactly zero incident norm.
+It does not certify a causal element action between independently supplied
+fields: a compatible field with twice the amplitude has ratio four. Finite
+ratios above one are valid diagnostics; no clamp or epsilon denominator exists.
+Passive polarizer contraction and retarder conservation are separately tested.
+
+**Arithmetic and weak signals.** Construction, operations and diagnostic access
+validate finite fields and combined norm usability. Overflow, invalid arithmetic
+or unusable reductions fail contextually. Locally bounded products/squared tails
+may underflow; a negligible orthogonal component beside a usable component is
+valid. Reject a represented nonzero combined field whose entire sampled norm
+rounds to zero. Exactly zero optical fields remain valid. A strictly positive
+ratio must not silently underflow to zero. Ratio division uses local
+`under="raise"`: a NumPy-reported underflow raises contextual `ValueError`,
+including an inexact result that remains a positive subnormal. Caller NumPy settings are restored
+on success/failure; no global setting or unrelated-warning suppression is used.
+Finite extinction residuals remain unclamped. This is not arbitrary dynamic-range
+or large-angle accuracy; finite argument precision and tail loss remain limitations.
+
+Ordinary finite-case bounds are: matrix identities rtol=0/atol=2e-15;
+complex components rtol=2e-14/atol=2e-14*Ain; intensity
+rtol=2e-13/atol=2e-13*Ain^2; norm rtol=2e-13/atol=2e-13*Nin;
+dimensionless ratios rtol=atol=2e-13. Ain is maximum incident component amplitude
+and Nin its independently reduced combined norm. Exact zero-input assertions
+are separate from near extinction.
+
+All Malus degrees `[-90,-75,-60,-45,-30,-15,0,15,30,45,60,75,90]` and actual
+converted radians are retained. Near-extinction angles are actual binary64
+`pi/2+offset`, offsets `[-1e-6,-1e-9,0,1e-9,1e-6]`. The independent bounded
+stdlib reference expands sin/cos directly at Decimal.from_float(angle), using
+80-digit arithmetic, without treating epsilon^2 as exact. Positive complex
+components, intensity, norm and ratio each receive separate focused comparisons:
+rtol=2e-14, component/intensity/ratio atol=1e-48 and norm atol=1e-48*Nin.
+These bounds cannot admit clipping the selected ~1e-18 diagnostic signals to zero;
+they do not establish universal relative accuracy near darkness.
+
+**Independent references and limits.**
+[Jones (1941), JOSA 31, 488–493](https://opg.optica.org/josa/abstract.cfm?uri=josa-31-7-488)
+is the primary matrix-calculus reference. TU Delft's
+[Polarisation, Eqs. 263, 275, 278–284, 285 and 288](https://interactivetextbooks.tudelft.nl/interactive-optics/content/Chap4_Polarisation/Polarization_2022_01Clean.html)
+uses negative time, R M R^-1 and a factored common path phase. Its diagonal
+QWP is (1,i). We preserve those algebraic signs, translate displayed rotation
+to +y-down, choose the factored reference phase explicitly, and use eigenaxis
+phases rather than copying textual fast/slow labels. Independent expectations
+use literal fixtures and expanded scalar coefficients, never production helpers.
+
+V2c adds no propagation/transversality claim for arbitrary nonparaxial spectra,
+polarized interferometer, reflected frame, partial/unpolarized statistical light,
+Stokes/Mueller framework, calibrated radiometry, persistence or 3D interface.
+The three-polarizer norm of 1/4 applies to already x-polarized unit-norm input,
+not unpolarized illumination. Numerical figures are actual calculated evidence,
+not V2d screenshots. V2d and later work need separate approval.
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -1473,12 +1631,17 @@ V0 (§3.17) adds sequential observations on parallel planes using unchanged ASM,
 with explicitly paraxial ideal Gaussian/lens models and independent Fresnel
 validation references. It does not add M3 multi-plane synthesis or a 3D scene.
 
+V2c (§3.19) separately adds the bounded common-plane ideal Jones operations;
+the original v0.1 exclusions and existing scalar contracts above retain their
+historical scope. It adds no polarized propagation or general 3D scene.
+
 ---
 
 ## Change Log
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.12 | 2026-10-06 | **§3.19 added** — ideal common-plane Jones components, public constructor ownership, arbitrary complex coefficients, explicit eigenaxis phase reference, polarizer/retarder actions, intensity/norm/causality-neutral ratios, bounded arithmetic and focused weak-signal references. Scope notes distinguish this addition from the unchanged scalar model. | Approved V2c numerical foundation. Existing scalar signs, implementations/tests/exports, schemas, UI/protocols, replay and historical evidence remain unchanged; V2d is deferred. |
 | 0.11 | 2026-10-05 | **§3.18 added** — ideal B/B_dagger ordered two-path API, uniform arm-1 phase, public ASM reuse, public constructor ownership, ten sampled norms and input-normalized ratios including propagation survival, contextual arithmetic, independent complex/near-dark/reference bounds and explicit primary-reference translation. | Approved V2a numerical foundation. Existing M0–V1 code/contracts, physical signs, initializers, tests and historical evidence remain unchanged; V2b and richer geometry remain deferred. |
 | 0.10 | 2026-10-01 | **§3.17 added** — exact SI sequential-experiment schema/API, immutable stage identities, source/element actions, complete-window forward ASM reuse, dark/norm arithmetic and bounded independent reference criteria. **§5 clarified** — V0's explicit ideal paraxial elements/reference formulas are distinct from an unimplemented alternate propagator or 3D scene. | Approved V0 implementation. Existing M0–M7 numerical implementations, selected signs, sampling, GS and M5 bundle contracts remain unchanged; original evidence and the earlier unverified Goodman attribution are preserved. |
 | 0.9 | 2026-09-30 | **§3.16 added** — versioned pixel-coordinate designs, inclusive center-sampled geometry, internally ordered undirected segments, ordered intensity overwrite, bounded editable JSON and external design/run association. | Approved Milestone 7. Pixel coordinates are dimensionless authoring/sample coordinates; existing SI optical calls, M2–M5 scientific/serialization contracts, old mathematical sections and historical evidence remain unchanged. |

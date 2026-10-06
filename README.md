@@ -44,7 +44,7 @@ implemented and validated within its documented scope, with 1702 passing tests
 and one retained Windows symlink skip. It is separate from CGH synthesis
 and the future 3D bench; publication verification follows acceptance.
 
-Dated current closeout (2026-10-06): V2a publication was accepted at `a215da74cb0f85e8727bbbdffb6408da4d3df3d4`. V2b adds the separately approved two-path bench described below and in its [handoff](docs/handoffs/v2b/implementation_summary.md). Earlier measurements remain historical; the authoritative acceptance and publication boundaries are in [the milestone ledger](docs/milestones.md).
+Dated current state (2026-10-06): V2b publication was accepted at `886cdac549dcd4373be7d24f9f2211af03659371`; its [dated closeout](docs/milestones.md#v2b-publication-closeout--recorded-2026-10-06) preserves historical browser results. V2c adds the separately approved numerical Jones foundation, with **2356 passing tests and one retained Windows symlink skip**, independent weak-signal validation and three numerical figures. The [V2c handoff](docs/handoffs/v2c/implementation_summary.md) records precommit acceptance; clean-postcommit and publication checks follow. Earlier measurements remain historical; acceptance and publication boundaries are in [the milestone ledger](docs/milestones.md).
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
@@ -729,6 +729,69 @@ See [tests and reproduction commands](docs/handoffs/v2b/tests_and_evidence.md)
 for installed-tool browser checks, controlled failures and genuine screenshots.
 Reflection geometry, polarization, instruments, persistence and deployment
 remain outside V2b.
+
+## Ideal Jones polarization (V2c)
+
+The standalone `ohlab.optics.polarization` module adds fully coherent
+monochromatic x/y components and ideal uniform polarizer/retarder action at
+one stipulated transverse reference plane. These components are distinct from
+V2a's optical ports. Existing scalar propagation and both bench modes retain
+their original contracts. This numerical stage adds no 3D polarization mode.
+
+```python
+from math import pi, sqrt
+from ohlab import ComplexField, SamplingGrid
+from ohlab.optics.polarization import (
+    JonesField, apply_linear_polarizer, apply_linear_retarder,
+    transmission_ratio,
+)
+
+grid = SamplingGrid(ny=64, nx=64, dy=4e-6, dx=4e-6)
+scalar = ComplexField.uniform(grid=grid, wavelength_m=633e-9)
+linear_45 = JonesField.from_scalar(
+    scalar, x_coefficient=1/sqrt(2), y_coefficient=1/sqrt(2))
+quarter_wave = apply_linear_retarder(
+    linear_45, axis_angle_rad=0, retardance_rad=pi/2)
+analyzed = apply_linear_polarizer(quarter_wave, axis_angle_rad=pi/4)
+print(quarter_wave.x.data[32, 32], quarter_wave.y.data[32, 32])
+print(analyzed.sampled_norm, transmission_ratio(quarter_wave, analyzed))
+```
+
+Two public `ComplexField` snapshots preserve independently owned read-only
+complex128 components. Grids and wavelengths must match exactly; matching
+metadata cannot prove physical alignment. Arbitrary finite scalar coefficients
+change amplitude and norm without normalization or phase reset. Intensity is
+`abs(Ux)**2+abs(Uy)**2`; sampled norm is `sum(I)*dx*dy`, in
+amplitude-unit²·m², not watts. A zero incident norm gives an undefined ratio
+(`None`). Ratios compare compatible fields without certifying an element action;
+an independently supplied double-amplitude field has ratio four.
+
+The retarder leaves its declared axis at reference phase zero and gives its
+perpendicular axis `+delta`, using `exp(-i*omega*t)`. QWP/HWP are delta=pi/2/pi.
+Returned common phase is preserved; no absolute physical plate-path phase is
+predicted. Positive axis angle turns from +x toward +y, clockwise in the
+existing y-down display. Extinction residuals remain unclamped. See the
+[normative contract](docs/math_conventions.md#319-v2c-ideal-jones-polarization-at-one-reference-plane)
+and [V2c handoff](docs/handoffs/v2c/implementation_summary.md).
+
+Use fresh output locations with the existing interpreter:
+
+```powershell
+.\.venv\Scripts\python.exe -B examples\jones_polarization.py --n 64 --output-dir runs\v2c-demo-new
+.\.venv\Scripts\python.exe -B scripts\validate_v2c_polarization.py --output-dir runs\v2c-validation-new
+.\.venv\Scripts\python.exe -B scripts\v2c_negative_controls.py --output-dir runs\v2c-controls-new
+.\.venv\Scripts\python.exe -B scripts\generate_v2c_figures.py --evidence-dir runs\v2c-demo-new --output-dir runs\v2c-figures-new
+```
+
+The demo also supports `--n 32`. It retains every declared actual Malus point,
+complex QWP/HWP outputs, norm loss/conservation and bounded independent weak
+signals. Ellipses use actual sampled components and dimensionless optical phase;
+the three-polarizer fixture starts with already x-polarized light. Numerical
+figures are not V2d screenshots. V2d, polarized interference, reflected frames,
+statistical polarization, richer instruments and virtual-experiment save/load
+remain separately approved future work. V2b's dated
+[publication closeout](docs/milestones.md#v2b-publication-closeout--recorded-2026-10-06)
+uses existing publication records; frontend/browser measurements remain historical.
 
 ## Test
 
