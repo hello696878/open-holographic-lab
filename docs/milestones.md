@@ -1028,6 +1028,91 @@ work remain unstarted; teaching and learning records stay separate.
 
 ---
 
+## V2c publication closeout — recorded 2026-10-12
+
+The user accepted V2c within its reported validation scope. Read-back of
+existing `runs/v2c_acceptance_20261006_01/publication_verification.json`
+records published commit `ff669ab683bcf7b07b4a8ff9073c8557dc6ad1b8`, matching
+local/live remote/GitHub API SHAs, a normal push, and clean synchronized main.
+Its clean-postcommit import/source-location checks and fresh 64² demo passed.
+Exactly 22 paths were committed; 249 protected tracked files and all 53
+installed-distribution entries retained their recorded hashes/metadata.
+
+This is a dated read-back, not a new V2c numerical run, frontend build or
+browser run. The preceding precommit record, historical tolerances, 2356-pass/
+1-skip result, 15 intended fault detections and three numerical figures retain
+their original provenance. V2c performed no new frontend/server/browser work.
+That exact published revision was verified as the V2d starting baseline.
+Historical handoffs and learning records remain unchanged.
+
+---
+
+## V2d — Interactive ideal Jones polarization experiments
+
+**Status: implementation and precommit acceptance complete (2026-10-12);
+clean-postcommit rebuild, source/assets ownership and all-three-mode production
+smoke must pass before publication.** Accepted starting revision:
+`ff669ab683bcf7b07b4a8ff9073c8557dc6ad1b8` on clean synchronized main.
+
+The third bench mode reuses public V0 source-plane parsing/sampling and V2c
+Jones actions. Sequential remains default and both older workflows retain
+their protocols/assertions. Arbitrary finite complex coefficients are not
+normalized. Stable ordered polarizer/retarder IDs, numeric QWP/HWP values,
+explicit simulation, actual incident/final float64 intensities and one submitted
+complex sample per input/element stage preserve complete request identity.
+All actions are ideal at one common plane; no propagation or physical z.
+
+Shared-phase trajectories use only Re([Ux,Uy]*exp(-i*tau)), with equal component
+scales and +y down. The common phase remains visible at fixed tau. Exact-dark
+classification uses all four returned complex parts; tiny nonzero samples with
+rounded-zero intensity disclose display limitations. Intensity picking cannot
+relabel the submitted complex sample. Optical edits detach old attachments;
+late replies, later-resource failures and context loss cannot publish a mixed
+result or trigger automatic resubmission. One owned callback uses the existing
+bench loop and detaches without stopping the shared renderer.
+
+The actual thirteen-angle sweep retains both endpoints, restarts the original
+incident Jones field and applies the full ordered train at each point (104
+public element calls for eight). It returns only genuine scalar rows, with
+distinct HTTP422 numerical and HTTP500 unexpected failures and contiguous completed
+prefixes. OHLABPL uses bounded little-endian float64 framing. All five compute
+kinds share the actual-worker-lifetime gate through encoding/disconnect;
+concurrent work fails with HTTP409 while health/validation remain responsive.
+
+Fresh baseline: **2356 passed, 1 skipped in 176.00s (0:02:55)**. Final full suite:
+**2523 passed, 1 skipped in 240.61s (0:04:00)**. The existing Windows file-symlink
+skip at tests/test_run_artifacts.py:1101 is unchanged; junction coverage is
+separate. Installed frontend baseline 129 tests; final 186 tests/typecheck/build
+passed. The build's >500 kB chunk warning is retained, not suppressed.
+
+Current production APIs passed 10 sequential cases, 18 two-path cases/3 sweeps,
+and 28 polarization cases/3 sweeps with direct-public and unchanged independent
+analytic/Decimal references. Full Chrome acceptance passed 28 scenarios with
+five explicit controlled-service skips. Separate controlled children passed
+all six polarization index 0/3/12 numerical/unexpected failures, legacy partial
+sweep and all five disconnect holders. Browser-only transport/resource fault
+fixtures remain supplementary. An initial sweep-click interception failure
+and an encoder boolean-zero reproducer are preserved with their scoped fixes.
+All 26 isolated fault variants in 21 categories triggered intended assertions;
+originals/restored assertions passed and production hashes remained unchanged.
+
+Actual owned-buffer observations, resource replacement, pause/reset/context
+loss and callback teardown remain bounded by 16 MiB persistent/32 MiB transient.
+Conservative phase bounds do not measure whole heap, process or GPU memory.
+The six [V2d handoffs](handoffs/v2d/implementation_summary.md) contain exact
+schemas, commands, unedited outputs, tolerances, evidence distinctions and
+three inspected genuine production UI screenshots. Scope is exactly 35 paths:
+nine modifications and 26 creations; 262 protected tracked files and all 53
+installed-distribution metadata/location/version records remain unchanged.
+
+One approved commit uses `feat(v2d): add interactive Jones polarization experiments`.
+Postcommit rebuilt ownership/smoke and actual publication SHAs belong in fresh
+ignored evidence and the completion report; they are not predicted here.
+No qualified replay, persistence, polarized interference, hardware, deployment
+or later milestone is introduced. Teaching and learning records stay separate.
+
+---
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.

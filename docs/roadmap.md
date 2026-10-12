@@ -1,6 +1,6 @@
 # Roadmap — content design, then a virtual optics laboratory
 
-Recorded **2026-09-30**, V0 update **2026-10-01**, V1/V2a update **2026-10-05**, V2c subdivision **2026-10-06**. The [milestone ledger](milestones.md) is authoritative
+Recorded **2026-09-30**, V0 update **2026-10-01**, V1/V2a update **2026-10-05**, V2c subdivision **2026-10-06**, V2d integration **2026-10-12**. The [milestone ledger](milestones.md) is authoritative
 for current acceptance. This roadmap records product direction and approval
 boundaries; listing a future stage does not authorize its implementation.
 
@@ -40,7 +40,7 @@ content-design work and is delivered in independently approved stages.
 | V2a | Approved coherent two-path numerical foundation: ordered ideal B/B_dagger mixing, two forward ASM arms, extra arm-1 phase and both complex outputs | Exact compatible grids, public constructor ownership, ten sampled norms, independent complex/DFT/evanescent/blocked controls and standalone numerical figures; no V1 connection |
 | V2b | Approved dual-output 3D interferometer integration | Separate two-path mode, strict OHLAB2P frames, actual 17-call scalar sweep, atomic paired displays, cross-mode stale separation and shared worker-lifetime gate; current acceptance is recorded in the ledger |
 | V2c | Approved ideal Jones polarization numerical foundation at one common transverse plane | Independent complex x/y components, ideal uniform polarizer/retarder actions, explicit phase reference, sampled intensity/norm, loss and focused weak-signal acceptance; no propagation or frontend integration |
-| V2d | Separately approved future 3D polarization experiment mode | Connect validated V2c operations to an independently specified bench mode; representation, controls, transport, stale-result behavior and genuine browser acceptance need their own plan and approval |
+| V2d | Approved interactive ideal Jones polarization experiment mode | Distinct common-plane mode, arbitrary complex coefficients, ordered ideal polarizer/retarder actions, actual fixed-sample trajectories, OHLABPL transport and genuine thirteen-point sweeps; acceptance and publication boundaries are recorded in the ledger and V2d handoff |
 | Later V2 | Separately modelled polarized interference, reflection/frame geometry and richer instruments | Both port and polarization indices, tilted/reflected frames, coating laws, noise and absolute radiometry each need explicit physical models and tests; unsupported geometry stays unsupported |
 | V3 | A remotely accessible service with saved/shared experiments and educational templates | Separate security, authentication/authorization, storage, resource limits and remote-compute planning before deployment |
 
@@ -76,7 +76,16 @@ is a standalone numerical foundation, documented in its
 components and the selected retarder reference phase without changing V0/V2a
 schemas, scalar solvers, V1/V2b protocols or existing user interfaces. Pointwise
 uniform matrix action is not full-vector propagation or a transversality claim
-for arbitrary nonparaxial spatial spectra. V2d remains unstarted.
+for arbitrary nonparaxial spatial spectra. The separately approved
+[V2d integration](handoffs/v2d/implementation_summary.md) reuses those public
+operations in a third bench mode without adding propagation or physical z.
+It keeps explicit submissions, immutable source/train/readout identities,
+phase-sensitive selected-sample display, failed-prefix sweeps and the shared
+worker-lifetime gate. Camera, color, stage and tau playback are presentation.
+Resource budgets cover declared app-owned buffers and logical metadata, with
+separate transport/preparation/rollback phases; they do not measure the whole
+heap, browser process or GPU. Genuine production and controlled fault/browser
+evidence remain distinct. Later V2/V3 stages remain unstarted.
 
 Virtual-experiment save/load is an acknowledged separate product gap. V2c does
 not add persistence, reinterpret M5 bundles or imply a new replay qualification.

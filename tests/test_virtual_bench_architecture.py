@@ -28,7 +28,9 @@ def test_backend_uses_public_optics_without_replacement_or_unrelated_science():
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for name in imports(path):
             if name.startswith("ohlab"):
-                assert name in allowed, (path, name)
+                permitted = allowed | ({"ohlab.optics.polarization"}
+                                       if path.name == "polarization_adapter.py" else set())
+                assert name in permitted, (path, name)
             assert name.split(".")[0] not in {"streamlit", "matplotlib", "PIL", "scipy"}, (path, name)
         for node in ast.walk(tree):
             if isinstance(node, ast.Attribute):

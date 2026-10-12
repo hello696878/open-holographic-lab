@@ -44,7 +44,14 @@ implemented and validated within its documented scope, with 1702 passing tests
 and one retained Windows symlink skip. It is separate from CGH synthesis
 and the future 3D bench; publication verification follows acceptance.
 
-Dated current state (2026-10-06): V2b publication was accepted at `886cdac549dcd4373be7d24f9f2211af03659371`; its [dated closeout](docs/milestones.md#v2b-publication-closeout--recorded-2026-10-06) preserves historical browser results. V2c adds the separately approved numerical Jones foundation, with **2356 passing tests and one retained Windows symlink skip**, independent weak-signal validation and three numerical figures. The [V2c handoff](docs/handoffs/v2c/implementation_summary.md) records precommit acceptance; clean-postcommit and publication checks follow. Earlier measurements remain historical; acceptance and publication boundaries are in [the milestone ledger](docs/milestones.md).
+Dated current state (2026-10-12): V2c was accepted and published at
+`ff669ab683bcf7b07b4a8ff9073c8557dc6ad1b8`; its
+[dated closeout](docs/milestones.md#v2c-publication-closeout--recorded-2026-10-12)
+preserves the original numerical evidence. V2d adds a separately approved
+interactive ideal Jones mode alongside sequential and two-path modes. Exact
+contracts, current acceptance and limitations are in the
+[V2d handoff](docs/handoffs/v2d/implementation_summary.md) and authoritative
+[milestone ledger](docs/milestones.md). Earlier measurements remain historical.
 
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
@@ -787,11 +794,69 @@ The demo also supports `--n 32`. It retains every declared actual Malus point,
 complex QWP/HWP outputs, norm loss/conservation and bounded independent weak
 signals. Ellipses use actual sampled components and dimensionless optical phase;
 the three-polarizer fixture starts with already x-polarized light. Numerical
-figures are not V2d screenshots. V2d, polarized interference, reflected frames,
+figures are not V2d screenshots. Polarized interference, reflected frames,
 statistical polarization, richer instruments and virtual-experiment save/load
-remain separately approved future work. V2b's dated
+remain separate future work. V2b's dated
 [publication closeout](docs/milestones.md#v2b-publication-closeout--recorded-2026-10-06)
 uses existing publication records; frontend/browser measurements remain historical.
+
+## Interactive ideal Jones mode (V2d)
+
+Build and launch the same local bench using the existing installed tools:
+
+```powershell
+Set-Location C:\holographiclab\frontend\bench
+& 'C:\Program Files\nodejs\npm.cmd' run --ignore-scripts build
+Set-Location C:\holographiclab
+.\.venv\Scripts\python.exe -B -X utf8 -m apps.virtual_bench.server
+```
+
+Open [the local bench](http://127.0.0.1:8510), choose **Jones polarization**, set
+the scalar source and actual complex x/y coefficients, and add/reorder ideal
+linear polarizers or retarders. QWP/HWP buttons assign delta=pi/2/pi radians.
+Press **Simulate** explicitly. Gaussian illumination is sampled at its waist;
+the app rejects source z fields. All actions occur at one reference plane;
+mesh spacing and housing add no propagation, thickness or optical phase.
+
+The result preserves original incident/final float64 intensities, stage norms,
+adjacent and original-incident ratios, signed norm differences and one submitted
+complex sample per stage. Row/column and actual physical coordinates remain
+visible. Clicking another intensity pixel does not relabel the fixed complex
+sample. Editing its requested indices needs another explicit simulation.
+
+Trajectories display only Re([Ux,Uy]*exp(-i*tau)), with common tau and equal
+x/y scales, +x right/+y down. Common phase and arbitrary coefficient amplitude
+remain intact. Exact zero complex components mean no defined polarization
+state. A nonzero tiny sample can have zero rounded intensity or invisible
+motion; display-scale/precision limitations are reported. Manual magnification
+changes display only. Camera, stage, color and playback controls do not solve.
+
+Select a polarizer and explicitly request its thirteen-point angle sweep.
+Every actual angle restarts the full train from the original incident field.
+Selecting a row only inspects it; applying its angle and simulating is a
+separate action. Failed sweeps retain only their genuine completed prefix.
+Numerical completion and presentation failure remain distinct, without replay.
+
+The distinct OHLABPL format and `/api/v2d/validate`, `/simulate`, `/sweep`
+routes preserve existing scalar protocols. Grid cap 128 per axis, eight elements,
+nine selected samples and bounded frames/sweeps are resource limits, not
+accuracy guarantees. All five computation kinds share one worker-lifetime gate;
+busy requests fail with HTTP409 without a queue/retry. The server remains loopback-only
+and refuses an occupied port. No package installation is implied by these
+commands. No persistence, polarized interference, deployment or hardware.
+
+With that task-owned service running, write fresh validation evidence:
+
+```powershell
+.\.venv\Scripts\python.exe -B -X utf8 scripts\validate_v2d_bench.py --output runs\v2d-new\api_evidence.json
+.\.venv\Scripts\python.exe -B -X utf8 scripts\v2d_negative_controls.py --output-dir runs\v2d-controls-new
+```
+
+The validator uses real public V2c outputs and independent analytic checks.
+Fault controls run isolated copies; they do not start a server or browser.
+Browser capture redirection and explicit controlled-child commands are in
+[tests and evidence](docs/handoffs/v2d/tests_and_evidence.md). Use fresh capture
+directories to preserve historical screenshots. Teaching remains separate.
 
 ## Test
 

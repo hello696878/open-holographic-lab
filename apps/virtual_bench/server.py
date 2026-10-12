@@ -1,4 +1,4 @@
-r"""Loopback-only V1 built-asset service and bounded same-origin ASGI API.
+r"""Loopback-only built bench and distinct bounded same-origin optics APIs.
 
 Run from the repository root with the existing interpreter::
 
@@ -38,9 +38,13 @@ from .protocol import (MAX_BODY_BYTES, MAX_RESPONSE_BYTES, PROTOCOL_VERSION,
 from . import two_path_adapter
 from .two_path_protocol import (MAX_RESPONSE_BYTES as MAX_TWO_PATH_RESPONSE_BYTES,
                                 MAX_SWEEP_RESPONSE_BYTES, SweepReply)
+from . import polarization_adapter, polarization_protocol
 
-Submission = ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission | two_path_adapter.ValidatedSweepSubmission
-WorkerResult = bytes | SweepReply
+Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission |
+              two_path_adapter.ValidatedSweepSubmission |
+              polarization_adapter.ValidatedPolarizationSubmission |
+              polarization_adapter.ValidatedPolarizationSweepSubmission)
+WorkerResult = bytes | SweepReply | polarization_protocol.SweepReply
 
 HOST = "127.0.0.1"
 PORT = 8510
@@ -328,11 +332,13 @@ def create_app(*, assets_dir: Path | None = None,
                worker: Callable[[ValidatedSubmission], bytes] | None = None,
                two_path_worker: Callable[[two_path_adapter.ValidatedTwoPathSubmission], bytes] | None = None,
                sweep_worker: Callable[[two_path_adapter.ValidatedSweepSubmission], SweepReply] | None = None,
+               polarization_worker: Callable[[polarization_adapter.ValidatedPolarizationSubmission], bytes] | None = None,
+               polarization_sweep_worker: Callable[[polarization_adapter.ValidatedPolarizationSweepSubmission], polarization_protocol.SweepReply] | None = None,
                executor: Executor | None = None) -> Starlette:
     """Create the local service; no numerical work or network listeners start.
 
 Custom asset/worker/executor inputs support isolated acceptance tests. The CLI
-always uses this checkout's fixed built directory and public V0 adapter.
+always uses this checkout's fixed built directory and public numerical adapters.
 """
     assets = OwnedStaticFiles(assets_dir if assets_dir is not None else DEFAULT_ASSETS)
     index_path, index_stat = assets.lookup_path("index.html")
@@ -345,6 +351,13 @@ always uses this checkout's fixed built directory and public V0 adapter.
             return (two_path_worker if two_path_worker is not None else two_path_adapter.simulate_submission)(submission)
         if isinstance(submission, two_path_adapter.ValidatedSweepSubmission):
             return (sweep_worker if sweep_worker is not None else two_path_adapter.sweep_submission)(submission)
+        # Sweep may specialize the single submission record: dispatch it first.
+        if isinstance(submission, polarization_adapter.ValidatedPolarizationSweepSubmission):
+            return (polarization_sweep_worker if polarization_sweep_worker is not None
+                    else polarization_adapter.sweep_submission)(submission)
+        if isinstance(submission, polarization_adapter.ValidatedPolarizationSubmission):
+            return (polarization_worker if polarization_worker is not None
+                    else polarization_adapter.simulate_submission)(submission)
         raise TypeError("unsupported immutable submission")
 
     gate = ComputationGate(dispatch, executor)
@@ -475,10 +488,78 @@ always uses this checkout's fixed built directory and public V0 adapter.
             return two_path_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
         return Response(encoded, media_type="application/octet-stream")
 
+    def polarization_error(status: int, code: str, message: str,
+                           request_id: str | None = None) -> JSONResponse:
+        return JSONResponse({"protocol_version": 1, "message_type": "polarization_error",
+                             "request_id": request_id,
+                             "error": {"code": code[:64], "message": message[:300]}}, status_code=status)
+
+    async def polarization_validate(request: Request) -> Response:
+        return await polarization_process(request, operation="validate")
+
+    async def polarization_simulate(request: Request) -> Response:
+        return await polarization_process(request, operation="simulate")
+
+    async def polarization_sweep(request: Request) -> Response:
+        return await polarization_process(request, operation="sweep")
+
+    async def polarization_process(request: Request, *, operation: str) -> Response:
+        request_id = None
+        try:
+            payload = await _read_json(request)
+            request_id = _parsed_id(payload)
+            submission = (polarization_adapter.validate_sweep_submission(payload)
+                          if operation == "sweep" else
+                          polarization_adapter.validate_submission(payload, require_digest=operation != "validate"))
+        except BodyError as exc:
+            return polarization_error(exc.status, exc.code, str(exc), request_id)
+        except ClientDisconnect:
+            return polarization_error(499, "disconnected", "Client disconnected before submission", request_id)
+        except (ValueError, TypeError, OverflowError) as exc:
+            return polarization_error(422, "invalid_experiment", str(exc), request_id)
+        if operation == "validate":
+            return JSONResponse({"protocol_version": 1, "message_type": "polarization_validation",
+                                 "request_id": submission.request_id,
+                                 "experiment_sha256": submission.experiment_sha256,
+                                 "experiment": submission.experiment.to_dict()})
+        try:
+            future = gate.submit(submission)
+        except BusyError:
+            return polarization_error(409, "busy", "A Python computation is still running; submit again deliberately later",
+                                      submission.request_id)
+        except Exception:
+            return polarization_error(500, "submission_failed", "Could not submit the computation", submission.request_id)
+        try:
+            encoded = await _worker_response(request, future)
+        except asyncio.CancelledError:
+            raise
+        except CancelledBeforeStart:
+            return polarization_error(503, "cancelled_before_start", "Computation did not start; no result was produced",
+                                      submission.request_id)
+        except polarization_adapter.NumericalError as exc:
+            return polarization_error(422, "numerical_failure", str(exc), submission.request_id)
+        except Exception:
+            return polarization_error(500, "simulation_failed", "Numerical computation or result encoding failed",
+                                      submission.request_id)
+        if encoded is None:
+            return polarization_error(499, "disconnected", "Client disconnected; backend completion is unknown",
+                                      submission.request_id)
+        if operation == "sweep":
+            if (not isinstance(encoded, polarization_protocol.SweepReply) or
+                    encoded.status_code not in (200, 422, 500) or not isinstance(encoded.body, bytes) or
+                    not 2 <= len(encoded.body) <= polarization_protocol.MAX_SWEEP_RESPONSE_BYTES):
+                return polarization_error(500, "simulation_failed", "Sweep encoding failed", submission.request_id)
+            return Response(encoded.body, status_code=encoded.status_code, media_type="application/json")
+        if (not isinstance(encoded, bytes) or
+                not 16 <= len(encoded) <= polarization_protocol.MAX_RESPONSE_BYTES):
+            return polarization_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
+        return Response(encoded, media_type="application/octet-stream")
+
     async def unavailable_api(request: Request) -> Response:
         status = 405 if request.url.path in {
             "/api/v1/health", "/api/v1/validate", "/api/v1/simulate",
-            "/api/v2b/validate", "/api/v2b/simulate", "/api/v2b/sweep"} else 404
+            "/api/v2b/validate", "/api/v2b/simulate", "/api/v2b/sweep",
+            "/api/v2d/validate", "/api/v2d/simulate", "/api/v2d/sweep"} else 404
         return _error(status, "http_error", "Request path or method is unavailable")
 
     app = Starlette(routes=[Route("/api/v1/health", health, methods=["GET"]),
@@ -487,6 +568,9 @@ always uses this checkout's fixed built directory and public V0 adapter.
                             Route("/api/v2b/validate", two_path_validate, methods=["POST"]),
                             Route("/api/v2b/simulate", two_path_simulate, methods=["POST"]),
                             Route("/api/v2b/sweep", two_path_sweep, methods=["POST"]),
+                            Route("/api/v2d/validate", polarization_validate, methods=["POST"]),
+                            Route("/api/v2d/simulate", polarization_simulate, methods=["POST"]),
+                            Route("/api/v2d/sweep", polarization_sweep, methods=["POST"]),
                             Route("/api/{path:path}", unavailable_api,
                                   methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"]),
                             Mount("/", app=assets)],
@@ -498,7 +582,7 @@ always uses this checkout's fixed built directory and public V0 adapter.
 
 
 def main() -> int:
-    """Serve built V1 assets only on 127.0.0.1:8510 using the existing runtime."""
+    """Serve built bench assets only on 127.0.0.1:8510 using the existing runtime."""
     import uvicorn
 
     try:

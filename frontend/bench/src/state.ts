@@ -2,9 +2,9 @@ import { cloneExperiment, createFetchAPI, decodeResult, freezeExperiment, struct
   validateValidationReply, type BenchAPI, type DecodedResult, type Experiment, type RequestEnvelope } from './contracts';
 export type { BenchAPI } from './contracts';
 
-/** One synchronous client operation slot, shared by both modes and sweep. */
+/** One synchronous client operation slot, shared by all modes and sweeps. */
 export class ClientOperationGate {
-  private operation: Readonly<{ requestId: string; mode: 'sequential' | 'two_path'; kind: 'single' | 'sweep' }> | null = null;
+  private operation: Readonly<{ requestId: string; mode: 'sequential' | 'two_path' | 'polarization'; kind: 'single' | 'sweep' }> | null = null;
   private listeners = new Set<() => void>();
   get active() { return this.operation; }
   get busy(): boolean { return this.operation !== null; }
@@ -12,7 +12,7 @@ export class ClientOperationGate {
   private notify(): void {
     for (const listener of this.listeners) { try { listener(); } catch { /* Viewing cannot strand a client operation. */ } }
   }
-  acquire(requestId: string, mode: 'sequential' | 'two_path', kind: 'single' | 'sweep'): boolean {
+  acquire(requestId: string, mode: 'sequential' | 'two_path' | 'polarization', kind: 'single' | 'sweep'): boolean {
     if (this.operation) return false;
     this.operation = Object.freeze({ requestId, mode, kind }); this.notify(); return true;
   }

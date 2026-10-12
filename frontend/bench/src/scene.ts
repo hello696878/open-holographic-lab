@@ -6,11 +6,13 @@ import { structuralEqual } from './contracts';
 import { detectorEdges, pixelFromUV, worldPosition } from './mapping';
 import { createDetectorTexture, prepareDualTextures, type ColorLimits } from './detector';
 import type { DecodedTwoPathResult, TwoPathExperiment } from './two_path_contracts';
+import type { DecodedPolarizationResult, PolarizationExperiment } from './polarization_contracts';
 
 export interface SceneCallbacks {
   select: (ids: string[]) => void;
   pixel: (row: number, column: number) => void;
   dualPixel?: (port: 0 | 1, row: number, column: number) => void;
+  polarizationPixel?: (view: 0 | 1, row: number, column: number) => void;
   commitZ: (id: string, z_m: number) => void;
   notice: (message: string) => void;
   presentationFailure: (message: string | null) => void;
@@ -34,7 +36,12 @@ export class BenchScene {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private experiment: Experiment | null = null;
-  private mode: 'sequential' | 'two_path' = 'sequential';
+  private mode: 'sequential' | 'two_path' | 'polarization' = 'sequential';
+  private polarizationExperiment: PolarizationExperiment | null = null;
+  private polarizationDetectors: readonly [DetectorMesh, DetectorMesh] | null = null;
+  private polarizationTextures: readonly [THREE.DataTexture, THREE.DataTexture] | null = null;
+  private polarizationResult: DecodedPolarizationResult | null = null;
+  private frameCallback: ((time: number) => void) | null = null;
   private twoPathExperiment: TwoPathExperiment | null = null;
   private dualDetectors: readonly [DetectorMesh, DetectorMesh] | null = null;
   private dualTextures: readonly [THREE.DataTexture, THREE.DataTexture] | null = null;
@@ -91,6 +98,8 @@ export class BenchScene {
       event.preventDefault();
       this.lost = true;
       this.cancelDrag();
+      this.frameCallback = null;
+      this.detachPolarizationResult();
       this.callbacks.presentationFailure('WebGL2 顯示內容已遺失；數值結果保留，不會自動重算。');
     };
     this.onContextRestored = () => {
@@ -169,6 +178,7 @@ export class BenchScene {
       }
       this.updateResult(null, { min: 0, max: 10 });
       this.detachDualResult();
+      this.detachPolarizationResult(); this.polarizationExperiment = null; this.polarizationDetectors = null;
       this.disposeGroup(this.bench);
       this.mode = 'sequential';
       this.twoPathExperiment = null;
@@ -264,6 +274,7 @@ export class BenchScene {
       const changedMode = this.mode !== 'two_path';
       this.updateResult(null, { min: 0, max: 10 });
       this.detachDualResult();
+      this.detachPolarizationResult(); this.polarizationExperiment = null; this.polarizationDetectors = null;
       this.disposeGroup(this.bench); this.disposeGroup(this.rail);
       this.handle = null; this.experiment = null; this.detector = null;
       this.mode = 'two_path'; this.twoPathExperiment = experiment;
@@ -365,6 +376,107 @@ export class BenchScene {
     try { prepared.commit(); prepared.finalize(); } catch (error) { prepared.dispose(); throw error; }
   }
 
+  /** Ordered common-plane actions; these z slots are cosmetic and have no scientific fields. */
+  updatePolarizationExperiment(experiment: PolarizationExperiment, selection: string): void {
+    if (this.mode !== 'polarization' || !structuralEqual(this.polarizationExperiment, experiment)) {
+      const edges = detectorEdges(experiment.grid), width = edges.width * 1000, height = edges.height * 1000;
+      const lane = Math.max(width * 0.8, 0.26), end = Math.max(width * 3, height * 2, 1.4), radius = Math.max(width * 0.2, 0.06);
+      this.ensureDisplayFinite([width, height, lane, end, radius, edges.centerX * 1000, edges.centerY * 1000]);
+      const changedMode = this.mode !== 'polarization';
+      this.updateResult(null, { min: 0, max: 10 }); this.detachDualResult(); this.detachPolarizationResult();
+      this.disposeGroup(this.bench); this.disposeGroup(this.rail); this.handle = null;
+      this.experiment = null; this.twoPathExperiment = null; this.dualDetectors = null; this.detector = null;
+      this.mode = 'polarization'; this.polarizationExperiment = experiment;
+      this.addCircle('source', 0, radius * 0.55, '#ce922e', true);
+      for (const [index, item] of experiment.elements.entries()) {
+        const z = end * (index + 1) / (experiment.elements.length + 2);
+        this.addCircle(item.id, z, radius, item.kind === 'linear_polarizer' ? '#087f89' : '#9665a8', true);
+        const c = Math.cos(item.axis_angle_rad), s = Math.sin(item.axis_angle_rad);
+        const marker = new THREE.Line(this.geometry(new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(-radius * c, radius * s, z), new THREE.Vector3(radius * c, -radius * s, z),
+        ])), this.material(new THREE.LineBasicMaterial({ color: '#163f50' })));
+        marker.userData.identity = item.id; this.bench.add(marker);
+      }
+      const line = new THREE.Line(this.geometry(new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, end),
+      ])), this.material(new THREE.LineDashedMaterial({ color: '#779ba9', dashSize: 0.05, gapSize: 0.03 })));
+      line.computeLineDistances(); this.bench.add(line);
+      this.polarizationDetectors = ([0, 1] as const).map(view => {
+        const mesh = new THREE.Mesh(this.geometry(new THREE.PlaneGeometry(width, height)),
+          this.material(new THREE.MeshBasicMaterial({ color: '#d4e6ed', side: THREE.DoubleSide, toneMapped: false })));
+        mesh.position.set((view === 0 ? -lane : lane) + edges.centerX * 1000, -edges.centerY * 1000, end);
+        mesh.userData.detector = true; mesh.userData.polarizationView = view;
+        this.bench.add(mesh); return mesh;
+      }) as [DetectorMesh, DetectorMesh];
+      if (changedMode || !this.initializedCamera) { this.resetCamera(); this.initializedCamera = true; }
+    }
+    this.selection = selection;
+  }
+
+  /** Receives already prepared paired resources; all later preparation precedes this commit. */
+  preparePolarizationResult(result: DecodedPolarizationResult, textures: readonly [THREE.DataTexture, THREE.DataTexture]): {
+    commit(): void; dispose(): void; finalize(): void;
+  } {
+    if (this.lost || this.mode !== 'polarization' || !this.polarizationDetectors
+        || !structuralEqual(result.experiment, this.polarizationExperiment)) throw new Error('Polarization result is detached from the active scene.');
+    const meshes = this.polarizationDetectors, oldTextures = this.polarizationTextures, oldResult = this.polarizationResult;
+    let committed = false, closed = false;
+    return {
+      commit: () => {
+        if (closed || committed || this.polarizationDetectors !== meshes) throw new Error('Polarization presentation transaction expired');
+        textures.forEach((texture, index) => { meshes[index].material.map = texture; meshes[index].material.color.set('#ffffff');
+          meshes[index].material.needsUpdate = true; this.textures.add(texture); });
+        this.polarizationTextures = textures; this.polarizationResult = result; committed = true;
+      },
+      dispose: () => {
+        if (closed) return; closed = true;
+        if (committed && this.polarizationTextures === textures) {
+          meshes.forEach((mesh, index) => { mesh.material.map = oldTextures?.[index] ?? null;
+            mesh.material.color.set(oldTextures ? '#ffffff' : '#d4e6ed'); mesh.material.needsUpdate = true; });
+          this.polarizationTextures = oldTextures; this.polarizationResult = oldResult;
+        }
+        textures.forEach(texture => this.textures.delete(texture));
+      },
+      finalize: () => {
+        if (closed || !committed) return; closed = true;
+        for (const texture of oldTextures ?? []) { texture.dispose(); this.textures.delete(texture); }
+      },
+    };
+  }
+
+  detachPolarizationResult(): void {
+    for (const texture of this.polarizationTextures ?? []) { texture.dispose(); this.textures.delete(texture); }
+    this.polarizationTextures = null; this.polarizationResult = null;
+    for (const mesh of this.polarizationDetectors ?? []) { mesh.material.map = null; mesh.material.color.set('#d4e6ed'); mesh.material.needsUpdate = true; }
+  }
+
+  /** One replaceable callback inside the shared renderer; no additional RAF chain. */
+  setFrameCallback(callback: ((time: number) => void) | null): void { this.frameCallback = callback; }
+
+  /** Internal ownership inventory uses actual references, never cloned evidence summaries. */
+  ownedNumericalResults(): Readonly<{ sequential: DecodedResult | null; dual: DecodedTwoPathResult | null;
+    polarization: DecodedPolarizationResult | null }> {
+    return { sequential: this.result, dual: this.dualResult, polarization: this.polarizationResult };
+  }
+
+  /** Exact CPU texture-source backing stores; GPU disposal does not erase them. */
+  ownedTextureBuffers(): readonly ArrayBufferLike[] {
+    return [...new Set([...this.textures].map(texture => ((texture as THREE.DataTexture).image?.data as Uint8Array | undefined)?.buffer)
+      .filter((buffer): buffer is ArrayBufferLike => buffer !== undefined))];
+  }
+
+  /** CPU geometry sources are app-owned too; deduplicate interleaved/index aliases. */
+  ownedGeometryBuffers(): readonly ArrayBufferLike[] {
+    const buffers = new Set<ArrayBufferLike>();
+    for (const geometry of this.geometries) {
+      if (geometry.index) buffers.add(geometry.index.array.buffer);
+      for (const attribute of [...Object.values(geometry.attributes), ...Object.values(geometry.morphAttributes).flat()]) {
+        buffers.add(attribute instanceof THREE.InterleavedBufferAttribute ? attribute.data.array.buffer : attribute.array.buffer);
+      }
+    }
+    return [...buffers];
+  }
+
   private addCircle(id: string, z: number, radius: number, color: string, translucent: boolean): void {
     this.addShape(id, z, this.geometry(new THREE.CircleGeometry(radius, 64)), color, translucent);
     const edge = new THREE.LineLoop(
@@ -463,7 +575,7 @@ export class BenchScene {
   }
 
   private pointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || this.lost || (!this.experiment && !this.twoPathExperiment)) return;
+    if (event.button !== 0 || this.lost || (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment)) return;
     this.setRay(event);
     if (this.handle && this.raycaster.intersectObject(this.handle).length) {
       if (!this.draftValidated) {
@@ -530,6 +642,11 @@ export class BenchScene {
       const pixel = pixelFromUV(this.twoPathExperiment.grid, detectorHit.uv.x, detectorHit.uv.y);
       if (pixel && (port === 0 || port === 1)) this.callbacks.dualPixel?.(port, pixel.row, pixel.column);
     }
+    if (detectorHit?.uv && this.polarizationResult && this.polarizationExperiment) {
+      const view = detectorHit.object.userData.polarizationView as 0 | 1;
+      const pixel = pixelFromUV(this.polarizationExperiment.grid, detectorHit.uv.x, detectorHit.uv.y);
+      if (pixel && (view === 0 || view === 1)) this.callbacks.polarizationPixel?.(view, pixel.row, pixel.column);
+    }
   }
 
   private cancelDrag(): void {
@@ -540,13 +657,13 @@ export class BenchScene {
   }
 
   resetCamera(): void {
-    if (!this.experiment && !this.twoPathExperiment) return;
+    if (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment) return;
     // Consume residual public OrbitControls damping before assigning the reset view.
     // Otherwise a prior gesture continues moving the camera after a manual reset.
     const damping = this.controls.enableDamping;
     this.controls.enableDamping = false;
     this.controls.update();
-    const edges = detectorEdges((this.experiment ?? this.twoPathExperiment!).grid);
+    const edges = detectorEdges((this.experiment ?? this.twoPathExperiment ?? this.polarizationExperiment!).grid);
     const end = this.experiment ? this.experiment.observation.z_m * 100
       : Math.max(edges.width * 3000, edges.height * 2000, 1.4);
     const span = Math.max(edges.width * 1000, edges.height * 1000, end, 1);
@@ -591,11 +708,11 @@ export class BenchScene {
     this.camera.updateProjectionMatrix();
   }
 
-  private animate = (): void => {
+  private animate = (time = 0): void => {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.animate);
     if (!this.lost) {
-      try { this.controls.update(); this.renderer.render(this.scene, this.camera); }
+      try { this.frameCallback?.(time); this.controls.update(); this.renderer.render(this.scene, this.camera); }
       catch (error) { this.lost = true; this.callbacks.presentationFailure(`3D 顯示失敗：${String(error)}`); }
     }
   };
@@ -629,6 +746,8 @@ export class BenchScene {
     return {
       available: true, contextLost: this.lost, textureRequestId: this.result?.requestId ?? null,
       mode: this.mode,
+      polarization: { textureRequestIds: this.polarizationTextures ? [this.polarizationResult?.requestId, this.polarizationResult?.requestId] : [null, null],
+        detectors: this.polarizationDetectors?.map((mesh, view) => ({ view, position: mesh.position.toArray() })) ?? [], frameCallbacks: this.frameCallback ? 1 : 0 },
       dualTextureRequestIds: this.dualTextures ? [this.dualResult?.requestId, this.dualResult?.requestId] : [null, null],
       dualDetectors: this.dualDetectors?.map((mesh, port) => ({ port, position: mesh.position.toArray(),
         width: mesh.geometry.parameters.width, height: mesh.geometry.parameters.height,
@@ -637,7 +756,9 @@ export class BenchScene {
           generateMipmaps: this.dualTextures[port].generateMipmaps, colorSpace: this.dualTextures[port].colorSpace } : null })) ?? [],
       owned: { geometries: this.geometries.size, materials: this.materials.size,
         textures: this.textures.size, controls: this.disposed ? 0 : 1, listeners: this.disposed ? 0 : 6,
-        resizeObservers: this.disposed ? 0 : 1 },
+        resizeObservers: this.disposed ? 0 : 1, geometrySourceBytes: this.ownedGeometryBuffers().reduce((n, buffer) => n + buffer.byteLength, 0),
+        textureSourceBytes: [...this.textures].reduce((n, texture) => n +
+          (((texture as THREE.DataTexture).image?.data as Uint8Array | undefined)?.byteLength ?? 0), 0) },
       renderer: { geometries: this.renderer.info.memory.geometries, textures: this.renderer.info.memory.textures,
         programs: this.renderer.info.programs?.length ?? 0,
         vendor: extension ? gl.getParameter(extension.UNMASKED_VENDOR_WEBGL) : gl.getParameter(gl.VENDOR),
@@ -671,8 +792,10 @@ export class BenchScene {
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.controls.dispose();
+    this.frameCallback = null;
     this.updateResult(null, { min: 0, max: 10 });
     this.detachDualResult();
+    this.detachPolarizationResult();
     this.disposeGroup(this.rail);
     this.disposeGroup(this.bench);
     this.renderer.dispose();
