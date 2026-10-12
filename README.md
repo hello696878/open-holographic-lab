@@ -53,6 +53,15 @@ contracts, current acceptance and limitations are in the
 [V2d handoff](docs/handoffs/v2d/implementation_summary.md) and authoritative
 [milestone ledger](docs/milestones.md). Earlier measurements remain historical.
 
+V2d's dated publication closeout records revision
+`9791db07ad182902fb027ab4e3caf9d2faccc966`. The next approved priority, V2e,
+implements portable **settings-only** JSON documents for sequential, two-path and
+polarization experiments. It exports the current valid draft, previews a raw
+import, and requires explicit replacement acknowledgement. Restored settings
+are **not yet simulated**: an ordinary simulation must be submitted separately.
+See the [V2e contract and workflow](docs/handoffs/v2e/implementation_summary.md)
+and [acceptance evidence](docs/handoffs/v2e/tests_and_evidence.md).
+
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
 the **Angular Spectrum Method**. Milestone 2 adds strict grayscale PNG loading

@@ -39,6 +39,7 @@ from . import two_path_adapter
 from .two_path_protocol import (MAX_RESPONSE_BYTES as MAX_TWO_PATH_RESPONSE_BYTES,
                                 MAX_SWEEP_RESPONSE_BYTES, SweepReply)
 from . import polarization_adapter, polarization_protocol
+from . import experiment_documents
 
 Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission |
               two_path_adapter.ValidatedSweepSubmission |
@@ -248,7 +249,7 @@ class BodyError(ValueError):
         self.status, self.code = status, code
 
 
-async def _read_json(request: Request) -> object:
+async def _read_json(request: Request, *, parser: Callable[[bytes], object] = strict_json_loads) -> object:
     content_type = request.headers.get("content-type", "").lower().strip()
     if content_type not in {"application/json", "application/json; charset=utf-8"}:
         raise BodyError(415, "invalid_content_type", "Expected application/json with UTF-8")
@@ -275,7 +276,7 @@ async def _read_json(request: Request) -> object:
     if declared is not None and declared != len(body):
         raise BodyError(400, "invalid_length", "Content-Length disagrees with received body")
     try:
-        return strict_json_loads(bytes(body))
+        return parser(bytes(body))
     except (ValueError, TypeError, OverflowError) as exc:
         raise BodyError(400, "invalid_json", "Expected bounded strict UTF-8 JSON without duplicate keys") from exc
 
@@ -555,11 +556,27 @@ always uses this checkout's fixed built directory and public numerical adapters.
             return polarization_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
         return Response(encoded, media_type="application/octet-stream")
 
+    async def document_validate(request: Request) -> Response:
+        try:
+            payload = await _read_json(request, parser=experiment_documents.strict_document_loads)
+            document = experiment_documents.validate_document(payload)
+            return Response(document.canonical_bytes, media_type="application/json", headers={
+                experiment_documents.EXPERIMENT_SHA256_HEADER: document.experiment_sha256})
+        except BodyError as exc:
+            return _error(exc.status, exc.code, str(exc))
+        except ClientDisconnect:
+            return _error(499, "disconnected", "Client disconnected before document receipt")
+        except experiment_documents.DocumentError as exc:
+            return _error(422, exc.code, str(exc))
+        except Exception:
+            return _error(500, "document_failed", "Could not validate or encode the document")
+
     async def unavailable_api(request: Request) -> Response:
         status = 405 if request.url.path in {
             "/api/v1/health", "/api/v1/validate", "/api/v1/simulate",
             "/api/v2b/validate", "/api/v2b/simulate", "/api/v2b/sweep",
-            "/api/v2d/validate", "/api/v2d/simulate", "/api/v2d/sweep"} else 404
+            "/api/v2d/validate", "/api/v2d/simulate", "/api/v2d/sweep",
+            "/api/v2e/documents/validate"} else 404
         return _error(status, "http_error", "Request path or method is unavailable")
 
     app = Starlette(routes=[Route("/api/v1/health", health, methods=["GET"]),
@@ -571,6 +588,7 @@ always uses this checkout's fixed built directory and public numerical adapters.
                             Route("/api/v2d/validate", polarization_validate, methods=["POST"]),
                             Route("/api/v2d/simulate", polarization_simulate, methods=["POST"]),
                             Route("/api/v2d/sweep", polarization_sweep, methods=["POST"]),
+                            Route("/api/v2e/documents/validate", document_validate, methods=["POST"]),
                             Route("/api/{path:path}", unavailable_api,
                                   methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"]),
                             Mount("/", app=assets)],

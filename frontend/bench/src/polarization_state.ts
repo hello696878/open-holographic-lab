@@ -1,7 +1,7 @@
 /** Explicit V2d submissions and immutable identities. Viewing never invokes optics. */
 import { structuralEqual } from './contracts';
 import { ClientOperationGate } from './state';
-import { createPolarizationFetchAPI, decodePolarizationResult, freezePolarizationExperiment, SWEEP_ANGLES_RAD,
+import { assertPolarizationExperiment, createPolarizationFetchAPI, decodePolarizationResult, freezePolarizationExperiment, SWEEP_ANGLES_RAD,
   validatePolarizationReply, validatePolarizationSweep, type DecodedPolarizationResult, type DecodedPolarizationSweep,
   type PolarizationAPI, type PolarizationEnvelope, type PolarizationExperiment, type PolarizationSweepEnvelope } from './polarization_contracts';
 export interface PreparedPolarizationPresentation { commit(): void; dispose(): void; finalize?(): void }
@@ -78,6 +78,23 @@ export class PolarizationController {
       selection: experiment.elements.some(item => item.id === this.snapshot.selection) ? this.snapshot.selection : 'source', error: null, renderError: null });
     await this.validateCandidate();
   }
+  /** Prepare a coherent restored editor and invalidate even identical old attachment eligibility. */
+  prepareValidatedSettings(experiment: PolarizationExperiment, transientDigest: string): () => void {
+    if (this.gate.busy || this.snapshot.active) throw new Error('Cannot restore settings during computation');
+    assertPolarizationExperiment(experiment);
+    if (!/^[0-9a-f]{64}$/.test(transientDigest)) throw new Error('Invalid transient scientific digest');
+    const previous = this.snapshot, generation = this.generation, canonical = freezePolarizationExperiment(experiment);
+    const next: PolarizationState = Object.freeze({ ...previous, candidate: canonical, validatedDraft: canonical,
+      pendingValidation: false, invalidEdits: Object.freeze({}), revision: previous.revision + 1,
+      attachmentEpoch: previous.attachmentEpoch + 1, status: 'ready', error: null, renderError: null,
+      currentResult: null, currentSweep: null, completedNumerical: null, selectedSweepIndex: null, selection: 'source', selectedStage: 'input' });
+    return () => {
+      if (this.gate.busy || this.snapshot !== previous || this.generation !== generation) throw new Error('Settings destination changed before apply');
+      ++this.generation; this.validatedHash = transientDigest; this.snapshot = next;
+      this.listeners.forEach(listener => this.notify(listener));
+    };
+  }
+  restoreValidatedSettings(experiment: PolarizationExperiment, transientDigest: string): void { this.prepareValidatedSettings(experiment, transientDigest)(); }
   async edit(path: string, text: string, integer = false): Promise<void> {
     ++this.generation; this.validatedHash = null;
     const invalid = { ...this.snapshot.invalidEdits }, trimmed = text.trim(), value = numericText.test(trimmed) ? Number(trimmed) : NaN;

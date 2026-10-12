@@ -14,6 +14,9 @@ import { COEFFICIENT_PRESETS, POLARIZATION_PRESETS, polarizationPreset } from '.
 import { type DecodedPolarizationResult, type DecodedPolarizationSweep, type PolarizationExperiment } from './polarization_contracts';
 import { assertOwnedBudgets, estimateOwnedOperation, ownedScientificBytes, PolarizationPlayback, preparePolarizationResources,
   trajectoryMarker, validateDisplayScale, type PolarizationResources } from './polarization_display';
+import { NumericFieldBinding } from './numeric_fields';
+import { ExperimentDocumentController } from './experiment_document_state';
+import { type BenchMode, type ValidatedDocument } from './experiment_documents';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('缺少應用程式容器。');
@@ -35,6 +38,30 @@ app.innerHTML = `
     </section>
     <p id="error" class="error" data-testid="error" role="alert" hidden></p>
     <p id="render-error" class="error" data-testid="render-error" role="alert" hidden></p>
+    <details id="documents" class="panel document-panel" data-testid="documents">
+      <summary data-testid="doc-toggle">實驗設定檔 · 匯出目前草稿／匯入設定</summary>
+      <p class="muted">一個檔案保存一個實驗的設定，不包含計算結果或掃描。未匯出的草稿不會自動保存。</p>
+      <div class="document-fields">
+        <label>設定標題 <input id="doc-title" data-testid="doc-title" type="text" autocomplete="off"></label>
+        <label>備註 <textarea id="doc-notes" data-testid="doc-notes" rows="2"></textarea></label>
+      </div>
+      <div class="document-actions">
+        <button id="doc-export" data-testid="doc-export">匯出實驗設定（目前有效草稿）</button>
+        <label>匯入實驗設定 <input id="doc-file" data-testid="doc-file" type="file" accept=".json,application/json"></label>
+        <button id="doc-cancel" data-testid="doc-cancel">取消匯入</button>
+      </div>
+      <output id="doc-status" data-testid="doc-status" aria-live="polite"></output>
+      <p id="doc-error" data-testid="doc-error" class="error" role="alert" hidden></p>
+      <div id="doc-download-area" data-testid="doc-download-area" hidden><p id="doc-download-label"></p>
+        <a id="doc-download" data-testid="doc-download">下載實驗設定</a>
+        <button id="doc-dismiss" data-testid="doc-dismiss">關閉下載連結</button>
+      </div>
+      <div id="doc-preview" data-testid="doc-preview" hidden>
+        <h3>待套用設定</h3><pre id="doc-preview-text" data-testid="doc-preview-text"></pre>
+        <label class="document-ack"><input id="doc-ack" data-testid="doc-ack" type="checkbox">我了解這會取代該模式目前的設定，包括尚未匯出的編輯。</label>
+        <button id="doc-apply" data-testid="doc-apply" class="primary" disabled>取代目前設定並套用</button>
+      </div>
+    </details>
     <section class="workspace">
       <aside class="panel components"><h2>光路列表</h2><p class="muted">依列出的順序作用；同位置 ID 保留。</p>
         <div id="components" data-testid="components"></div>
@@ -159,6 +186,10 @@ let inspectorKey = '';
 let selectedPixel: { row: number; column: number; x_m: number; y_m: number; intensity: number; requestId: string } | null = null;
 let nextId = 1;
 let disposed = false;
+let applyingDocument = false;
+let documents: ExperimentDocumentController | null = null;
+let scientificReservations = { persistent: 0, transient: 0 };
+const numericBindings = new WeakMap<HTMLInputElement, NumericFieldBinding>();
 let dualLimits: ColorLimits = { min: 0, max: 1 };
 let dualPublished: DecodedTwoPathResult | null = null;
 let dualDisplayKey = '';
@@ -250,10 +281,24 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-pan]'))
   });
 }
 
-function readPath(spec: Experiment, path: string): number {
+function readPath(spec: unknown, path: string): number {
   let current: unknown = spec;
   for (const part of path.split('.')) current = (current as Record<string, unknown>)[part];
   return current as number;
+}
+
+function paintNumeric(input: HTMLInputElement, benchMode: BenchMode, path: string,
+    state: { candidate: unknown; revision: number; attachmentEpoch: number }, invalid: boolean): void {
+  let binding = numericBindings.get(input);
+  if (!binding) { binding = new NumericFieldBinding(); numericBindings.set(input, binding); }
+  if (invalid) binding.clear();
+  else binding.paint(input.value, `${benchMode}.${path}`, `${state.revision}:${state.attachmentEpoch}`, readPath(state.candidate, path));
+}
+
+function shouldEditNumeric(input: HTMLInputElement, benchMode: BenchMode, path: string,
+    state: { candidate: unknown; revision: number; attachmentEpoch: number }): boolean {
+  return numericBindings.get(input)?.shouldEdit(input.value, `${benchMode}.${path}`,
+    `${state.revision}:${state.attachmentEpoch}`, readPath(state.candidate, path)) ?? true;
 }
 
 function numberField(parent: HTMLElement, path: string, label: string, scale = 1, integer = false): void {
@@ -266,7 +311,9 @@ function numberField(parent: HTMLElement, path: string, label: string, scale = 1
   input.dataset.path = path;
   input.dataset.scale = String(scale);
   input.dataset.testid = `edit-${path.replaceAll('.', '-')}`;
-  input.addEventListener('input', () => controller.edit(path, input.value, scale, integer));
+  input.addEventListener('input', () => {
+    if (shouldEditNumeric(input, 'sequential', path, controller.state)) void controller.edit(path, input.value, scale, integer);
+  });
   wrapper.append(input);
   parent.append(wrapper);
 }
@@ -339,6 +386,7 @@ function renderInspector(state: BenchState): void {
     if (document.activeElement !== input) {
       input.value = invalid ? state.invalidEdits[path]
         : String(Number((readPath(spec, path) / Number(input.dataset.scale)).toPrecision(14)));
+      paintNumeric(input, 'sequential', path, state, invalid);
     }
   }
 }
@@ -484,7 +532,7 @@ function renderResult(state: BenchState): void {
 }
 
 function render(state: BenchState): void {
-  if (disposed || mode !== 'sequential') return;
+  if (disposed || applyingDocument || mode !== 'sequential') return;
   const statusText: Record<string, string> = { idle: '尚未驗證', validating: '驗證草稿中', ready: '草稿已驗證', simulating: '計算中：不自動重試', error: '請檢查錯誤' };
   element('status').textContent = statusText[state.status] ?? state.status;
   element('status').dataset.status = state.status;
@@ -620,7 +668,9 @@ function renderDualFields(state: TwoPathState): void {
       const wrapper = document.createElement('label'); wrapper.className = 'number-field'; wrapper.textContent = label;
       const input = document.createElement('input'); input.type = 'text'; input.inputMode = 'decimal';
       input.dataset.tpPath = path; input.dataset.scale = String(scale); input.dataset.testid = `tp-edit-${path.replaceAll('.', '-')}`;
-      input.addEventListener('input', () => { void twoPathController.edit(path, input.value, scale, integer ?? false); });
+      input.addEventListener('input', () => {
+        if (shouldEditNumeric(input, 'two_path', path, twoPathController.state)) void twoPathController.edit(path, input.value, scale, integer ?? false);
+      });
       wrapper.append(input); parent.append(wrapper);
     }
   }
@@ -632,6 +682,7 @@ function renderDualFields(state: TwoPathState): void {
     let value: unknown = state.candidate;
     for (const part of path.split('.')) value = (value as Record<string, unknown>)[part];
     input.value = invalid ? state.invalidEdits[path] : String((value as number) / Number(input.dataset.scale));
+    paintNumeric(input, 'two_path', path, state, invalid);
   }
   const phi = state.candidate.two_arm_spec.relative_phase_rad;
   element('tp-phase-note').textContent = `extra phase=${phi.toPrecision(17)} rad；degrees=${(phi * 180 / Math.PI).toPrecision(8)}°（僅說明，不提交度數）`;
@@ -680,7 +731,7 @@ function renderSweep(sweep: DecodedTwoPathSweep | null, fresh: boolean): void {
 }
 
 function renderTwoPath(state: TwoPathState): void {
-  if (disposed || mode !== 'two_path') return;
+  if (disposed || applyingDocument || mode !== 'two_path') return;
   element('tp-status').textContent = state.status; element('tp-status').dataset.status = state.status;
   element('tp-error').hidden = !state.error; element('tp-error').textContent = state.error ?? '';
   element('tp-render-error').hidden = !state.renderError; element('tp-render-error').textContent = state.renderError ?? '';
@@ -761,7 +812,7 @@ function twoPathSnapshot(): object {
 
 /** All modes share these ownership calculations. Aliased arrays are counted once. */
 function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathResult | null = null): {
-  scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; retainedBytes: number;
+  scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; documentBytes: number; retainedBytes: number;
 } {
   const sceneResults = scene?.ownedNumericalResults();
   const scientificBytes = ownedScientificBytes([controller.state.lastResult, displayedResult, sceneResults?.sequential ?? null],
@@ -777,8 +828,9 @@ function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathRes
   const textureBytes = [...textureBuffers].reduce((n, buffer) => n + buffer.byteLength, 0);
   const trajectoryBytes = polarizationResources?.trajectories.reduce((n, trajectory) => n + trajectory.points.byteLength, 0) ?? 0;
   const geometryBytes = scene?.ownedGeometryBuffers().reduce((n, buffer) => n + buffer.byteLength, 0) ?? 0;
-  return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes,
-    retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes };
+  const documentBytes = documents?.ownershipSnapshot().retainedBytes ?? 0;
+  return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes,
+    retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes + documentBytes };
 }
 function admitOperation(kind: 'sequential' | 'two_path' | 'polarization', grid: Experiment['grid'], operation: 'single' | 'sweep' = 'single'): void {
   const bytes = ownedSnapshot().retainedBytes, estimate = estimateOwnedOperation(kind, grid, bytes, operation);
@@ -787,7 +839,10 @@ function admitOperation(kind: 'sequential' | 'two_path' | 'polarization', grid: 
   // failure may retain different sequential results, so replacement cannot be
   // assumed to release those buffers. No owner is discarded to make room.
   const projectedPersistent = bytes + (operation === 'sweep' ? 65536 : estimate.payloadBytes + 16384);
-  assertOwnedBudgets(projectedPersistent, estimate.peakOwnedBytes);
+  const docReservation = documents?.ownershipSnapshot();
+  assertOwnedBudgets(projectedPersistent + (docReservation?.projectedPersistentBytes ?? 0),
+    estimate.peakOwnedBytes + (docReservation?.transientReservedBytes ?? 0));
+  scientificReservations = { persistent: projectedPersistent - bytes, transient: Math.max(0, estimate.peakOwnedBytes - bytes) };
 }
 
 function detachPolarizationPresentation(): void {
@@ -916,7 +971,9 @@ function renderPolarizationFields(state: PolarizationState): void {
     const wrapper = document.createElement('label'); wrapper.className = 'number-field'; wrapper.textContent = label;
     const input = document.createElement('input'); input.type = 'text'; input.inputMode = integer ? 'numeric' : 'decimal';
     input.dataset.plPath = path; input.dataset.testid = `pl-edit-${path.replaceAll('.', '-')}`;
-    input.addEventListener('input', () => { void polarizationController.edit(path, input.value, integer); }); wrapper.append(input); parent.append(wrapper);
+    input.addEventListener('input', () => {
+      if (shouldEditNumeric(input, 'polarization', path, polarizationController.state)) void polarizationController.edit(path, input.value, integer);
+    }); wrapper.append(input); parent.append(wrapper);
   };
   if (polarizationFieldsKey !== state.candidate.source.kind) {
     polarizationFieldsKey = state.candidate.source.kind; const parent = element('pl-fields'); parent.replaceChildren();
@@ -940,6 +997,7 @@ function renderPolarizationFields(state: PolarizationState): void {
     if (document.activeElement === input) continue; let value: unknown = state.candidate;
     for (const key of path.split('.')) value = (value as Record<string, unknown>)[key];
     input.value = invalid ? state.invalidEdits[path] : String(value);
+    paintNumeric(input, 'polarization', path, state, invalid);
   }
   const list = element('pl-elements'); list.replaceChildren();
   const source = document.createElement('button'); source.textContent = 'source / coefficients'; source.className = 'component'; source.addEventListener('click', () => polarizationController.select('source')); list.append(source);
@@ -982,7 +1040,7 @@ function renderPolarizationSweep(sweep: DecodedPolarizationSweep | null, fresh: 
   finish(); // No connection or invented marker beyond the genuine completed prefix.
 }
 function renderPolarization(state: PolarizationState): void {
-  if (disposed || mode !== 'polarization') return;
+  if (disposed || applyingDocument || mode !== 'polarization') return;
   element('pl-status').textContent = state.status; element('pl-status').dataset.status = state.status;
   element('pl-error').textContent = state.error ?? ''; element('pl-error').hidden = !state.error;
   element('pl-render-error').textContent = state.renderError ?? ''; element('pl-render-error').hidden = !state.renderError;
@@ -1134,6 +1192,108 @@ element('tp-chart-range').addEventListener('click', () => {
   if (!Number.isFinite(next.min) || !Number.isFinite(next.max) || next.max <= next.min) { notice('圖表範圍必須有限且下限小於上限。'); return; }
   chartRange = next; renderSweep(twoPathController.state.lastSweep, twoPathController.state.currentSweep === twoPathController.state.lastSweep);
 });
+
+function documentContext() {
+  return { mode, token: [controller.state.revision, controller.state.attachmentEpoch,
+    twoPathController.state.revision, twoPathController.state.attachmentEpoch,
+    polarizationController.state.revision, polarizationController.state.attachmentEpoch].join(':') };
+}
+function currentDocumentDraft() {
+  const state = mode === 'sequential' ? controller.state : mode === 'two_path' ? twoPathController.state : polarizationController.state;
+  if (!state.validatedDraft || state.pendingValidation || Object.keys(state.invalidEdits).length) return null;
+  return { mode, experiment: state.validatedDraft, revision: state.revision, attachmentEpoch: state.attachmentEpoch };
+}
+function prepareDocumentApplication(validated: ValidatedDocument): () => void {
+  const doc = validated.document;
+  const commit = doc.mode === 'sequential'
+    ? controller.prepareValidatedSettings(doc.experiment, validated.experimentSha256)
+    : doc.mode === 'two_path'
+      ? twoPathController.prepareValidatedSettings(doc.experiment, validated.experimentSha256)
+      : polarizationController.prepareValidatedSettings(doc.experiment, validated.experimentSha256);
+  return () => {
+    applyingDocument = true;
+    try {
+      commit();
+      mode = doc.mode;
+      // No DOM or presentation allocation occurs inside the scientific commit.
+    } finally { applyingDocument = false; }
+  };
+}
+function renderModeHelp(): void {
+  document.querySelector<HTMLElement>('.bench-help')!.textContent = mode === 'polarization'
+    ? 'Orbit / Pan / Zoom 與選取只改顯示；同一參考平面，示意間距無光學作用，沒有 z 拖曳。'
+    : mode === 'two_path'
+      ? 'Orbit / Pan / Zoom 與選取只改顯示；固定展開光路不可拖曳。虛線僅為指引。'
+      : '左鍵旋轉（Orbit）・右鍵平移（Pan）・滾輪縮放（Zoom）・點擊選取；橘色控制球僅沿 z 軸拖曳。';
+}
+function presentDocumentApplication(): void {
+  // Presentation is subsequent to the coherent settings commit and fails separately.
+  app!.dataset.mode = mode; element<HTMLSelectElement>('mode').value = mode;
+  try {
+    detachPolarizationPresentation(); scene?.updateResult(null, limits); scene?.detachDualResult();
+    dualPublished = null; dualSelectedPixel = null; dualDisplayKey = ''; displayedResult = null; displayKey = '';
+    selectedPixel = null; priorDisplayKey = ''; inspectorKey = ''; dualFieldsKey = '';
+    polarizationFieldsKey = ''; polarizationInspectorKey = '';
+    for (const canvas of document.querySelectorAll<HTMLCanvasElement>('#intensity, #tp-result-area canvas')) { canvas.width = 0; canvas.height = 0; }
+    element('intensity-holder').hidden = true; element('tp-current-content').replaceChildren(); element('tp-prior-images').replaceChildren();
+    element('pick-choices').replaceChildren(); renderModeHelp();
+    if (mode === 'sequential') render(controller.state);
+    else if (mode === 'two_path') renderTwoPath(twoPathController.state);
+    else renderPolarization(polarizationController.state);
+  } catch (error) { reportPresentation(error); }
+}
+const modeLabel: Record<BenchMode, string> = { sequential: '順序光路', two_path: '兩路干涉', polarization: '理想偏振' };
+function renderDocuments(): void {
+  if (!documents || disposed) return;
+  const state = documents.state, metadata = state.metadata[mode];
+  const title = element<HTMLInputElement>('doc-title'), notes = element<HTMLTextAreaElement>('doc-notes');
+  if (document.activeElement !== title) title.value = metadata.title;
+  if (document.activeElement !== notes) notes.value = metadata.notes;
+  const errors = [state.error, state.metadataErrors[mode]].filter(Boolean);
+  element('doc-error').textContent = errors.join(' · '); element('doc-error').hidden = errors.length === 0;
+  const labels = { idle: '設定檔只保存設定；模擬需要另行提交。', reading: '讀取設定檔中', validating: '驗證設定檔中',
+    preview: '設定已驗證；請檢查並確認取代。', download_prepared: '下載已準備', download_requested: '已要求下載',
+    restored: '設定已還原，尚未模擬', error: '設定檔未完成；請檢查錯誤。' };
+  const current = mode === 'sequential' ? controller.state.currentResult : mode === 'two_path' ? twoPathController.state.currentResult : polarizationController.state.currentResult;
+  element('doc-status').textContent = state.status === 'restored' && current
+    ? '設定已還原；已有另行提交的模擬結果。' : labels[state.status];
+  element('doc-status').dataset.status = state.status;
+  element<HTMLButtonElement>('doc-export').disabled = !currentDocumentDraft() || !!state.metadataErrors[mode];
+  const prepared = state.preparedDownload, link = element<HTMLAnchorElement>('doc-download');
+  element('doc-download-area').hidden = !prepared;
+  if (prepared) {
+    link.href = prepared.url; link.download = prepared.filename;
+    element('doc-download-label').textContent = `${modeLabel[prepared.document.mode]} · 已擷取的有效草稿版本 ${prepared.revision}（設定檔不包含結果）`;
+  } else { link.removeAttribute('href'); link.removeAttribute('download'); }
+  const preview = state.preview;
+  element('doc-preview').hidden = !preview;
+  element<HTMLInputElement>('doc-ack').checked = state.acknowledged;
+  element<HTMLButtonElement>('doc-apply').disabled = !preview || !state.acknowledged || state.pending || operationGate.busy;
+  if (preview) {
+    const doc = preview.document, exp = doc.experiment;
+    element('doc-preview-text').textContent = `模式：${modeLabel[doc.mode]}\n標題：${doc.metadata.title}\n備註：${doc.metadata.notes}\n` +
+      `網格：${exp.grid.ny} × ${exp.grid.nx}；dx=${exp.grid.dx} m；dy=${exp.grid.dy} m\n波長：${exp.wavelength_m} m\n` +
+      `完整設定（SI / rad；尚未模擬）：\n${JSON.stringify(exp, null, 2)}`;
+  } else element('doc-preview-text').textContent = '';
+}
+documents = new ExperimentDocumentController({ context: documentContext, currentValidDraft: currentDocumentDraft,
+  busy: () => operationGate.busy, prepareApply: prepareDocumentApplication,
+  reservedBytes: () => scientificReservations,
+  retainedBytes: () => { const own = ownedSnapshot(); return own.retainedBytes - own.documentBytes; } });
+documents.subscribe(renderDocuments);
+for (const id of ['doc-title', 'doc-notes']) element(id).addEventListener('input', () => {
+  documents!.setMetadata(mode, { title: element<HTMLInputElement>('doc-title').value, notes: element<HTMLTextAreaElement>('doc-notes').value });
+});
+element('doc-export').addEventListener('click', () => { void documents!.exportCurrent(); });
+element('doc-file').addEventListener('change', () => {
+  const input = element<HTMLInputElement>('doc-file'), file = input.files?.[0]; input.value = '';
+  if (file) void documents!.importFile(file);
+});
+element('doc-cancel').addEventListener('click', () => documents!.cancelImport());
+element('doc-ack').addEventListener('change', () => documents!.acknowledgeReplacement(element<HTMLInputElement>('doc-ack').checked));
+element('doc-apply').addEventListener('click', () => { if (documents!.applyImport()) { presentDocumentApplication(); renderDocuments(); } });
+element('doc-download').addEventListener('click', () => documents!.markDownloadRequested());
+element('doc-dismiss').addEventListener('click', () => documents!.dismissDownload());
 element('mode').addEventListener('change', () => {
   controller.deactivate(); twoPathController.deactivate(); polarizationController.deactivate(); detachPolarizationPresentation();
   scene?.updateResult(null, limits); scene?.detachDualResult();
@@ -1144,19 +1304,21 @@ element('mode').addEventListener('change', () => {
   element('tp-current-content').replaceChildren(); element('tp-prior-images').replaceChildren(); priorDisplayKey = '';
   const legacyCanvas = element<HTMLCanvasElement>('intensity'); legacyCanvas.width = 0; legacyCanvas.height = 0;
   element('intensity-holder').hidden = true;
-  document.querySelector<HTMLElement>('.bench-help')!.textContent = mode === 'polarization'
-    ? 'Orbit / Pan / Zoom 與選取只改顯示；同一參考平面，示意間距無光學作用，沒有 z 拖曳。'
-    : mode === 'two_path'
-    ? 'Orbit / Pan / Zoom 與選取只改顯示；固定展開光路不可拖曳。虛線僅為指引。'
-    : '左鍵旋轉（Orbit）・右鍵平移（Pan）・滾輪縮放（Zoom）・點擊選取；橘色控制球僅沿 z 軸拖曳。';
+  renderModeHelp();
   element('pick-choices').replaceChildren();
   if (mode === 'two_path') { renderTwoPath(twoPathController.state); void twoPathController.activate(); }
   else if (mode === 'polarization') { renderPolarization(polarizationController.state); void polarizationController.activate(); }
   else { render(controller.state); void controller.activate(); }
+  documents!.contextChanged(); renderDocuments();
 });
 twoPathController.setResultPreparer(prepareDualPresentation);
 controller.subscribe(render); twoPathController.subscribe(renderTwoPath); polarizationController.subscribe(renderPolarization);
+for (const actor of [controller, twoPathController, polarizationController]) actor.subscribe(() => {
+  if (!applyingDocument && !documents!.isApplying) { documents!.contextChanged(); renderDocuments(); }
+});
 operationGate.subscribe(() => {
+  if (!operationGate.busy) scientificReservations = { persistent: 0, transient: 0 };
+  renderDocuments();
   if (mode === 'sequential') element<HTMLButtonElement>('simulate').disabled = operationGate.busy || !controller.state.validatedDraft || controller.state.pendingValidation || !!Object.keys(controller.state.invalidEdits).length;
   else if (mode === 'polarization') {
     const state = polarizationController.state, ready = !operationGate.busy && !!state.validatedDraft && !state.pendingValidation && !Object.keys(state.invalidEdits).length;
@@ -1189,6 +1351,7 @@ function stateSnapshot(): object {
     twoPath: twoPathSnapshot(),
     polarization: polarizationSnapshot(),
     ownedMemory: ownedSnapshot(),
+    documents: documents ? { state: structuredClone(documents.state), ownership: documents.ownershipSnapshot() } : null,
   };
 }
 
@@ -1206,4 +1369,4 @@ Object.defineProperty(window, '__benchDebug', { value: Object.freeze({
   worldToClient: (x: number, y: number, z: number) => scene?.worldToClient(x, y, z) ?? null,
   dualPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.dualPixelWorld(port, row, column) ?? null,
 }), writable: false, configurable: false });
-window.addEventListener('pagehide', () => { disposed = true; polarizationPlayback.detach(); polarizationResources?.dispose(); scene?.dispose(); }, { once: true });
+window.addEventListener('pagehide', () => { disposed = true; documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); scene?.dispose(); }, { once: true });

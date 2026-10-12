@@ -1,4 +1,4 @@
-import { cloneExperiment, createFetchAPI, decodeResult, freezeExperiment, structuralEqual,
+import { assertExperiment, cloneExperiment, createFetchAPI, decodeResult, freezeExperiment, structuralEqual,
   validateValidationReply, type BenchAPI, type DecodedResult, type Experiment, type RequestEnvelope } from './contracts';
 export type { BenchAPI } from './contracts';
 
@@ -111,6 +111,23 @@ export class BenchController {
       selection: exists ? selection : 'source', error: null, renderError: null });
     await this.validateCandidate();
   }
+  /** Prepare already-authoritative document settings; preparation changes no state or worker. */
+  prepareValidatedSettings(experiment: Experiment, transientDigest: string): () => void {
+    if (this.gate.busy || this.snapshot.active) throw new Error('Cannot restore settings during computation');
+    assertExperiment(experiment);
+    if (!/^[0-9a-f]{64}$/.test(transientDigest)) throw new Error('Invalid transient scientific digest');
+    const previous = this.snapshot, generation = this.validationGeneration, canonical = freezeExperiment(experiment);
+    const next: BenchState = Object.freeze({ ...previous, candidate: canonical, validatedDraft: canonical,
+      pendingValidation: false, invalidEdits: Object.freeze({}), revision: previous.revision + 1,
+      attachmentEpoch: previous.attachmentEpoch + 1, status: 'ready', error: null, renderError: null,
+      currentResult: null, selection: 'source' });
+    return () => {
+      if (this.gate.busy || this.snapshot !== previous || this.validationGeneration !== generation) throw new Error('Settings destination changed before apply');
+      ++this.validationGeneration; this.validatedHash = transientDigest; this.snapshot = next;
+      for (const listener of this.listeners) this.notify(listener);
+    };
+  }
+  restoreValidatedSettings(experiment: Experiment, transientDigest: string): void { this.prepareValidatedSettings(experiment, transientDigest)(); }
   /** Dot paths name schema fields. Text remains separate until it is finite numeric input. */
   async edit(path: string, text: string, scale = 1, integer = false): Promise<void> {
     if (!Number.isFinite(scale) || scale <= 0) throw new Error('Editor scale must be positive finite');

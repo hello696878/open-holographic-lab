@@ -88,6 +88,12 @@ class ValidatedSubmission:
         object.__setattr__(self, "experiment_sha256", experiment_digest(self.experiment))
 
 
+def validate_experiment(spec: object) -> SequentialExperiment:
+    """Validate owned SI settings under the existing bench caps; sample no fields."""
+    _cheap_limits(spec)
+    return SequentialExperiment.from_dict(spec)
+
+
 def validate_submission(payload: object) -> ValidatedSubmission:
     """Validate exact JSON envelope and SI V0 domain without invoking a solver."""
     if not isinstance(payload, dict):
@@ -95,8 +101,7 @@ def validate_submission(payload: object) -> ValidatedSubmission:
     if set(payload) != {"request_id", "experiment"}:
         raise ValueError("submission: expected exactly request_id and experiment")
     request_id = validate_request_id(payload["request_id"])
-    _cheap_limits(payload["experiment"])
-    experiment = SequentialExperiment.from_dict(payload["experiment"])
+    experiment = validate_experiment(payload["experiment"])
     return ValidatedSubmission(request_id=request_id, experiment=experiment)
 
 

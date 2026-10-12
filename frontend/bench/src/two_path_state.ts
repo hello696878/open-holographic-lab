@@ -1,7 +1,7 @@
 /** Explicit V2b submission; no optical calculation or implicit retries. */
 import { structuralEqual } from './contracts';
 import { ClientOperationGate } from './state';
-import { cloneTwoPathExperiment, createTwoPathFetchAPI, decodeTwoPathResult, fixedTwoPathExperiment,
+import { assertTwoPathExperiment, cloneTwoPathExperiment, createTwoPathFetchAPI, decodeTwoPathResult, fixedTwoPathExperiment,
   freezeTwoPathExperiment, SWEEP_PHASES_RAD, validateTwoPathReply, validateTwoPathSweep,
   type DecodedTwoPathResult, type DecodedTwoPathSweep, type TwoPathAPI, type TwoPathEnvelope,
   type TwoPathExperiment, type TwoPathSweepEnvelope } from './two_path_contracts';
@@ -93,6 +93,23 @@ export class TwoPathController {
       error: null, renderError: null });
     await this.validateCandidate();
   }
+  /** Atomic settings restoration does not reuse an HTTP response as a saved result. */
+  prepareValidatedSettings(experiment: TwoPathExperiment, transientDigest: string): () => void {
+    if (this.gate.busy || this.snapshot.active) throw new Error('Cannot restore settings during computation');
+    assertTwoPathExperiment(experiment);
+    if (!/^[0-9a-f]{64}$/.test(transientDigest)) throw new Error('Invalid transient scientific digest');
+    const previous = this.snapshot, generation = this.generation, canonical = freezeTwoPathExperiment(experiment);
+    const next: TwoPathState = Object.freeze({ ...previous, candidate: canonical, validatedDraft: canonical,
+      pendingValidation: false, invalidEdits: Object.freeze({}), revision: previous.revision + 1,
+      attachmentEpoch: previous.attachmentEpoch + 1, status: 'ready', error: null, renderError: null,
+      currentResult: null, currentSweep: null, completedNumerical: null, selectedSweepIndex: null, selection: 'source' });
+    return () => {
+      if (this.gate.busy || this.snapshot !== previous || this.generation !== generation) throw new Error('Settings destination changed before apply');
+      ++this.generation; this.validatedHash = transientDigest; this.snapshot = next;
+      this.listeners.forEach(listener => this.notify(listener));
+    };
+  }
+  restoreValidatedSettings(experiment: TwoPathExperiment, transientDigest: string): void { this.prepareValidatedSettings(experiment, transientDigest)(); }
   async edit(path: string, text: string, scale = 1, integer = false): Promise<void> {
     if (!Number.isFinite(scale) || scale <= 0) throw new Error('Editor scale must be positive finite');
     ++this.generation; this.validatedHash = null;

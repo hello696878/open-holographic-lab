@@ -41,6 +41,7 @@ content-design work and is delivered in independently approved stages.
 | V2b | Approved dual-output 3D interferometer integration | Separate two-path mode, strict OHLAB2P frames, actual 17-call scalar sweep, atomic paired displays, cross-mode stale separation and shared worker-lifetime gate; current acceptance is recorded in the ledger |
 | V2c | Approved ideal Jones polarization numerical foundation at one common transverse plane | Independent complex x/y components, ideal uniform polarizer/retarder actions, explicit phase reference, sampled intensity/norm, loss and focused weak-signal acceptance; no propagation or frontend integration |
 | V2d | Approved interactive ideal Jones polarization experiment mode | Distinct common-plane mode, arbitrary complex coefficients, ordered ideal polarizer/retarder actions, actual fixed-sample trajectories, OHLABPL transport and genuine thirteen-point sweeps; acceptance and publication boundaries are recorded in the ledger and V2d handoff |
+| V2e | Approved priority: portable virtual-experiment settings documents | Current valid draft export; bounded raw validation, final canonical preview and explicitly acknowledged settings replacement in all three modes; fresh-session download/import and explicit recomputation; no saved numerical results or replay qualification |
 | Later V2 | Separately modelled polarized interference, reflection/frame geometry and richer instruments | Both port and polarization indices, tilted/reflected frames, coating laws, noise and absolute radiometry each need explicit physical models and tests; unsupported geometry stays unsupported |
 | V3 | A remotely accessible service with saved/shared experiments and educational templates | Separate security, authentication/authorization, storage, resource limits and remote-compute planning before deployment |
 
@@ -89,6 +90,17 @@ evidence remain distinct. Later V2/V3 stages remain unstarted.
 
 Virtual-experiment save/load is an acknowledged separate product gap. V2c does
 not add persistence, reinterpret M5 bundles or imply a new replay qualification.
+
+V2e addresses the bounded settings part of that gap before additional optics.
+The six-key version-1 document carries the existing complete scientific
+definition and literal title/notes. A stateless local endpoint validates bytes;
+the browser owns file selection and downloads. Import never simulates, and a
+renamed file restores without the original tab, filename, storage or renderer.
+The [V2e handoff](handoffs/v2e/implementation_summary.md) defines strict parsing,
+two-stage correspondence, exact tested same-platform recomputation and its
+limits. Saved results, sweep recipes, libraries, migrations, remote sharing,
+deployment and additional optics remain deferred. V2d publication is recorded
+by a dated ledger closeout; its original precommit evidence stays historical.
 
 Reuse existing field/propagation conventions and validation practices where
 their assumptions apply. The current periodic, lossless GS contract is not a

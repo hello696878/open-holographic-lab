@@ -1113,6 +1113,56 @@ or later milestone is introduced. Teaching and learning records stay separate.
 
 ---
 
+## V2d publication closeout — recorded 2026-10-12
+
+Read-back of `runs/v2d_acceptance_20261012_01/publication_verification.json`
+and `final_closeout.json`: V2d was published as
+`9791db07ad182902fb027ab4e3caf9d2faccc966`. Local HEAD, live origin/main and
+GitHub API main matched, main was clean and synchronized (0/0), and the
+task-owned service was closed. The clean-postcommit production rebuild and
+source/served-asset checks passed; the existing three-mode smoke passed
+**5 tests in 17.4s, no skips**. This is a dated evidence read-back, not a new
+V2d scientific run. Its preceding precommit record, counts, tolerances,
+screenshots and handoffs retain their original provenance.
+
+## V2e — Portable virtual-experiment settings documents
+
+**Status: implementation and precommit acceptance complete (2026-10-12);
+clean-postcommit portability, three-mode smoke and publication remain separate
+gates recorded in fresh ignored evidence.**
+
+Approved priority after V2d: settings-only export/import for sequential,
+two-path and ideal Jones modes. Accepted starting revision:
+`9791db07ad182902fb027ab4e3caf9d2faccc966`, verified on clean synchronized main.
+The [V2e handoff](handoffs/v2e/implementation_summary.md) defines the six-key
+version-1 schema, stateless `POST /api/v2e/documents/validate`, strict bounded
+raw parsing, two-stage exact scientific correspondence and explicit Apply.
+Export captures the current valid draft; import previews before replacement.
+Restoration has no result or success badge and performs no computation.
+Ordinary explicit simulation remains necessary. M5 bundles, existing numerical
+models/wire contracts and all historical handoffs remain unchanged.
+
+Baseline Python: **2523 passed, 1 skipped in 216.06s (0:03:36)**. Final restored
+Python: **2700 passed, 1 skipped in 302.95s (0:05:02)**. The Windows file-symlink
+privilege skip remains unchanged. Installed frontend baseline 186/final 222
+tests, typecheck and production build passed; the existing chunk-size warning
+is retained. Ordinary legacy browsers passed 28 with 5 controlled-only skips;
+document browsers passed 5 with 1 held-worker-only skip. Separate controlled
+children passed 17 browser cases with 0 skips and 7 partial-prefix API checks.
+All 24 isolated fault variants across 19 categories triggered intended assertions,
+original/restored copies passed and production hashes stayed unchanged.
+Three-mode actual download/closed-context/renamed-file import and explicit
+recomputation matched complete original/direct arrays, scalars and samples
+exactly. All 286 protected tracked files and 53 Python package records are unchanged.
+
+Precommit acceptance and publication gates are recorded in the
+[new evidence handoff](handoffs/v2e/tests_and_evidence.md). Fresh-session
+portability is a tested same-platform identical-input property, not qualified
+replay or a cross-version guarantee. Saved results, sweep recipes, libraries,
+migration, additional optics, sharing and deployment remain deferred.
+
+---
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.

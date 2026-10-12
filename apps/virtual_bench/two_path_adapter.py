@@ -136,14 +136,19 @@ def _envelope(payload: object, *, sweep: bool = False) -> dict[str, object]:
     return value
 
 
-def validate_submission(payload: object) -> ValidatedTwoPathSubmission:
-    """Validate SI public source and arm domains without numerical execution."""
-    value = _envelope(payload)
-    scientific = _keys(value["experiment"], {"wavelength_m", "grid", "source", "two_arm_spec"}, "experiment")
+def validate_experiment(spec: object) -> TwoPathExperiment:
+    """Validate owned source/arm SI settings without sampling or execution."""
+    scientific = _keys(spec, {"wavelength_m", "grid", "source", "two_arm_spec"}, "experiment")
     arms = _keys(scientific["two_arm_spec"],
                  {"arm_0_distance_m", "arm_1_distance_m", "relative_phase_rad"}, "two_arm_spec")
     source_plane = _source_plane(scientific, axis_cap=MAX_AXIS)
-    experiment = TwoPathExperiment(source_plane=source_plane, spec=TwoArmSpec(**arms))
+    return TwoPathExperiment(source_plane=source_plane, spec=TwoArmSpec(**arms))
+
+
+def validate_submission(payload: object) -> ValidatedTwoPathSubmission:
+    """Validate SI public source and arm domains without numerical execution."""
+    value = _envelope(payload)
+    experiment = validate_experiment(value["experiment"])
     return ValidatedTwoPathSubmission(request_id=value["request_id"], experiment=experiment)
 
 
