@@ -1163,6 +1163,66 @@ migration, additional optics, sharing and deployment remain deferred.
 
 ---
 
+## V2e publication closeout — recorded 2026-10-13
+
+The preceding V2e section remains its dated precommit evidence. The user
+accepted V2e within its reported validation scope. Read-back of existing
+`runs/v2e_acceptance_20261012_01/final_closeout01.json`, GitHub/API/live-remote
+captures and final closeout report records published commit
+`1dde19c4c1d5419714523828c338bc0c948ea82c`, normal push, matching local/live
+remote/GitHub API SHAs and clean synchronized main. Clean-postcommit owned
+source/assets, fresh-session portability3passed and legacy smoke5passed are
+recorded there. These are historical read-back, not newly executed browser,
+frontend or V2e validation checks. No historical handoff is rewritten.
+That exact revision was verified as clean synchronized main before V2f work.
+
+---
+
+## V2f — Ideal polarization-sensitive two-path interference
+
+Approved numerical scope recorded2026-10-13; accepted starting revision
+`1dde19c4c1d5419714523828c338bc0c948ea82c`. Exactly22 paths: four documentation
+modifications and eighteen new numerical/test/example/script/handoff/figure
+paths. The exact eight-name API and domain/checkpoint/exception contract were
+completed in normative3.20 and the new handoff before executable implementation.
+
+The fixed ideal unfolded runner mixes corresponding polarization components
+across ports, uses four public scalar ASM calls at explicit pad1, applies each
+arm's zero-to-two ordered terminal Jones actions, adds the same common phase
+to both arm1 components and recombines with B_dagger. Both raw Jones outputs,
+six measured combined-norm checkpoint pairs and short action histories remain.
+Analyzers are separate downstream measurements; no loss or phase is normalized
+away. The runner-only128-axis cap and scalar/Jones complete-pipeline supported
+intersection are explicit. Derived unusable components fail contextually rather
+than being silently deleted. This is an aligned low-angle envelope composition,
+not a vector Maxwell, reflection/coating, material or calibrated-energy model.
+
+Actual baseline/final tests, independent A–F/full-complex/weak/direct-sum
+measurements, classified fault controls/restoration, shipped-runner resources,
+both numerical demonstrations and inspected/regenerated figures are recorded
+in the [V2f evidence handoff](handoffs/v2f/tests_and_evidence.md). Precommit and
+postcommit/publication gates are distinguished there and in fresh ignored
+evidence. Precommit acceptance passed: baseline 2700 passed/1 skipped and
+restored final 2942 passed/1 skipped, including 242 new cases. The retained skip
+is the Windows file-symlink privilege case. All 20 classified controls detected
+their intended assertions and restored exactly; independent references, both
+demos, shipped-runner resource probes and three inspected byte-identically
+regenerated figures passed. Commit and publication remain separate later gates
+recorded in the ignored closeout captures and completion report.
+
+Every other existing numerical module/test/guard, initializer/export, app,
+wire/document/bundle contract, dependency/lockfile, instruction and historical
+handoff remains protected. Frontend/browser results remain historical. No npm,
+build, browser/server launch or service management belongs to V2f.
+
+V2f numerical integration precedes separately approved V2g interactive
+integration. V2g must explicitly plan new-mode document compatibility; V2e
+remains closed to sequential/two_path/polarization. No new document mode,
+saved numerical-result feature, reflection geometry, material model, hardware
+or deployment is introduced. Teaching and learning records remain separate.
+
+---
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.

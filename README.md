@@ -62,6 +62,33 @@ are **not yet simulated**: an ordinary simulation must be submitted separately.
 See the [V2e contract and workflow](docs/handoffs/v2e/implementation_summary.md)
 and [acceptance evidence](docs/handoffs/v2e/tests_and_evidence.md).
 
+V2f adds a standalone ideal **polarization-sensitive two-path** numerical
+experiment. It keeps optical ports distinct from x/y polarization components,
+uses public scalar ASM for the two aligned transverse envelopes, permits at
+most two ordered terminal Jones actions per arm, and returns both raw Jones
+outputs with measured norm/loss histories. Output analyzers remain separate.
+See the [V2f API and supported numerical domain](docs/handoffs/v2f/implementation_summary.md)
+and [actual evidence and limitations](docs/handoffs/v2f/tests_and_evidence.md).
+V2g interactive integration requires separate approval and an explicit
+experiment-document compatibility decision; V2e's three-mode schema is unchanged.
+
+The standalone example opens no GUI, browser or server. Use a fresh output
+directory for each evidence capture:
+
+```powershell
+.\.venv\Scripts\python.exe -B -X utf8 examples\polarized_two_path_interference.py --n 32 --output-dir runs\v2f-demo32-NEW
+.\.venv\Scripts\python.exe -B -X utf8 examples\polarized_two_path_interference.py --n 64 --output-dir runs\v2f-demo64-NEW
+.\.venv\Scripts\python.exe -B -X utf8 scripts\validate_v2f_interference.py --resources
+.\.venv\Scripts\python.exe -B -X utf8 scripts\generate_v2f_figures.py --evidence-dir runs\v2f-demo64-NEW --output-dir runs\v2f-figures-NEW
+```
+
+This is a bounded low-angle Jones-envelope composition on a periodic grid,
+not a full-vector or reflected-frame electromagnetic solver. Valid Jones
+inputs can leave the supported scalar/Jones numerical intersection at a later
+stage and fail contextually. No tiny component is silently dropped or rescaled;
+loss, complex phase and represented residuals remain visible. The example's
+JSON/NPZ files are disposable evidence, not saved-result bundles or qualified replay.
+
 The package provides `SamplingGrid` (coordinate and frequency grids),
 `ComplexField` (a sampled complex optical field), and free-space propagation by
 the **Angular Spectrum Method**. Milestone 2 adds strict grayscale PNG loading
