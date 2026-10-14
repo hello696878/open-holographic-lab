@@ -16,16 +16,21 @@ import { assertOwnedBudgets, estimateOwnedOperation, ownedScientificBytes, Polar
   trajectoryMarker, validateDisplayScale, type PolarizationResources } from './polarization_display';
 import { NumericFieldBinding } from './numeric_fields';
 import { ExperimentDocumentController } from './experiment_document_state';
-import { type BenchMode, type ValidatedDocument } from './experiment_documents';
+import { type SupportedBenchMode, type SupportedValidatedDocument } from './experiment_documents';
+import { PolarizedTwoPathController, type PolarizedTwoPathState } from './polarized_two_path_state';
+import type { DecodedPolarizedTwoPathResult, DecodedPolarizedTwoPathSweep } from './polarized_two_path_contracts';
+import { POLARIZED_TWO_PATH_PRESETS, polarizedTwoPathPreset } from './polarized_two_path_presets';
+import { ownedScientificBytes4, estimatePolarizedTwoPathOperation, preparePolarizedTwoPathResources,
+  type PolarizedTwoPathResources } from './polarized_two_path_display';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('缺少應用程式容器。');
 app.innerHTML = `
-  <header class="app-header"><div><span class="eyebrow">OPEN HOLOGRAPHIC LAB / V1 + V2b + V2d</span><h1>虛擬光學實驗台</h1></div>
+  <header class="app-header"><div><span class="eyebrow">OPEN HOLOGRAPHIC LAB / FOUR EXPERIMENT MODES</span><h1>虛擬光學實驗台</h1></div>
     <div class="header-detail">單色 · 純量 · 同軸前向光路<br><span>本機運作／明確提交</span></div></header>
   <main>
     <section class="toolbar" aria-label="實驗控制">
-      <label>模式 <select id="mode" data-testid="mode"><option value="sequential">順序光路（Sequential）</option><option value="two_path">兩路干涉（Two-path）</option><option value="polarization">理想偏振（Jones polarization）</option></select></label>
+      <label>模式 <select id="mode" data-testid="mode"><option value="sequential">順序光路（Sequential）</option><option value="two_path">兩路干涉（Two-path）</option><option value="polarization">理想偏振（Jones polarization）</option><option value="polarized_two_path">偏振兩路干涉（Polarized two-path）</option></select></label>
       <label class="sequential-only">載入預設 <select id="preset" data-testid="preset"></select></label>
       <button id="simulate" class="primary sequential-only" data-testid="simulate">模擬（Simulate）</button>
       <output id="status" class="sequential-only" data-testid="status" aria-live="polite"></output>
@@ -35,7 +40,14 @@ app.innerHTML = `
       <button id="pl-simulate" class="primary polarization-only" data-testid="pl-simulate">偏振模擬（Simulate）</button>
       <button id="pl-sweep" class="polarization-only" data-testid="pl-sweep">分析器角度掃描（13 points）</button>
       <output id="pl-status" class="polarization-only" data-testid="pl-status" aria-live="polite"></output>
+      <button id="pt-simulate" class="primary polarized-two-path-only" data-testid="pt-simulate">偏振兩路模擬（Simulate）</button>
+      <button id="pt-sweep" class="polarized-two-path-only" data-testid="pt-sweep">相位掃描（17 points）</button>
+      <output id="pt-status" class="polarized-two-path-only" data-testid="pt-status" aria-live="polite"></output>
     </section>
+    <details class="panel release-panel"><summary>釋放保留的計算結果 · 保留設定與文件</summary>
+      <p>此操作移除所有模式的目前與先前計算、掃描、讀值及圖像；保留實驗草稿、無效編輯文字、相機、匯入預覽與已準備的設定下載。計算中不可使用。</p>
+      <button id="release-results" data-testid="release-results">釋放所有模式保留的計算結果；保留設定與文件</button>
+      <output id="release-status" data-testid="release-status" aria-live="polite"></output></details>
     <p id="error" class="error" data-testid="error" role="alert" hidden></p>
     <p id="render-error" class="error" data-testid="render-error" role="alert" hidden></p>
     <details id="documents" class="panel document-panel" data-testid="documents">
@@ -86,6 +98,15 @@ app.innerHTML = `
           <button id="pl-add" data-testid="pl-add">新增元件</button><button id="pl-delete" data-testid="pl-delete">刪除選取元件</button>
           <button id="pl-up" data-testid="pl-up">選取元件往前</button><button id="pl-down" data-testid="pl-down">選取元件往後</button></div>
       </aside>
+      <aside class="panel polarized-two-path-only pt-controls"><h2>偏振兩路 · 入射與設定</h2>
+        <label>預設 <select id="pt-preset" data-testid="pt-preset"></select></label>
+        <label>光源 <select id="pt-source-kind" data-testid="pt-source-kind"><option value="uniform">均勻 Uniform</option><option value="gaussian">完整 Gaussian</option></select></label>
+        <label>複數係數預設 <select id="pt-coefficients-preset" data-testid="pt-coefficients-preset"></select></label>
+        <div id="pt-fields"></div>
+        <label class="document-ack"><input type="checkbox" id="pt-analyzer-enabled" data-testid="pt-analyzer-enabled">兩個輸出使用相同下游分析器</label>
+        <div class="phase-buttons"><button id="pt-phase-0" data-testid="pt-phase-0">0 rad</button><button id="pt-phase-halfpi" data-testid="pt-phase-halfpi">π/2 rad</button><button id="pt-phase-pi" data-testid="pt-phase-pi">π rad</button></div>
+        <p class="muted">光源在 z=0 取樣；Gaussian 腰位置可正可負。係數不正規化；arm 1 extra phase 同時作用於 x/y。停用分析器仍保存其角度。</p>
+      </aside>
       <section class="bench-panel"><div class="bench-heading"><h2>3D 光學實驗台</h2><span id="bench-label">等待草稿驗證</span></div>
         <div id="bench" data-testid="bench-host"></div>
         <div class="camera-controls" aria-label="視角控制"><button id="reset-view" data-testid="reset-view">重設視角</button>
@@ -108,6 +129,9 @@ app.innerHTML = `
         <button id="pl-qwp" data-testid="pl-qwp">QWP：δ=π/2 rad</button><button id="pl-hwp" data-testid="pl-hwp">HWP：δ=π rad</button>
         <p class="muted">同一參考平面上的理想有序作用。示意間距與外殼不新增傳播、厚度或光學相位。Gaussian 腰位置固定為零，無物理 z 控制。</p>
         <p class="muted">x/y 是偏振分量，不是光學埠。係數不自動正規化；數值欄位保留完整 radians 與 SI 值。編輯只驗證，請明確提交。</p></aside>
+      <aside class="panel polarized-two-path-only pt-arm-controls"><h2>兩臂有序終端作用</h2><div id="pt-arms"></div><div id="pt-topology"></div>
+        <p class="muted">每臂先做一次傳播，再按列表執行最多兩個作用。QWP/HWP 只設定延遲器 δ。示意位置不增加傳播、反射或相位。</p>
+        <p class="muted">B → arm 0/1 → B†；兩輸出使用相同橫向座標。3D 只展示選取的 raw 或 analyzed 兩埠，面板同時保留全部可用影像。</p></aside>
     </section>
     <section class="result-panel panel sequential-only"><div class="result-heading"><h2>觀察結果</h2><strong id="result-status" data-testid="result-status">尚未提交模擬</strong></div>
       <div class="results"><div><div class="color-controls"><label>顯示下限 <input id="color-min" data-testid="color-min" type="text" inputmode="decimal" value="0"></label>
@@ -159,6 +183,20 @@ app.innerHTML = `
       <button id="pl-apply-angle" data-testid="pl-apply-angle" disabled>明確套用選取角度並模擬（原掃描設定）</button>
       <div class="table-scroll"><table><thead><tr><th>index</th><th>θ / rad</th><th>final norm</th><th>原入射比例</th><th>signed Δnorm</th></tr></thead><tbody id="pl-sweep-rows" data-testid="pl-sweep-rows"></tbody></table></div>
     </section>
+    <section class="panel result-panel polarized-two-path-only" id="pt-result-area"><div class="result-heading"><h2>偏振兩路 · 原始與分析後輸出</h2><strong id="pt-result-status" data-testid="pt-result-status">尚未提交</strong></div>
+      <p id="pt-error" data-testid="pt-error" class="error" hidden></p><p id="pt-render-error" data-testid="pt-render-error" class="error" hidden></p>
+      <div class="color-controls"><label>共同強度下限 <input id="pt-color-min" data-testid="pt-color-min" value="0"></label><label>共同強度上限 <input id="pt-color-max" data-testid="pt-color-max" value="1"></label>
+        <button id="pt-auto-color" data-testid="pt-auto-color">全部影像共同自動色階（不重算）</button><button id="pt-retry-display" data-testid="pt-retry-display">重試完整顯示（不重算）</button>
+        <label>3D 兩埠顯示 <select id="pt-view" data-testid="pt-view"><option value="raw">原始 Raw</option><option value="analyzed">分析後 Analyzed</option></select></label></div>
+      <p id="pt-color-info" class="muted"></p><div id="pt-current-content"></div>
+      <details id="pt-previous-result" data-testid="pt-previous-result" hidden><summary>先前結果 · 原提交獨立保留</summary><pre id="pt-previous-spec"></pre></details>
+      <p class="muted">強度為原始 float64；norm 單位 amplitude-unit²·m²，非瓦特。原入射比例與下游傳輸比例的分母不同。null 表示零分母未定義；有號損失與極暗殘值不裁切。</p></section>
+    <section class="panel result-panel polarized-two-path-only"><div class="result-heading"><h2>偏振兩路 · 實際相位掃描</h2><strong id="pt-sweep-status" data-testid="pt-sweep-status">尚未掃描</strong></div>
+      <p class="muted">17 個相位分別呼叫完整模型；0 與 2π 各自計算。分析器啟用時，每點保留完整 raw/analyzed 標量。連線只是插值；失敗只顯示真正完成前綴。</p>
+      <svg id="pt-sweep-chart" data-testid="pt-sweep-chart" viewBox="0 0 760 230" role="img" aria-label="實際偏振兩路相位掃描"></svg>
+      <p id="pt-sweep-identity" data-testid="pt-sweep-identity" class="monospace"></p><p id="pt-sweep-selected" data-testid="pt-sweep-selected" class="monospace"></p>
+      <button id="pt-simulate-phase" data-testid="pt-simulate-phase" disabled>明確套用選取相位並模擬（原掃描完整設定）</button>
+      <div class="table-scroll"><table><thead><tr><th>index</th><th>phase / rad</th><th>raw η0</th><th>raw η1</th><th>analyzed η0</th><th>analyzed η1</th><th>完整標量紀錄</th></tr></thead><tbody id="pt-sweep-rows" data-testid="pt-sweep-rows"></tbody></table></div></section>
     <footer class="model-note"><strong>模型限制</strong>　週期性取樣視窗；Gaussian 與理想薄透鏡為近軸描述；硬孔徑使用離散中心取樣。
       不提供取樣精度保證、光線追跡、體積光束、校準瓦特或硬體控制。強度為任意 amplitude-unit²。</footer>
   </main>`;
@@ -176,7 +214,8 @@ const twoPathController = new TwoPathController(twoPathPreset(TWO_PATH_PRESETS[0
   simulate(envelope) { admitOperation('two_path', envelope.experiment.grid); return dualAPI.simulate(envelope); },
   sweep(envelope) { admitOperation('two_path', envelope.fixed_experiment.grid, 'sweep'); return dualAPI.sweep(envelope); } }, undefined, operationGate);
 const polarizationController = new PolarizationController(polarizationPreset('analyzer'), undefined, undefined, operationGate);
-let mode: 'sequential' | 'two_path' | 'polarization' = 'sequential';
+const polarizedTwoPathController = new PolarizedTwoPathController(polarizedTwoPathPreset('identical'), undefined, undefined, operationGate);
+let mode: SupportedBenchMode = 'sequential';
 app.dataset.mode = mode;
 let scene: BenchScene | null = null;
 let limits: ColorLimits = { ...INITIAL_COLOR_LIMITS };
@@ -187,9 +226,10 @@ let selectedPixel: { row: number; column: number; x_m: number; y_m: number; inte
 let nextId = 1;
 let disposed = false;
 let applyingDocument = false;
-let documents: ExperimentDocumentController | null = null;
+let documents: ExperimentDocumentController<SupportedBenchMode> | null = null;
 let scientificReservations = { persistent: 0, transient: 0 };
 const numericBindings = new WeakMap<HTMLInputElement, NumericFieldBinding>();
+const resultCanvasCallbacks = new WeakMap<HTMLCanvasElement, (event: MouseEvent) => void>();
 let dualLimits: ColorLimits = { min: 0, max: 1 };
 let dualPublished: DecodedTwoPathResult | null = null;
 let dualDisplayKey = '';
@@ -204,12 +244,28 @@ let polarizationDisplayKey = '', polarizationFieldsKey = '', polarizationInspect
 let polarizationScale = 1, polarizationGain = 1, nextPolarizationId = 1;
 let polarizationSelectedPixel: { view: 0 | 1; row: number; column: number; intensity: number; x_m: number; y_m: number; requestId: string } | null = null;
 const polarizationPlayback = new PolarizationPlayback();
+let polarizedTwoPathLimits: ColorLimits = { min: 0, max: 1 };
+let polarizedTwoPathPublished: DecodedPolarizedTwoPathResult | null = null;
+let polarizedTwoPathResources: PolarizedTwoPathResources | null = null;
+let polarizedTwoPathDisplayKey = '', polarizedTwoPathFieldsKey = '', polarizedTwoPathArmsKey = '', nextPolarizedTwoPathId = 1;
+let polarizedTwoPathSelectedPixel: { view: 'raw' | 'analyzed'; port: 0 | 1; row: number; column: number; intensity: number; x_m: number; y_m: number; requestId: string } | null = null;
+let resultAttachmentGeneration = 0, releasedResultsCount = 0;
 
 function notice(text: string): void { element('notice').textContent = text; }
+function bindResultCanvas(canvas: HTMLCanvasElement, callback: (event: MouseEvent) => void): void {
+  resultCanvasCallbacks.set(canvas, callback); canvas.addEventListener('click', callback);
+}
+function dropResultCanvases(host: ParentNode): void {
+  for (const canvas of host.querySelectorAll<HTMLCanvasElement>('canvas')) {
+    const callback = resultCanvasCallbacks.get(canvas); if (callback) canvas.removeEventListener('click', callback);
+    resultCanvasCallbacks.delete(canvas); canvas.width = 0; canvas.height = 0;
+  }
+}
 
 function reportPresentation(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  if (mode === 'polarization') { if (polarizationController.state.renderError !== message) polarizationController.reportRenderFailure(message); }
+  if (mode === 'polarized_two_path') { if (polarizedTwoPathController.state.renderError !== message) polarizedTwoPathController.reportRenderFailure(message); }
+  else if (mode === 'polarization') { if (polarizationController.state.renderError !== message) polarizationController.reportRenderFailure(message); }
   else if (mode === 'two_path') {
     if (twoPathController.state.renderError !== message) twoPathController.reportRenderFailure(message);
   } else if (controller.state.renderError !== message) controller.reportRenderFailure(message);
@@ -218,6 +274,7 @@ function reportPresentation(error: unknown): void {
 try {
   scene = new BenchScene(element('bench'), {
     select(ids) {
+      if (mode === 'polarized_two_path') { polarizedTwoPathController.select(ids[0]); return; }
       if (mode === 'polarization') { polarizationController.select(ids[0]); return; }
       if (mode === 'two_path') { twoPathController.select(ids[0]); return; }
       controller.select(ids[0]);
@@ -236,6 +293,7 @@ try {
     pixel: (row, column) => showPixel(controller.state.currentResult, row, column),
     dualPixel: (port, row, column) => showDualPixel(twoPathController.state.currentResult, port, row, column),
     polarizationPixel: (view, row, column) => showPolarizationPixel(polarizationController.state.currentResult, view, row, column),
+    polarizedTwoPathPixel: (view, port, row, column) => showPolarizedTwoPathPixel(polarizedTwoPathController.state.currentResult, view, port, row, column),
     commitZ(id, z_m) {
       const spec = cloneExperiment(controller.state.candidate);
       const component = spec.components.find((item) => item.id === id);
@@ -245,7 +303,10 @@ try {
     },
     notice,
     presentationFailure(message) {
-      if (mode === 'polarization') {
+      if (mode === 'polarized_two_path') {
+        if (message) polarizedTwoPathController.invalidatePresentation(message);
+        else polarizedTwoPathController.reportRenderFailure(null);
+      } else if (mode === 'polarization') {
         if (message) { polarizationPlayback.detach(); polarizationController.invalidatePresentation(message); }
         else polarizationController.reportRenderFailure(null);
       } else if (mode === 'two_path') twoPathController.reportRenderFailure(message);
@@ -287,7 +348,7 @@ function readPath(spec: unknown, path: string): number {
   return current as number;
 }
 
-function paintNumeric(input: HTMLInputElement, benchMode: BenchMode, path: string,
+function paintNumeric(input: HTMLInputElement, benchMode: SupportedBenchMode, path: string,
     state: { candidate: unknown; revision: number; attachmentEpoch: number }, invalid: boolean): void {
   let binding = numericBindings.get(input);
   if (!binding) { binding = new NumericFieldBinding(); numericBindings.set(input, binding); }
@@ -295,7 +356,7 @@ function paintNumeric(input: HTMLInputElement, benchMode: BenchMode, path: strin
   else binding.paint(input.value, `${benchMode}.${path}`, `${state.revision}:${state.attachmentEpoch}`, readPath(state.candidate, path));
 }
 
-function shouldEditNumeric(input: HTMLInputElement, benchMode: BenchMode, path: string,
+function shouldEditNumeric(input: HTMLInputElement, benchMode: SupportedBenchMode, path: string,
     state: { candidate: unknown; revision: number; attachmentEpoch: number }): boolean {
   return numericBindings.get(input)?.shouldEdit(input.value, `${benchMode}.${path}`,
     `${state.revision}:${state.attachmentEpoch}`, readPath(state.candidate, path)) ?? true;
@@ -589,7 +650,7 @@ function dualContent(result: DecodedTwoPathResult, canvases: readonly [HTMLCanva
     const holder = local('tp-holder-' + port), canvas = canvases[port];
     holder.style.aspectRatio = String(result.experiment.grid.nx * result.experiment.grid.dx / (result.experiment.grid.ny * result.experiment.grid.dy));
     holder.append(canvas);
-    canvas.addEventListener('click', event => {
+    bindResultCanvas(canvas, event => {
       if (dualPublished !== result || !twoPathController.state.currentResult) return;
       const rect = canvas.getBoundingClientRect();
       const pixel = pixelFromUV(result.experiment.grid, (event.clientX - rect.left) / rect.width, 1 - (event.clientY - rect.top) / rect.height);
@@ -614,8 +675,9 @@ function dualContent(result: DecodedTwoPathResult, canvases: readonly [HTMLCanva
 }
 
 function prepareDualPresentation(result: DecodedTwoPathResult): { commit(): void; dispose(): void; finalize(): void } {
+  const generation = resultAttachmentGeneration;
   if (!scene) throw new Error('數值已完成；WebGL2 兩埠顯示不可用，未重新計算。');
-  const numericalBytes = ownedSnapshot(result).scientificBytes;
+  const numericalBytes = ownedSnapshot(result).retainedBytes;
   const imageBytes = 16 * result.experiment.grid.nx * result.experiment.grid.ny;
   if (numericalBytes + imageBytes + 128 * 1024 > OWNED_PERSISTENT_BUDGET_BYTES) throw new Error('兩埠準備超過 app-owned 資料預算。');
   const retained = ownedSnapshot().retainedBytes + 128 * 1024;
@@ -631,22 +693,23 @@ function prepareDualPresentation(result: DecodedTwoPathResult): { commit(): void
   let committed = false;
   return {
     commit() {
+      if (generation !== resultAttachmentGeneration) throw new Error('Released or detached two-path presentation');
+      committed = true;
       scenePrepared.commit();
       host.replaceChildren(content); host.hidden = false;
       dualPublished = result; dualDisplayKey = `${result.requestId}:${dualLimits.min}:${dualLimits.max}`;
-      committed = true;
       showDualPixel(result, 0, Math.floor(result.experiment.grid.ny / 2), Math.floor(result.experiment.grid.nx / 2));
     },
     finalize() {
       scenePrepared.finalize();
       for (const node of oldChildren) if (node instanceof HTMLElement) {
-        for (const canvas of node.querySelectorAll('canvas')) { canvas.width = 0; canvas.height = 0; }
+        dropResultCanvases(node);
       }
     },
     dispose() {
       scenePrepared.dispose();
-      if (committed) { host.replaceChildren(...oldChildren); dualPublished = previous; dualDisplayKey = previousKey; }
-      for (const canvas of content.querySelectorAll('canvas')) { canvas.width = 0; canvas.height = 0; }
+      if (committed && generation === resultAttachmentGeneration) { host.replaceChildren(...oldChildren); dualPublished = previous; dualDisplayKey = previousKey; }
+      dropResultCanvases(content);
     },
   };
 }
@@ -744,7 +807,7 @@ function renderTwoPath(state: TwoPathState): void {
   try {
     if (!state.currentResult) {
       scene?.detachDualResult(); dualPublished = null; dualDisplayKey = ''; dualSelectedPixel = null;
-      for (const canvas of element('tp-current-content').querySelectorAll('canvas')) { canvas.width = 0; canvas.height = 0; }
+      dropResultCanvases(element('tp-current-content'));
       element('tp-current-content').replaceChildren();
     }
     if (state.validatedDraft) scene?.updateTwoPathExperiment(state.validatedDraft, state.selection);
@@ -811,20 +874,23 @@ function twoPathSnapshot(): object {
 }
 
 /** All modes share these ownership calculations. Aliased arrays are counted once. */
-function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathResult | null = null): {
+function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathResult | DecodedPolarizedTwoPathResult | null = null): {
   scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; documentBytes: number; retainedBytes: number;
 } {
   const sceneResults = scene?.ownedNumericalResults();
-  const scientificBytes = ownedScientificBytes([controller.state.lastResult, displayedResult, sceneResults?.sequential ?? null],
-    [twoPathController.state.lastResult, twoPathController.state.completedNumerical, dualPublished, sceneResults?.dual ?? null,
+  const scientificBytes = ownedScientificBytes4({ sequential: [controller.state.lastResult, displayedResult, sceneResults?.sequential ?? null],
+    dual: [twoPathController.state.lastResult, twoPathController.state.completedNumerical, dualPublished, sceneResults?.dual ?? null,
       additional && 'ports' in additional ? additional : null],
-    [polarizationController.state.lastResult, polarizationController.state.completedNumerical, polarizationPublished, sceneResults?.polarization ?? null,
+    polarization: [polarizationController.state.lastResult, polarizationController.state.completedNumerical, polarizationPublished, sceneResults?.polarization ?? null,
       additional && 'incidentIntensity' in additional ? additional : null],
-    [twoPathController.state.lastSweep, polarizationController.state.lastSweep]);
-  const canvasBytes = [...document.querySelectorAll<HTMLCanvasElement>('#intensity, #tp-result-area canvas, #pl-result-area canvas')]
+    polarizedTwoPath: [polarizedTwoPathController.state.lastResult, polarizedTwoPathController.state.completedNumerical,
+      polarizedTwoPathPublished, sceneResults?.polarizedTwoPath ?? null, additional && 'rawPorts' in additional ? additional : null],
+    sweeps: [twoPathController.state.lastSweep, polarizationController.state.lastSweep, polarizedTwoPathController.state.lastSweep] });
+  const canvasBytes = [...document.querySelectorAll<HTMLCanvasElement>('#intensity, #tp-result-area canvas, #pl-result-area canvas, #pt-result-area canvas')]
     .reduce((n, canvas) => n + canvas.width * canvas.height * 4, 0);
   const textureBuffers = new Set<ArrayBufferLike>(scene?.ownedTextureBuffers() ?? []);
   for (const texture of polarizationResources?.textures ?? []) textureBuffers.add((texture.image.data as Uint8Array).buffer);
+  for (const texture of polarizedTwoPathResources?.textures ?? []) textureBuffers.add((texture.image.data as Uint8Array).buffer);
   const textureBytes = [...textureBuffers].reduce((n, buffer) => n + buffer.byteLength, 0);
   const trajectoryBytes = polarizationResources?.trajectories.reduce((n, trajectory) => n + trajectory.points.byteLength, 0) ?? 0;
   const geometryBytes = scene?.ownedGeometryBuffers().reduce((n, buffer) => n + buffer.byteLength, 0) ?? 0;
@@ -832,13 +898,15 @@ function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathRes
   return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes,
     retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes + documentBytes };
 }
-function admitOperation(kind: 'sequential' | 'two_path' | 'polarization', grid: Experiment['grid'], operation: 'single' | 'sweep' = 'single'): void {
-  const bytes = ownedSnapshot().retainedBytes, estimate = estimateOwnedOperation(kind, grid, bytes, operation);
+function admitOperation(kind: SupportedBenchMode, grid: Experiment['grid'], operation: 'single' | 'sweep' = 'single', analyzerEnabled = false): void {
+  const bytes = ownedSnapshot().retainedBytes, estimate = kind === 'polarized_two_path'
+    ? estimatePolarizedTwoPathOperation(grid, analyzerEnabled, bytes, operation) : estimateOwnedOperation(kind, grid, bytes, operation);
   // Before any HTTP allocation, conservatively reserve a distinct successful
   // completion alongside all actual old owners. A scene/canvas preparation
   // failure may retain different sequential results, so replacement cannot be
   // assumed to release those buffers. No owner is discarded to make room.
-  const projectedPersistent = bytes + (operation === 'sweep' ? 65536 : estimate.payloadBytes + 16384);
+  const projectedPersistent = kind === 'polarized_two_path' ? estimatePolarizedTwoPathOperation(grid, analyzerEnabled, bytes, operation).persistentProjection
+    : bytes + (operation === 'sweep' ? 65536 : estimate.payloadBytes + 16384);
   const docReservation = documents?.ownershipSnapshot();
   assertOwnedBudgets(projectedPersistent + (docReservation?.projectedPersistentBytes ?? 0),
     estimate.peakOwnedBytes + (docReservation?.transientReservedBytes ?? 0));
@@ -848,7 +916,7 @@ function admitOperation(kind: 'sequential' | 'two_path' | 'polarization', grid: 
 function detachPolarizationPresentation(): void {
   polarizationPlayback.detach(); scene?.setFrameCallback(null); scene?.detachPolarizationResult();
   polarizationResources?.dispose(); polarizationResources = null; polarizationPublished = null; polarizationDisplayKey = '';
-  polarizationSelectedPixel = null; element('pl-current-content').replaceChildren();
+  polarizationSelectedPixel = null; dropResultCanvases(element('pl-current-content')); element('pl-current-content').replaceChildren();
 }
 function showPolarizationPixel(result: DecodedPolarizationResult | null, view: 0 | 1, row: number, column: number): void {
   if (!result || !Number.isInteger(row) || !Number.isInteger(column) || row < 0 || column < 0
@@ -875,7 +943,7 @@ function polarizationContent(result: DecodedPolarizationResult, resources: Polar
     holder.style.aspectRatio = String(result.experiment.grid.nx * result.experiment.grid.dx / (result.experiment.grid.ny * result.experiment.grid.dy));
     holder.append(canvas); local('pl-max-' + view).textContent = `raw max=${result.intensityMax[view]} amplitude-unit²${result.intensityMax[view] > polarizationLimits.max ? ' · 顯示飽和，原值保留' : ''}`;
     local('pl-max-' + view).dataset.value = String(result.intensityMax[view]);
-    canvas.addEventListener('click', event => {
+    bindResultCanvas(canvas, event => {
       if (mode !== 'polarization' || polarizationPublished !== result || polarizationController.state.currentResult !== result) return;
       const rect = canvas.getBoundingClientRect(), pixel = pixelFromUV(result.experiment.grid,
         (event.clientX - rect.left) / rect.width, 1 - (event.clientY - rect.top) / rect.height);
@@ -931,6 +999,7 @@ function updatePolarizationMarkers(tau: number): void {
   }
 }
 function preparePolarizationPresentation(result: DecodedPolarizationResult): { commit(): void; dispose(): void; finalize(): void } {
+  const generation = resultAttachmentGeneration;
   if (!scene) throw new Error('數值完成；WebGL2 不可用，未重算。');
   const estimate = estimateOwnedOperation('polarization', result.experiment.grid, ownedSnapshot().retainedBytes);
   const persistent = ownedSnapshot(result).retainedBytes + 16 * result.experiment.grid.nx * result.experiment.grid.ny + result.stages.length * 257 * 16;
@@ -943,18 +1012,19 @@ function preparePolarizationPresentation(result: DecodedPolarizationResult): { c
   const previous = polarizationPublished, previousKey = polarizationDisplayKey; let committed = false, closed = false;
   return {
     commit() {
-      if (closed) throw new Error('Polarization presentation transaction closed');
+      if (closed || generation !== resultAttachmentGeneration) throw new Error('Polarization presentation transaction closed or released');
+      committed = true;
       prepared.commit(); host.replaceChildren(content); polarizationPublished = result; polarizationResources = resources;
       polarizationDisplayKey = `${result.requestId}:${polarizationLimits.min}:${polarizationLimits.max}:${polarizationScale}:${polarizationGain}`;
-      committed = true; polarizationPlayback.bind(updatePolarizationMarkers); scene!.setFrameCallback(time => polarizationPlayback.tick(time));
+      polarizationPlayback.bind(updatePolarizationMarkers); scene!.setFrameCallback(time => polarizationPlayback.tick(time));
       showPolarizationPixel(result, 0, result.readout.row, result.readout.column);
     },
     dispose() {
-      if (closed) return; closed = true; prepared.dispose(); resources.dispose();
-      if (committed) { host.replaceChildren(...oldNodes); polarizationPublished = previous; polarizationResources = oldResources; polarizationDisplayKey = previousKey;
+      if (closed) return; closed = true; prepared.dispose(); dropResultCanvases(content); resources.dispose();
+      if (committed && generation === resultAttachmentGeneration) { host.replaceChildren(...oldNodes); polarizationPublished = previous; polarizationResources = oldResources; polarizationDisplayKey = previousKey;
         polarizationPlayback.detach(); if (previous && oldResources) polarizationPlayback.bind(updatePolarizationMarkers); }
     },
-    finalize() { if (closed) return; closed = true; prepared.finalize(); oldResources?.dispose(); },
+    finalize() { if (closed) return; closed = true; prepared.finalize(); for (const node of oldNodes) if (node instanceof HTMLElement) dropResultCanvases(node); oldResources?.dispose(); },
   };
 }
 function renderPolarizationSample(state: PolarizationState): void {
@@ -1193,23 +1263,322 @@ element('tp-chart-range').addEventListener('click', () => {
   chartRange = next; renderSweep(twoPathController.state.lastSweep, twoPathController.state.currentSweep === twoPathController.state.lastSweep);
 });
 
+function detachPolarizedTwoPathPresentation(): void {
+  scene?.detachPolarizedTwoPathResult(); polarizedTwoPathResources?.dispose(); polarizedTwoPathResources = null;
+  polarizedTwoPathPublished = null; polarizedTwoPathDisplayKey = ''; polarizedTwoPathSelectedPixel = null;
+  dropResultCanvases(element('pt-current-content')); element('pt-current-content').replaceChildren();
+}
+function showPolarizedTwoPathPixel(result: DecodedPolarizedTwoPathResult | null, view: 'raw' | 'analyzed', port: 0 | 1, row: number, column: number): void {
+  if (!result || !Number.isInteger(row) || !Number.isInteger(column) || row < 0 || column < 0
+      || row >= result.experiment.grid.ny || column >= result.experiment.grid.nx) return;
+  const ports = view === 'raw' ? result.rawPorts : result.analyzedPorts; if (!ports) return;
+  const intensity = ports[port].intensity[row * result.experiment.grid.nx + column];
+  polarizedTwoPathSelectedPixel = { view, port, row, column, intensity, x_m: result.x[column], y_m: result.y[row], requestId: result.requestId };
+  const output = document.getElementById('pt-pixel-readout'); if (!output) return;
+  output.textContent = `${view} port_${port} · row=${row}, column=${column}；x=${result.x[column].toPrecision(17)} m；y=${result.y[row].toPrecision(17)} m；I=${intensity.toPrecision(17)} amplitude-unit²`;
+  Object.assign(output.dataset, { view, port: String(port), row: String(row), column: String(column), intensity: String(intensity), requestId: result.requestId });
+}
+function polarizedTwoPathContent(result: DecodedPolarizedTwoPathResult, resources: PolarizedTwoPathResources): HTMLDivElement {
+  const content = document.createElement('div');
+  content.innerHTML = `<div class="dual-results"><div class="dual-images" id="pt-images"></div><div class="result-details">
+    <p id="pt-result-identity" data-testid="pt-result-identity" class="monospace"></p><pre id="pt-result-spec" data-testid="pt-result-spec"></pre>
+    <div class="table-scroll"><table><thead><tr><th>checkpoint</th><th>port 0 norm</th><th>port 1 norm</th><th>total</th></tr></thead><tbody id="pt-norms" data-testid="pt-norms"></tbody></table></div>
+    <pre id="pt-diagnostics" data-testid="pt-diagnostics"></pre><pre id="pt-analysis" data-testid="pt-analysis"></pre></div></div>
+    <p id="pt-pixel-readout" data-testid="pt-pixel-readout" class="monospace"></p>`;
+  const local = (id: string) => content.querySelector<HTMLElement>(`#${id}`)!;
+  local('pt-result-identity').textContent = `request=${result.requestId}\nSHA-256=${result.experimentSha256}`;
+  local('pt-result-spec').textContent = `完整原提交（SI / rad）\n${JSON.stringify(result.experiment, null, 2)}`;
+  const generation = resultAttachmentGeneration;
+  for (const [index, canvas] of resources.canvases.entries()) {
+    const view = index < 2 ? 'raw' : 'analyzed', port = (index % 2) as 0 | 1;
+    const card = document.createElement('div'), title = document.createElement('h3'); title.textContent = `${view} · port ${port}`;
+    const holder = document.createElement('div'); holder.className = 'intensity-holder';
+    holder.style.aspectRatio = String(result.experiment.grid.nx * result.experiment.grid.dx / (result.experiment.grid.ny * result.experiment.grid.dy));
+    canvas.dataset.testid = `pt-intensity-${view}-${port}`; holder.append(canvas);
+    bindResultCanvas(canvas, event => {
+      if (generation !== resultAttachmentGeneration || polarizedTwoPathPublished !== result || !polarizedTwoPathController.state.currentResult) return;
+      const rect = canvas.getBoundingClientRect();
+      const pixel = pixelFromUV(result.experiment.grid, (event.clientX - rect.left) / rect.width, 1 - (event.clientY - rect.top) / rect.height);
+      if (pixel) showPolarizedTwoPathPixel(result, view, port, pixel.row, pixel.column);
+    });
+    const maximum = document.createElement('p'), value = result.intensityMax[index]; maximum.dataset.testid = `pt-max-${view}-${port}`; maximum.dataset.value = String(value);
+    maximum.textContent = `原始 max=${value.toPrecision(17)} amplitude-unit²${value > resources.limits.max ? ' · 顯示飽和，原值保留' : ''}`;
+    maximum.classList.toggle('warning', value > resources.limits.max); card.append(title, holder, maximum); local('pt-images').append(card);
+  }
+  if (!result.analyzedPorts) {
+    const absent = document.createElement('p'); absent.dataset.testid = 'pt-analysis-absent'; absent.textContent = `分析器停用：無分析後影像或測量；保存角度=${result.analysis.axis_angle_rad} rad。`;
+    local('pt-images').append(absent);
+  }
+  for (const checkpoint of ['inputs', 'split', 'propagated', 'elements', 'combiner', 'outputs'] as const) {
+    const row = document.createElement('tr');
+    for (const value of [checkpoint, ...result.norms[checkpoint].map(dualValue), dualValue(result.diagnostics[`${checkpoint}_total`])]) {
+      const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
+    } local('pt-norms').append(row);
+  }
+  local('pt-diagnostics').textContent = `public diagnostics（保留有號值與 null）\n${JSON.stringify(result.diagnostics, null, 2)}\n有序 action norms=${JSON.stringify(result.norms.arm_action_norms)}`;
+  local('pt-analysis').textContent = `獨立下游測量（不改 raw）\noriginal_input_ratio 分母=原入射 norm；raw_output_ratio 分母=該 raw port norm\n${JSON.stringify(result.analysis, null, 2)}`;
+  return content;
+}
+function preparePolarizedTwoPathPresentation(result: DecodedPolarizedTwoPathResult): { commit(): void; dispose(): void; finalize(): void } {
+  if (!scene) throw new Error('完整數值測量已完成；WebGL2 顯示不可用，未重算。');
+  const generation = resultAttachmentGeneration, estimate = estimatePolarizedTwoPathOperation(result.experiment.grid, result.experiment.analyzer.enabled, ownedSnapshot().retainedBytes);
+  const images = result.analyzedPorts ? 4 : 2;
+  assertOwnedBudgets(ownedSnapshot(result).retainedBytes + 8 * images * result.experiment.grid.nx * result.experiment.grid.ny + 131072, estimate.peakOwnedBytes);
+  const resources = preparePolarizedTwoPathResources(result, polarizedTwoPathLimits);
+  let content: HTMLDivElement, prepared: ReturnType<BenchScene['preparePolarizedTwoPathResult']>;
+  const view = result.analyzedPorts ? polarizedTwoPathController.state.viewSelection : 'raw';
+  try { content = polarizedTwoPathContent(result, resources); prepared = scene.preparePolarizedTwoPathResult(result, resources.textures, view); }
+  catch (error) { resources.dispose(); throw error; }
+  const host = element('pt-current-content'), oldNodes = Array.from(host.childNodes), previous = polarizedTwoPathPublished,
+    oldResources = polarizedTwoPathResources, previousKey = polarizedTwoPathDisplayKey, previousPixel = polarizedTwoPathSelectedPixel;
+  let committed = false, closed = false;
+  return {
+    commit() {
+      if (closed || generation !== resultAttachmentGeneration) throw new Error('Released or detached polarized two-path presentation');
+      committed = true;
+      prepared.commit(); host.replaceChildren(content); polarizedTwoPathPublished = result; polarizedTwoPathResources = resources;
+      polarizedTwoPathDisplayKey = `${result.requestId}:${resources.limits.min}:${resources.limits.max}`;
+      showPolarizedTwoPathPixel(result, view, 0, Math.floor(result.experiment.grid.ny / 2), Math.floor(result.experiment.grid.nx / 2));
+    },
+    dispose() {
+      if (closed) return; closed = true; prepared.dispose(); dropResultCanvases(content); resources.dispose();
+      if (committed && generation === resultAttachmentGeneration) { host.replaceChildren(...oldNodes); polarizedTwoPathPublished = previous;
+        polarizedTwoPathResources = oldResources; polarizedTwoPathDisplayKey = previousKey; polarizedTwoPathSelectedPixel = previousPixel; }
+    },
+    finalize() { if (closed) return; closed = true; prepared.finalize(); for (const node of oldNodes) if (node instanceof HTMLElement) dropResultCanvases(node); oldResources?.dispose(); },
+  };
+}
+function renderPolarizedTwoPathFields(state: PolarizedTwoPathState): void {
+  const make = (parent: HTMLElement, path: string, label: string, integer = false) => {
+    const wrapper = document.createElement('label'); wrapper.className = 'number-field'; wrapper.textContent = label;
+    const input = document.createElement('input'); input.type = 'text'; input.inputMode = integer ? 'numeric' : 'decimal';
+    input.dataset.ptPath = path; input.dataset.testid = `pt-edit-${path.replaceAll('.', '-')}`;
+    input.addEventListener('input', () => {
+      if (shouldEditNumeric(input, 'polarized_two_path', path, polarizedTwoPathController.state)) void polarizedTwoPathController.edit(path, input.value, 1, integer);
+    }); wrapper.append(input); parent.append(wrapper);
+  };
+  if (polarizedTwoPathFieldsKey !== state.candidate.source.kind) {
+    polarizedTwoPathFieldsKey = state.candidate.source.kind; const parent = element('pt-fields'); parent.replaceChildren();
+    for (const [path, label, integer] of [['wavelength_m', 'λ / m'], ['grid.nx', 'Nx (max128)', true], ['grid.ny', 'Ny (max128)', true],
+      ['grid.dx', 'dx / m'], ['grid.dy', 'dy / m'], ['source.amplitude', 'scalar amplitude'], ['source.phase_rad', 'source phase / rad'],
+      ['coefficients.x.re', 'coefficient x real'], ['coefficients.x.im', 'coefficient x imaginary'], ['coefficients.y.re', 'coefficient y real'], ['coefficients.y.im', 'coefficient y imaginary'],
+      ['arm_0.distance_m', 'arm 0 propagation / m'], ['arm_1.distance_m', 'arm 1 propagation / m'], ['relative_phase_rad', 'arm 1 extra phase / rad'],
+      ['analyzer.axis_angle_rad', 'shared analyzer axis / rad（停用仍保存）']] as [string, string, boolean?][]) make(parent, path, label, integer);
+    if (state.candidate.source.kind === 'gaussian') for (const [path, label] of [['source.waist_radius_m', 'waist radius / m'],
+      ['source.waist_z_m', 'signed waist position / m'], ['source.center_x_m', 'center x / m'], ['source.center_y_m', 'center y / m']]) make(parent, path, label);
+  }
+  const armsKey = JSON.stringify([state.candidate.arm_0.actions.map(action => [action.id, action.kind]), state.candidate.arm_1.actions.map(action => [action.id, action.kind])]);
+  if (polarizedTwoPathArmsKey !== armsKey) {
+    polarizedTwoPathArmsKey = armsKey; const host = element('pt-arms'); host.replaceChildren();
+    for (const port of [0, 1] as const) {
+      const key = port === 0 ? 'arm_0' : 'arm_1', arm = state.candidate[key], block = document.createElement('section');
+      const title = document.createElement('h3'); title.textContent = `arm ${port} · 有序終端作用`; block.append(title);
+      for (const [index, action] of arm.actions.entries()) {
+        const card = document.createElement('div'); card.className = 'pt-action';
+        const select = document.createElement('button'); select.dataset.testid = `pt-select-${action.id}`; select.textContent = `${index + 1}. ${action.id} · ${action.kind}`;
+        select.addEventListener('click', () => polarizedTwoPathController.select(action.id)); card.append(select);
+        make(card, `${key}.actions.${index}.axis_angle_rad`, 'axis θ / rad（+x toward +y）');
+        if (action.kind === 'linear_retarder') {
+          make(card, `${key}.actions.${index}.retardance_rad`, 'perpendicular phase δ / rad');
+          for (const [kind, phase] of [['qwp', Math.PI / 2], ['hwp', Math.PI]] as const) {
+            const button = document.createElement('button'); button.dataset.testid = `pt-${kind}-${action.id}`; button.textContent = `${kind.toUpperCase()}: δ=${phase} rad`;
+            button.addEventListener('click', () => void polarizedTwoPathController.edit(`${key}.actions.${index}.retardance_rad`, String(phase))); card.append(button);
+          }
+        }
+        for (const direction of ['up', 'down', 'delete'] as const) {
+          const button = document.createElement('button'); button.dataset.testid = `pt-${direction}-${action.id}`;
+          button.textContent = direction === 'up' ? '往前' : direction === 'down' ? '往後' : '刪除';
+          button.disabled = direction === 'up' && index === 0 || direction === 'down' && index === arm.actions.length - 1;
+          button.addEventListener('click', () => {
+            const spec = structuredClone(polarizedTwoPathController.state.candidate), actions = spec[key].actions, current = actions.findIndex(item => item.id === action.id);
+            if (current < 0) return;
+            if (direction === 'delete') actions.splice(current, 1);
+            else { const target = current + (direction === 'up' ? -1 : 1); if (target < 0 || target >= actions.length) return;
+              [actions[current], actions[target]] = [actions[target], actions[current]]; }
+            void polarizedTwoPathController.replaceCandidate(spec);
+          }); card.append(button);
+        } block.append(card);
+      }
+      const kinds = document.createElement('select'); kinds.dataset.testid = `pt-add-kind-${port}`;
+      for (const [value, text] of [['linear_polarizer', '線偏振片'], ['linear_retarder', '線性延遲器']]) {
+        const option = document.createElement('option'); option.value = value; option.textContent = text; kinds.append(option);
+      }
+      const add = document.createElement('button'); add.dataset.testid = `pt-add-${port}`; add.textContent = `新增 arm ${port} 作用`; add.disabled = arm.actions.length >= 2;
+      add.addEventListener('click', () => {
+        const spec = structuredClone(polarizedTwoPathController.state.candidate); if (spec[key].actions.length >= 2) return;
+        let id: string; do { id = `action${nextPolarizedTwoPathId++}`; } while ([...spec.arm_0.actions, ...spec.arm_1.actions].some(item => item.id === id));
+        spec[key].actions.push(kinds.value === 'linear_retarder' ? { id, kind: 'linear_retarder', axis_angle_rad: 0, retardance_rad: Math.PI / 2 }
+          : { id, kind: 'linear_polarizer', axis_angle_rad: 0 }); void polarizedTwoPathController.replaceCandidate(spec);
+      }); block.append(kinds, add); host.append(block);
+    }
+  }
+  element<HTMLSelectElement>('pt-source-kind').value = state.candidate.source.kind;
+  element<HTMLInputElement>('pt-analyzer-enabled').checked = state.candidate.analyzer.enabled;
+  for (const input of document.querySelectorAll<HTMLInputElement>('[data-pt-path]')) {
+    const path = input.dataset.ptPath!, invalid = Object.hasOwn(state.invalidEdits, path); input.classList.toggle('invalid', invalid); input.setAttribute('aria-invalid', String(invalid));
+    if (document.activeElement !== input) { input.value = invalid ? state.invalidEdits[path] : String(readPath(state.candidate, path)); paintNumeric(input, 'polarized_two_path', path, state, invalid); }
+  }
+  const topology = element('pt-topology'); topology.replaceChildren();
+  for (const [id, label] of [['input', 'input / coefficients'], ['splitter', 'B'], ['arm_0', `arm 0 · ${state.candidate.arm_0.distance_m} m`],
+    ['arm_1', `arm 1 · ${state.candidate.arm_1.distance_m} m · extra phase=${state.candidate.relative_phase_rad} rad`], ['combiner', 'B†'], ['analyzer', `analyzer ${state.candidate.analyzer.enabled ? 'enabled' : 'disabled'} · ${state.candidate.analyzer.axis_angle_rad} rad`], ['port_0', 'port 0'], ['port_1', 'port 1']]) {
+    const button = document.createElement('button'); button.dataset.testid = `pt-select-${id}`; button.className = `component${id === state.selection ? ' selected' : ''}`;
+    button.textContent = label; button.addEventListener('click', () => polarizedTwoPathController.select(id)); topology.append(button);
+  }
+}
+function renderPolarizedTwoPathSweep(sweep: DecodedPolarizedTwoPathSweep | null, fresh: boolean): void {
+  element('pt-sweep-status').textContent = !sweep ? '尚未完成掃描' : `${fresh ? '' : '先前掃描 · 已過期 · '}${sweep.status === 'complete' ? '完成' : 'FAILED / PARTIAL'} ${sweep.completedCount}/17${sweep.error ? ` · HTTP ${sweep.httpStatus} · ${sweep.error.message}` : ''}`;
+  const svg = element<SVGSVGElement & HTMLElement>('pt-sweep-chart'), body = element('pt-sweep-rows'); svg.replaceChildren(); body.replaceChildren();
+  element('pt-sweep-identity').textContent = ''; element('pt-sweep-selected').textContent = ''; if (!sweep) return;
+  element('pt-sweep-identity').textContent = `request=${sweep.requestId}\nfixed SHA=${sweep.fixedExperimentSha256}\nsweep SHA=${sweep.sweepSha256}\n原固定提交=${JSON.stringify(sweep.fixedExperiment)}`;
+  const ns = 'http://www.w3.org/2000/svg', add = (tag: string, attrs: Record<string, string>, text?: string) => {
+    const node = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
+    if (text !== undefined) node.textContent = text; svg.append(node); return node;
+  };
+  add('path', { d: 'M55 20V190H725', fill: 'none', stroke: '#8ba2b1' }); add('text', { x: '55', y: '218' }, '0 rad'); add('text', { x: '660', y: '218' }, '2π rad');
+  add('text', { x: '60', y: '16' }, '原入射比例 · 全部共用 0..1 顯示範圍；超界/null 保留於表格');
+  for (const [series, color] of [['raw0', '#087f89'], ['raw1', '#9665a8'], ['analyzed0', '#c08028'], ['analyzed1', '#405cbd']] as const) {
+    const port = series.endsWith('0') ? 0 : 1; let segment: string[] = [];
+    const finish = () => { if (segment.length > 1) add('polyline', { points: segment.join(' '), stroke: color, fill: 'none', 'pointer-events': 'none' }); segment = []; };
+    for (const row of sweep.rows) {
+      const value = series.startsWith('raw') ? row.diagnostics.output_fractions[port] : row.analysis.ports?.[port].original_input_ratio ?? null;
+      if (value === null || value < 0 || value > 1) { finish(); continue; }
+      const x = 55 + row.index / 16 * 670, y = 190 - value * 170; segment.push(`${x},${y}`);
+      const point = add('circle', { cx: String(x), cy: String(y), r: '4', fill: color, tabindex: '0', role: 'button', 'data-testid': `pt-sweep-point-${series}-${row.index}`, 'aria-label': `${series} phase ${row.phase_rad} fraction ${value}` });
+      point.addEventListener('click', () => polarizedTwoPathController.selectSweepPoint(row.index));
+      point.addEventListener('keydown', event => { if ((event as KeyboardEvent).key === 'Enter') polarizedTwoPathController.selectSweepPoint(row.index); });
+    } finish();
+  }
+  for (const row of sweep.rows) {
+    const tr = document.createElement('tr'); tr.dataset.index = String(row.index);
+    for (const value of [String(row.index), dualValue(row.phase_rad), ...row.diagnostics.output_fractions.map(dualValue),
+      dualValue(row.analysis.ports?.[0].original_input_ratio ?? null), dualValue(row.analysis.ports?.[1].original_input_ratio ?? null), JSON.stringify(row)]) {
+      const td = document.createElement('td'); td.textContent = value; tr.append(td);
+    } tr.addEventListener('click', () => polarizedTwoPathController.selectSweepPoint(row.index)); body.append(tr);
+  }
+}
+function renderPolarizedTwoPath(state: PolarizedTwoPathState): void {
+  if (disposed || applyingDocument || mode !== 'polarized_two_path') return;
+  element('pt-status').textContent = state.status; element('pt-status').dataset.status = state.status;
+  element('pt-error').textContent = state.error ?? ''; element('pt-error').hidden = !state.error;
+  element('pt-render-error').textContent = state.renderError ?? ''; element('pt-render-error').hidden = !state.renderError;
+  const ready = !!state.validatedDraft && !state.pendingValidation && !state.pendingSweepValidation && !Object.keys(state.invalidEdits).length && !operationGate.busy;
+  element<HTMLButtonElement>('pt-simulate').disabled = !ready; element<HTMLButtonElement>('pt-sweep').disabled = !ready;
+  element<HTMLButtonElement>('pt-simulate-phase').disabled = operationGate.busy || state.pendingSweepValidation || state.selectedSweepIndex === null;
+  element<HTMLButtonElement>('pt-retry-display').disabled = !state.completedNumerical || !!state.active || !state.validatedDraft;
+  renderPolarizedTwoPathFields(state);
+  try {
+    if (!state.currentResult && !(state.renderError && polarizedTwoPathPublished)) detachPolarizedTwoPathPresentation();
+    if (state.validatedDraft && !state.renderError) scene?.updatePolarizedTwoPathExperiment(state.validatedDraft, state.selection);
+    if (state.currentResult && !state.renderError && polarizedTwoPathDisplayKey !== `${state.currentResult.requestId}:${polarizedTwoPathLimits.min}:${polarizedTwoPathLimits.max}`) {
+      const prepared = preparePolarizedTwoPathPresentation(state.currentResult);
+      try { prepared.commit(); prepared.finalize(); } catch (error) { prepared.dispose(); throw error; }
+    }
+    if (polarizedTwoPathPublished) scene?.selectPolarizedTwoPathView(polarizedTwoPathPublished.analyzedPorts ? state.viewSelection : 'raw');
+  } catch (error) { reportPresentation(error); }
+  const view = element<HTMLSelectElement>('pt-view'); view.disabled = !state.currentResult;
+  view.querySelector<HTMLOptionElement>('option[value="analyzed"]')!.disabled = !state.currentResult?.analyzedPorts;
+  view.value = state.currentResult?.analyzedPorts ? state.viewSelection : 'raw';
+  element('bench-label').textContent = polarizedTwoPathPublished ? `偏振兩路 ${view.value} · request=${polarizedTwoPathPublished.requestId}` : '理想偏振兩路示意 · 尚無目前結果';
+  const effective = polarizedTwoPathResources?.limits ?? polarizedTwoPathLimits;
+  element('pt-color-info').textContent = `全部 raw/analyzed 影像共同色階 ${effective.min}..${effective.max} amplitude-unit²；僅明確按下共同自動色階才重新選範圍。${state.renderError ? '新顯示未發布；原完整顯示保留。' : ''}`;
+  element('pt-result-status').textContent = state.currentResult ? state.renderError ? '完整數值測量完成 · 新顯示故障，原顯示保留' : '目前提交 · 完整 raw / optional analyzed 結果'
+    : state.completedNumerical && state.renderError ? '完整數值測量完成 · 顯示失敗；未發布半組結果' : state.lastResult ? '先前結果已過期 · 原提交分開保留' : '尚未完成模擬／結果已釋放';
+  const previous = element('pt-previous-result'); previous.hidden = !state.lastResult || state.currentResult === state.lastResult;
+  element('pt-previous-spec').textContent = state.lastResult ? `原 request=${state.lastResult.requestId}\n${JSON.stringify(state.lastResult.experiment, null, 2)}\n原 norms=${JSON.stringify(state.lastResult.norms)}\n原 analysis=${JSON.stringify(state.lastResult.analysis)}` : '';
+  renderPolarizedTwoPathSweep(state.lastSweep, state.currentSweep === state.lastSweep);
+  const selected = state.lastSweep?.rows.find(row => row.index === state.selectedSweepIndex);
+  element('pt-sweep-selected').textContent = selected ? `實際列（選取未重算）=${JSON.stringify(selected)}` : '';
+}
+function polarizedTwoPathSnapshot(): object {
+  const state = polarizedTwoPathController.state;
+  const summary = (result: DecodedPolarizedTwoPathResult | null) => result ? { requestId: result.requestId, experimentSha256: result.experimentSha256,
+    experiment: structuredClone(result.experiment), norms: structuredClone(result.norms), diagnostics: structuredClone(result.diagnostics), analysis: structuredClone(result.analysis),
+    intensityMax: [...result.intensityMax], rawPorts: result.rawPorts.map(port => ({ id: port.id, intensityMax: port.intensityMax })),
+    analyzedPorts: result.analyzedPorts?.map(port => ({ id: port.id, intensityMax: port.intensityMax })) ?? null, shape: [result.experiment.grid.ny, result.experiment.grid.nx] } : null;
+  return { candidate: structuredClone(state.candidate), validatedDraft: state.validatedDraft ? structuredClone(state.validatedDraft) : null,
+    revision: state.revision, attachmentEpoch: state.attachmentEpoch, resultGeneration: polarizedTwoPathController.resultGeneration,
+    pendingValidation: state.pendingValidation, pendingSweepValidation: state.pendingSweepValidation, invalidEdits: { ...state.invalidEdits }, selection: state.selection,
+    status: state.status, active: state.active ? structuredClone(state.active) : null, error: state.error, renderError: state.renderError,
+    viewSelection: state.viewSelection, currentResult: summary(state.currentResult), lastResult: summary(state.lastResult), completedNumerical: summary(state.completedNumerical),
+    lastSweep: state.lastSweep ? structuredClone(state.lastSweep) : null, currentSweep: state.currentSweep ? structuredClone(state.currentSweep) : null,
+    selectedSweepIndex: state.selectedSweepIndex, selectedPixel: polarizedTwoPathSelectedPixel ? { ...polarizedTwoPathSelectedPixel } : null,
+    colorLimits: { ...(polarizedTwoPathResources?.limits ?? polarizedTwoPathLimits) }, requestedColorLimits: { ...polarizedTwoPathLimits },
+    resourceRoles: polarizedTwoPathResources?.textures.length ?? 0, ownership: ownedSnapshot() };
+}
+for (const item of POLARIZED_TWO_PATH_PRESETS) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.label; element('pt-preset').append(option); }
+for (const item of COEFFICIENT_PRESETS) { const option = document.createElement('option'); option.value = item.id; option.textContent = item.label; element('pt-coefficients-preset').append(option); }
+element('pt-preset').addEventListener('change', () => void polarizedTwoPathController.replaceCandidate(polarizedTwoPathPreset(element<HTMLSelectElement>('pt-preset').value)));
+element('pt-coefficients-preset').addEventListener('change', () => { const spec = structuredClone(polarizedTwoPathController.state.candidate);
+  spec.coefficients = structuredClone(COEFFICIENT_PRESETS.find(item => item.id === element<HTMLSelectElement>('pt-coefficients-preset').value)!.coefficients); void polarizedTwoPathController.replaceCandidate(spec); });
+element('pt-source-kind').addEventListener('change', () => { const spec = structuredClone(polarizedTwoPathController.state.candidate), { amplitude, phase_rad } = spec.source;
+  spec.source = element<HTMLSelectElement>('pt-source-kind').value === 'uniform' ? { kind: 'uniform', amplitude, phase_rad }
+    : { kind: 'gaussian', amplitude, phase_rad, waist_radius_m: 50e-6, waist_z_m: 0, center_x_m: 0, center_y_m: 0 }; void polarizedTwoPathController.replaceCandidate(spec); });
+element('pt-analyzer-enabled').addEventListener('change', () => { const spec = structuredClone(polarizedTwoPathController.state.candidate);
+  spec.analyzer.enabled = element<HTMLInputElement>('pt-analyzer-enabled').checked; void polarizedTwoPathController.replaceCandidate(spec); });
+for (const [id, phase] of [['pt-phase-0', 0], ['pt-phase-halfpi', Math.PI / 2], ['pt-phase-pi', Math.PI]] as const) element(id).addEventListener('click', () => void polarizedTwoPathController.edit('relative_phase_rad', String(phase)));
+element('pt-simulate').addEventListener('click', () => void polarizedTwoPathController.simulate());
+element('pt-sweep').addEventListener('click', () => void polarizedTwoPathController.runSweep());
+element('pt-simulate-phase').addEventListener('click', () => void polarizedTwoPathController.applySelectedPhaseAndSimulate());
+element('pt-retry-display').addEventListener('click', () => void polarizedTwoPathController.retryPresentation());
+element('pt-view').addEventListener('change', () => { try { polarizedTwoPathController.selectView(element<HTMLSelectElement>('pt-view').value === 'analyzed' ? 'analyzed' : 'raw'); } catch (error) { notice(String(error)); } });
+for (const id of ['pt-color-min', 'pt-color-max']) element(id).addEventListener('change', () => { try {
+  const next = { min: Number(element<HTMLInputElement>('pt-color-min').value), max: Number(element<HTMLInputElement>('pt-color-max').value) };
+  validateColorLimits(next); polarizedTwoPathLimits = next; polarizedTwoPathController.reportRenderFailure(null);
+} catch (error) { notice(String(error)); } });
+element('pt-auto-color').addEventListener('click', () => { const result = polarizedTwoPathController.state.currentResult; if (!result) return;
+  const maximum = Math.max(...result.intensityMax); polarizedTwoPathLimits = { min: 0, max: maximum > 0 ? maximum : 1 };
+  element<HTMLInputElement>('pt-color-min').value = '0'; element<HTMLInputElement>('pt-color-max').value = String(polarizedTwoPathLimits.max); polarizedTwoPathController.reportRenderFailure(null); });
+polarizedTwoPathController.setResultPreparer(preparePolarizedTwoPathPresentation);
+polarizedTwoPathController.setOperationAdmission((kind, experiment) => admitOperation('polarized_two_path', experiment.grid, kind, experiment.analyzer.enabled));
+
+element('release-results').addEventListener('click', () => {
+  // Recheck actual numerical ownership on execution, including programmatic clicks.
+  if (operationGate.busy || [controller, twoPathController, polarizationController, polarizedTwoPathController].some(actor => !!actor.state.active)) {
+    element('release-status').textContent = '計算仍在進行，未釋放任何結果。'; return;
+  }
+  ++resultAttachmentGeneration; applyingDocument = true;
+  try {
+    for (const actor of [controller, twoPathController, polarizationController, polarizedTwoPathController]) actor.releaseResults();
+    scene?.releaseRetainedResults(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose();
+    polarizationResources = null; polarizedTwoPathResources = null; polarizationPublished = null; polarizedTwoPathPublished = null;
+    displayedResult = null; dualPublished = null; selectedPixel = null; dualSelectedPixel = null; polarizationSelectedPixel = null; polarizedTwoPathSelectedPixel = null;
+    displayKey = ''; dualDisplayKey = ''; priorDisplayKey = ''; polarizationDisplayKey = ''; polarizedTwoPathDisplayKey = '';
+    for (const id of ['tp-result-area', 'pl-result-area', 'pt-result-area']) dropResultCanvases(element(id));
+    element<HTMLCanvasElement>('intensity').width = 0; element<HTMLCanvasElement>('intensity').height = 0;
+    for (const id of ['tp-current-content', 'tp-prior-images', 'pl-current-content', 'pt-current-content', 'stages', 'stage', 'tp-sweep-rows', 'pl-sweep-rows', 'pt-sweep-rows',
+      'tp-sweep-chart', 'pl-sweep-chart', 'pt-sweep-chart', 'pick-choices']) element(id).replaceChildren();
+    for (const id of ['result-identity', 'result-spec', 'pixel-readout', 'raw-max', 'stage-note', 'tp-previous-spec', 'pl-previous-spec', 'pt-previous-spec',
+      'tp-sweep-identity', 'pl-sweep-identity', 'pt-sweep-identity', 'tp-sweep-selected', 'pl-sweep-selected', 'pt-sweep-selected']) element(id).textContent = '';
+    for (const id of ['tp-previous-result', 'pl-previous-result', 'pt-previous-result', 'intensity-holder', 'saturation']) element(id).hidden = true;
+    ++releasedResultsCount;
+  } finally { applyingDocument = false; }
+  element('release-status').textContent = '所有模式的保留計算結果已釋放；設定、無效編輯、相機與文件保留。尚未重新模擬。';
+  element('result-status').textContent = '結果已釋放 · 尚未重新模擬';
+  if (mode === 'sequential') render(controller.state); else if (mode === 'two_path') renderTwoPath(twoPathController.state);
+  else if (mode === 'polarization') renderPolarization(polarizationController.state); else renderPolarizedTwoPath(polarizedTwoPathController.state);
+  renderDocuments();
+});
+
 function documentContext() {
   return { mode, token: [controller.state.revision, controller.state.attachmentEpoch,
     twoPathController.state.revision, twoPathController.state.attachmentEpoch,
-    polarizationController.state.revision, polarizationController.state.attachmentEpoch].join(':') };
+    polarizationController.state.revision, polarizationController.state.attachmentEpoch,
+    polarizedTwoPathController.state.revision, polarizedTwoPathController.state.attachmentEpoch].join(':') };
 }
 function currentDocumentDraft() {
-  const state = mode === 'sequential' ? controller.state : mode === 'two_path' ? twoPathController.state : polarizationController.state;
+  const state = mode === 'sequential' ? controller.state : mode === 'two_path' ? twoPathController.state
+    : mode === 'polarization' ? polarizationController.state : polarizedTwoPathController.state;
   if (!state.validatedDraft || state.pendingValidation || Object.keys(state.invalidEdits).length) return null;
   return { mode, experiment: state.validatedDraft, revision: state.revision, attachmentEpoch: state.attachmentEpoch };
 }
-function prepareDocumentApplication(validated: ValidatedDocument): () => void {
+function prepareDocumentApplication(validated: SupportedValidatedDocument): () => void {
   const doc = validated.document;
   const commit = doc.mode === 'sequential'
     ? controller.prepareValidatedSettings(doc.experiment, validated.experimentSha256)
     : doc.mode === 'two_path'
       ? twoPathController.prepareValidatedSettings(doc.experiment, validated.experimentSha256)
-      : polarizationController.prepareValidatedSettings(doc.experiment, validated.experimentSha256);
+      : doc.mode === 'polarization' ? polarizationController.prepareValidatedSettings(doc.experiment, validated.experimentSha256)
+        : polarizedTwoPathController.prepareValidatedSettings(doc.experiment, validated.experimentSha256);
   return () => {
     applyingDocument = true;
     try {
@@ -1220,7 +1589,9 @@ function prepareDocumentApplication(validated: ValidatedDocument): () => void {
   };
 }
 function renderModeHelp(): void {
-  document.querySelector<HTMLElement>('.bench-help')!.textContent = mode === 'polarization'
+  document.querySelector<HTMLElement>('.bench-help')!.textContent = mode === 'polarized_two_path'
+    ? 'Orbit / Pan / Zoom 與選取只改顯示；理想展開示意，作用位置無額外傳播；raw/analyzed 選擇不重算。'
+    : mode === 'polarization'
     ? 'Orbit / Pan / Zoom 與選取只改顯示；同一參考平面，示意間距無光學作用，沒有 z 拖曳。'
     : mode === 'two_path'
       ? 'Orbit / Pan / Zoom 與選取只改顯示；固定展開光路不可拖曳。虛線僅為指引。'
@@ -1230,19 +1601,23 @@ function presentDocumentApplication(): void {
   // Presentation is subsequent to the coherent settings commit and fails separately.
   app!.dataset.mode = mode; element<HTMLSelectElement>('mode').value = mode;
   try {
+    ++resultAttachmentGeneration; detachPolarizedTwoPathPresentation();
     detachPolarizationPresentation(); scene?.updateResult(null, limits); scene?.detachDualResult();
     dualPublished = null; dualSelectedPixel = null; dualDisplayKey = ''; displayedResult = null; displayKey = '';
     selectedPixel = null; priorDisplayKey = ''; inspectorKey = ''; dualFieldsKey = '';
     polarizationFieldsKey = ''; polarizationInspectorKey = '';
-    for (const canvas of document.querySelectorAll<HTMLCanvasElement>('#intensity, #tp-result-area canvas')) { canvas.width = 0; canvas.height = 0; }
+    polarizedTwoPathFieldsKey = ''; polarizedTwoPathArmsKey = '';
+    dropResultCanvases(element('tp-result-area'));
+    element<HTMLCanvasElement>('intensity').width = 0; element<HTMLCanvasElement>('intensity').height = 0;
     element('intensity-holder').hidden = true; element('tp-current-content').replaceChildren(); element('tp-prior-images').replaceChildren();
     element('pick-choices').replaceChildren(); renderModeHelp();
     if (mode === 'sequential') render(controller.state);
     else if (mode === 'two_path') renderTwoPath(twoPathController.state);
-    else renderPolarization(polarizationController.state);
+    else if (mode === 'polarization') renderPolarization(polarizationController.state);
+    else renderPolarizedTwoPath(polarizedTwoPathController.state);
   } catch (error) { reportPresentation(error); }
 }
-const modeLabel: Record<BenchMode, string> = { sequential: '順序光路', two_path: '兩路干涉', polarization: '理想偏振' };
+const modeLabel: Record<SupportedBenchMode, string> = { sequential: '順序光路', two_path: '兩路干涉', polarization: '理想偏振', polarized_two_path: '偏振兩路干涉' };
 function renderDocuments(): void {
   if (!documents || disposed) return;
   const state = documents.state, metadata = state.metadata[mode];
@@ -1254,7 +1629,8 @@ function renderDocuments(): void {
   const labels = { idle: '設定檔只保存設定；模擬需要另行提交。', reading: '讀取設定檔中', validating: '驗證設定檔中',
     preview: '設定已驗證；請檢查並確認取代。', download_prepared: '下載已準備', download_requested: '已要求下載',
     restored: '設定已還原，尚未模擬', error: '設定檔未完成；請檢查錯誤。' };
-  const current = mode === 'sequential' ? controller.state.currentResult : mode === 'two_path' ? twoPathController.state.currentResult : polarizationController.state.currentResult;
+  const current = mode === 'sequential' ? controller.state.currentResult : mode === 'two_path' ? twoPathController.state.currentResult
+    : mode === 'polarization' ? polarizationController.state.currentResult : polarizedTwoPathController.state.currentResult;
   element('doc-status').textContent = state.status === 'restored' && current
     ? '設定已還原；已有另行提交的模擬結果。' : labels[state.status];
   element('doc-status').dataset.status = state.status;
@@ -1276,7 +1652,7 @@ function renderDocuments(): void {
       `完整設定（SI / rad；尚未模擬）：\n${JSON.stringify(exp, null, 2)}`;
   } else element('doc-preview-text').textContent = '';
 }
-documents = new ExperimentDocumentController({ context: documentContext, currentValidDraft: currentDocumentDraft,
+documents = new ExperimentDocumentController<SupportedBenchMode>({ context: documentContext, currentValidDraft: currentDocumentDraft,
   busy: () => operationGate.busy, prepareApply: prepareDocumentApplication,
   reservedBytes: () => scientificReservations,
   retainedBytes: () => { const own = ownedSnapshot(); return own.retainedBytes - own.documentBytes; } });
@@ -1295,12 +1671,14 @@ element('doc-apply').addEventListener('click', () => { if (documents!.applyImpor
 element('doc-download').addEventListener('click', () => documents!.markDownloadRequested());
 element('doc-dismiss').addEventListener('click', () => documents!.dismissDownload());
 element('mode').addEventListener('change', () => {
-  controller.deactivate(); twoPathController.deactivate(); polarizationController.deactivate(); detachPolarizationPresentation();
+  ++resultAttachmentGeneration;
+  controller.deactivate(); twoPathController.deactivate(); polarizationController.deactivate(); polarizedTwoPathController.deactivate();
+  detachPolarizationPresentation(); detachPolarizedTwoPathPresentation();
   scene?.updateResult(null, limits); scene?.detachDualResult();
   const chosen = element<HTMLSelectElement>('mode').value;
-  mode = chosen === 'polarization' ? 'polarization' : chosen === 'two_path' ? 'two_path' : 'sequential'; app!.dataset.mode = mode;
+  mode = chosen === 'polarized_two_path' ? 'polarized_two_path' : chosen === 'polarization' ? 'polarization' : chosen === 'two_path' ? 'two_path' : 'sequential'; app!.dataset.mode = mode;
   dualPublished = null; dualSelectedPixel = null; dualDisplayKey = ''; displayedResult = null; displayKey = '';
-  for (const canvas of document.querySelectorAll<HTMLCanvasElement>('#tp-result-area canvas')) { canvas.width = 0; canvas.height = 0; }
+  dropResultCanvases(element('tp-result-area'));
   element('tp-current-content').replaceChildren(); element('tp-prior-images').replaceChildren(); priorDisplayKey = '';
   const legacyCanvas = element<HTMLCanvasElement>('intensity'); legacyCanvas.width = 0; legacyCanvas.height = 0;
   element('intensity-holder').hidden = true;
@@ -1308,22 +1686,27 @@ element('mode').addEventListener('change', () => {
   element('pick-choices').replaceChildren();
   if (mode === 'two_path') { renderTwoPath(twoPathController.state); void twoPathController.activate(); }
   else if (mode === 'polarization') { renderPolarization(polarizationController.state); void polarizationController.activate(); }
+  else if (mode === 'polarized_two_path') { renderPolarizedTwoPath(polarizedTwoPathController.state); void polarizedTwoPathController.activate(); }
   else { render(controller.state); void controller.activate(); }
   documents!.contextChanged(); renderDocuments();
 });
 twoPathController.setResultPreparer(prepareDualPresentation);
-controller.subscribe(render); twoPathController.subscribe(renderTwoPath); polarizationController.subscribe(renderPolarization);
-for (const actor of [controller, twoPathController, polarizationController]) actor.subscribe(() => {
+controller.subscribe(render); twoPathController.subscribe(renderTwoPath); polarizationController.subscribe(renderPolarization); polarizedTwoPathController.subscribe(renderPolarizedTwoPath);
+for (const actor of [controller, twoPathController, polarizationController, polarizedTwoPathController]) actor.subscribe(() => {
   if (!applyingDocument && !documents!.isApplying) { documents!.contextChanged(); renderDocuments(); }
 });
 operationGate.subscribe(() => {
   if (!operationGate.busy) scientificReservations = { persistent: 0, transient: 0 };
   renderDocuments();
+  element<HTMLButtonElement>('release-results').disabled = operationGate.busy;
   if (mode === 'sequential') element<HTMLButtonElement>('simulate').disabled = operationGate.busy || !controller.state.validatedDraft || controller.state.pendingValidation || !!Object.keys(controller.state.invalidEdits).length;
   else if (mode === 'polarization') {
     const state = polarizationController.state, ready = !operationGate.busy && !!state.validatedDraft && !state.pendingValidation && !Object.keys(state.invalidEdits).length;
     element<HTMLButtonElement>('pl-simulate').disabled = !ready;
     element<HTMLButtonElement>('pl-sweep').disabled = !ready || !state.candidate.elements.some(item => item.id === state.selection && item.kind === 'linear_polarizer');
+  } else if (mode === 'polarized_two_path') {
+    const state = polarizedTwoPathController.state, ready = !operationGate.busy && !state.pendingSweepValidation && !!state.validatedDraft && !state.pendingValidation && !Object.keys(state.invalidEdits).length;
+    element<HTMLButtonElement>('pt-simulate').disabled = !ready; element<HTMLButtonElement>('pt-sweep').disabled = !ready;
   } else {
     const state = twoPathController.state; const ready = !operationGate.busy && !!state.validatedDraft && !state.pendingValidation && !Object.keys(state.invalidEdits).length;
     element<HTMLButtonElement>('tp-simulate').disabled = !ready; element<HTMLButtonElement>('tp-sweep').disabled = !ready || state.candidate.grid.nx > 128 || state.candidate.grid.ny > 128;
@@ -1350,6 +1733,8 @@ function stateSnapshot(): object {
     scene: scene?.snapshot() ?? { available: false },
     twoPath: twoPathSnapshot(),
     polarization: polarizationSnapshot(),
+    polarizedTwoPath: polarizedTwoPathSnapshot(),
+    resultRelease: { count: releasedResultsCount, generation: resultAttachmentGeneration, busy: operationGate.busy },
     ownedMemory: ownedSnapshot(),
     documents: documents ? { state: structuredClone(documents.state), ownership: documents.ownershipSnapshot() } : null,
   };
@@ -1361,6 +1746,7 @@ declare global {
       snapshot: () => object;
       worldToClient: (x: number, y: number, z: number) => { x: number; y: number; visible: boolean } | null;
       dualPixelWorld: (port: 0 | 1, row: number, column: number) => { x: number; y: number; z: number } | null;
+      polarizedTwoPathPixelWorld: (port: 0 | 1, row: number, column: number) => { x: number; y: number; z: number } | null;
     };
   }
 }
@@ -1368,5 +1754,6 @@ Object.defineProperty(window, '__benchDebug', { value: Object.freeze({
   snapshot: stateSnapshot,
   worldToClient: (x: number, y: number, z: number) => scene?.worldToClient(x, y, z) ?? null,
   dualPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.dualPixelWorld(port, row, column) ?? null,
+  polarizedTwoPathPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.polarizedTwoPathPixelWorld(port, row, column) ?? null,
 }), writable: false, configurable: false });
-window.addEventListener('pagehide', () => { disposed = true; documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); scene?.dispose(); }, { once: true });
+window.addEventListener('pagehide', () => { disposed = true; documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });

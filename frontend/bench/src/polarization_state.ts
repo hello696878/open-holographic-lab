@@ -23,6 +23,7 @@ export class PolarizationController {
   private listeners = new Set<(state: PolarizationState) => void>();
   private generation = 0;
   private validatedHash: string | null = null;
+  private resultsGeneration = 0;
   private prepareResult: (result: DecodedPolarizationResult) => PreparedPolarizationPresentation = () => ({ commit() {}, dispose() {} });
   private beforeOperation: (kind: 'single' | 'sweep', experiment: PolarizationExperiment) => void = () => {};
   constructor(initial: PolarizationExperiment, private api: PolarizationAPI = createPolarizationFetchAPI(),
@@ -33,6 +34,16 @@ export class PolarizationController {
       lastSweep: null, currentSweep: null, selectedSweepIndex: null });
   }
   get state(): PolarizationState { return this.snapshot; }
+  get resultGeneration(): number { return this.resultsGeneration; }
+  /** Release numerical outputs and retry handles, retaining every scientific edit. */
+  releaseResults(): boolean {
+    if (this.gate.busy || this.snapshot.active) return false;
+    const previous = this.snapshot;
+    if (this.gate.busy || this.snapshot !== previous || this.snapshot.active) return false;
+    ++this.resultsGeneration;
+    this.publish({ lastResult: null, currentResult: null, completedNumerical: null,
+      lastSweep: null, currentSweep: null, selectedSweepIndex: null, renderError: null }); return true;
+  }
   setResultPreparer(value: (result: DecodedPolarizationResult) => PreparedPolarizationPresentation): void { this.prepareResult = value; }
   setOperationAdmission(value: (kind: 'single' | 'sweep', experiment: PolarizationExperiment) => void): void { this.beforeOperation = value; }
   subscribe(listener: (state: PolarizationState) => void): () => void {
@@ -132,10 +143,16 @@ export class PolarizationController {
       && !this.snapshot.pendingValidation && !Object.keys(this.snapshot.invalidEdits).length && structuralEqual(this.snapshot.validatedDraft, active.experiment);
   }
   private present(result: DecodedPolarizationResult): boolean {
+    const resultsGeneration = this.resultsGeneration;
     let prepared: PreparedPolarizationPresentation | null = null;
-    try { prepared = this.prepareResult(result); prepared.commit(); }
+    try { prepared = this.prepareResult(result);
+      if (resultsGeneration !== this.resultsGeneration) { prepared.dispose(); return false; }
+      prepared.commit();
+      if (resultsGeneration !== this.resultsGeneration) { prepared.dispose(); return false; }
+    }
     catch (error) {
       let message = messageOf(error); try { prepared?.dispose(); } catch (cleanup) { message += `; cleanup: ${messageOf(cleanup)}`; }
+      if (resultsGeneration !== this.resultsGeneration) return false;
       const previous = this.snapshot.currentResult;
       this.publish({ active: null, completedNumerical: result,
         currentResult: previous && structuralEqual(previous.experiment, result.experiment) ? previous : null, renderError: message }); return false;
@@ -198,13 +215,13 @@ export class PolarizationController {
   }
   async applySelectedAngleAndSimulate(): Promise<boolean> {
     if (this.gate.busy || this.snapshot.active || this.snapshot.selectedSweepIndex === null || !this.snapshot.lastSweep) return false;
-    const sweep = this.snapshot.lastSweep, row = sweep.rows.find(item => item.index === this.snapshot.selectedSweepIndex);
+    const sweep = this.snapshot.lastSweep, resultsGeneration = this.resultsGeneration, row = sweep.rows.find(item => item.index === this.snapshot.selectedSweepIndex);
     if (!row) return false;
     const intended = structuredClone(sweep.experiment), element = intended.elements.find(item => item.id === sweep.selectedElementId)!;
     element.axis_angle_rad = row.axis_angle_rad;
     const validating = this.replaceCandidate(intended), revision = this.snapshot.revision, epoch = this.snapshot.attachmentEpoch;
     await validating;
-    if (this.snapshot.revision !== revision || this.snapshot.attachmentEpoch !== epoch || !structuralEqual(this.snapshot.validatedDraft, intended)) return false;
+    if (this.resultsGeneration !== resultsGeneration || this.snapshot.revision !== revision || this.snapshot.attachmentEpoch !== epoch || !structuralEqual(this.snapshot.validatedDraft, intended)) return false;
     return this.simulate();
   }
 }

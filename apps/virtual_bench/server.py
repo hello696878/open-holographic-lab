@@ -40,12 +40,15 @@ from .two_path_protocol import (MAX_RESPONSE_BYTES as MAX_TWO_PATH_RESPONSE_BYTE
                                 MAX_SWEEP_RESPONSE_BYTES, SweepReply)
 from . import polarization_adapter, polarization_protocol
 from . import experiment_documents
+from . import polarized_two_path_adapter, polarized_two_path_protocol
 
 Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission |
               two_path_adapter.ValidatedSweepSubmission |
               polarization_adapter.ValidatedPolarizationSubmission |
-              polarization_adapter.ValidatedPolarizationSweepSubmission)
-WorkerResult = bytes | SweepReply | polarization_protocol.SweepReply
+              polarization_adapter.ValidatedPolarizationSweepSubmission |
+              polarized_two_path_adapter.ValidatedPolarizedTwoPathSubmission |
+              polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission)
+WorkerResult = bytes | SweepReply | polarization_protocol.SweepReply | polarized_two_path_protocol.SweepReply
 
 HOST = "127.0.0.1"
 PORT = 8510
@@ -335,6 +338,8 @@ def create_app(*, assets_dir: Path | None = None,
                sweep_worker: Callable[[two_path_adapter.ValidatedSweepSubmission], SweepReply] | None = None,
                polarization_worker: Callable[[polarization_adapter.ValidatedPolarizationSubmission], bytes] | None = None,
                polarization_sweep_worker: Callable[[polarization_adapter.ValidatedPolarizationSweepSubmission], polarization_protocol.SweepReply] | None = None,
+               polarized_two_path_worker: Callable[[polarized_two_path_adapter.ValidatedPolarizedTwoPathSubmission], bytes] | None = None,
+               polarized_two_path_sweep_worker: Callable[[polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission], polarized_two_path_protocol.SweepReply] | None = None,
                executor: Executor | None = None) -> Starlette:
     """Create the local service; no numerical work or network listeners start.
 
@@ -346,6 +351,12 @@ always uses this checkout's fixed built directory and public numerical adapters.
     if not index_path or index_stat is None or not stat.S_ISREG(index_stat.st_mode):
         raise RuntimeError("Build V1 frontend assets before starting the bench")
     def dispatch(submission: Submission) -> WorkerResult:
+        if isinstance(submission, polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission):
+            return (polarized_two_path_sweep_worker if polarized_two_path_sweep_worker is not None
+                    else polarized_two_path_adapter.sweep_submission)(submission)
+        if isinstance(submission, polarized_two_path_adapter.ValidatedPolarizedTwoPathSubmission):
+            return (polarized_two_path_worker if polarized_two_path_worker is not None
+                    else polarized_two_path_adapter.simulate_submission)(submission)
         if isinstance(submission, ValidatedSubmission):
             return (worker if worker is not None else simulate_submission)(submission)
         if isinstance(submission, two_path_adapter.ValidatedTwoPathSubmission):
@@ -556,6 +567,77 @@ always uses this checkout's fixed built directory and public numerical adapters.
             return polarization_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
         return Response(encoded, media_type="application/octet-stream")
 
+    def polarized_two_path_error(status: int, code: str, message: str,
+                                 request_id: str | None = None) -> JSONResponse:
+        return JSONResponse({"protocol_version": 1, "message_type": "polarized_two_path_error",
+                             "request_id": request_id,
+                             "error": {"code": code[:64], "message": message[:300]}}, status_code=status)
+
+    async def polarized_two_path_validate(request: Request) -> Response:
+        return await polarized_two_path_process(request, operation="validate")
+
+    async def polarized_two_path_simulate(request: Request) -> Response:
+        return await polarized_two_path_process(request, operation="simulate")
+
+    async def polarized_two_path_sweep(request: Request) -> Response:
+        return await polarized_two_path_process(request, operation="sweep")
+
+    async def polarized_two_path_process(request: Request, *, operation: str) -> Response:
+        request_id = None
+        try:
+            payload = await _read_json(request, parser=polarized_two_path_protocol.strict_json_loads)
+            request_id = _parsed_id(payload)
+            sweep_validation = (operation == "validate" and isinstance(payload, dict) and
+                                payload.get("message_type") == "polarized_two_path_sweep_submission")
+            is_sweep = operation == "sweep" or sweep_validation
+            submission = (polarized_two_path_adapter.validate_sweep_submission(payload, require_digest=operation != "validate")
+                          if is_sweep else polarized_two_path_adapter.validate_submission(payload, require_digest=operation != "validate"))
+        except BodyError as exc:
+            return polarized_two_path_error(exc.status, exc.code, str(exc), request_id)
+        except ClientDisconnect:
+            return polarized_two_path_error(499, "disconnected", "Client disconnected before submission", request_id)
+        except (ValueError, TypeError, OverflowError) as exc:
+            return polarized_two_path_error(422, "invalid_experiment", str(exc), request_id)
+        if operation == "validate":
+            if is_sweep:
+                return JSONResponse({"protocol_version": 1, "message_type": "polarized_two_path_sweep_validation",
+                    "request_id": submission.request_id, "fixed_experiment_sha256": submission.fixed_experiment_sha256,
+                    "fixed_experiment": submission.fixed_dict(), "phases_rad": list(submission.phases_rad),
+                    "sweep_sha256": submission.sweep_sha256})
+            return JSONResponse({"protocol_version": 1, "message_type": "polarized_two_path_validation",
+                "request_id": submission.request_id, "experiment_sha256": submission.experiment_sha256,
+                "experiment": submission.experiment.to_dict()})
+        try:
+            future = gate.submit(submission)
+        except BusyError:
+            return polarized_two_path_error(409, "busy", "A Python computation is still running; submit again deliberately later",
+                                             submission.request_id)
+        except Exception:
+            return polarized_two_path_error(500, "submission_failed", "Could not submit the computation", submission.request_id)
+        try:
+            encoded = await _worker_response(request, future)
+        except asyncio.CancelledError:
+            raise
+        except CancelledBeforeStart:
+            return polarized_two_path_error(503, "cancelled_before_start", "Computation did not start; no result was produced",
+                                             submission.request_id)
+        except NumericalError as exc:
+            return polarized_two_path_error(422, "numerical_failure", str(exc), submission.request_id)
+        except Exception:
+            return polarized_two_path_error(500, "simulation_failed", "Numerical computation or result encoding failed",
+                                             submission.request_id)
+        if encoded is None:
+            return polarized_two_path_error(499, "disconnected", "Client disconnected; backend completion is unknown",
+                                             submission.request_id)
+        if operation == "sweep":
+            if (not isinstance(encoded, polarized_two_path_protocol.SweepReply) or encoded.status_code not in (200, 422, 500) or
+                    not isinstance(encoded.body, bytes) or not 2 <= len(encoded.body) <= polarized_two_path_protocol.MAX_SWEEP_RESPONSE_BYTES):
+                return polarized_two_path_error(500, "simulation_failed", "Sweep encoding failed", submission.request_id)
+            return Response(encoded.body, status_code=encoded.status_code, media_type="application/json")
+        if not isinstance(encoded, bytes) or not 16 <= len(encoded) <= polarized_two_path_protocol.MAX_RESPONSE_BYTES:
+            return polarized_two_path_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
+        return Response(encoded, media_type="application/octet-stream")
+
     async def document_validate(request: Request) -> Response:
         try:
             payload = await _read_json(request, parser=experiment_documents.strict_document_loads)
@@ -576,6 +658,7 @@ always uses this checkout's fixed built directory and public numerical adapters.
             "/api/v1/health", "/api/v1/validate", "/api/v1/simulate",
             "/api/v2b/validate", "/api/v2b/simulate", "/api/v2b/sweep",
             "/api/v2d/validate", "/api/v2d/simulate", "/api/v2d/sweep",
+            "/api/v2g/validate", "/api/v2g/simulate", "/api/v2g/sweep",
             "/api/v2e/documents/validate"} else 404
         return _error(status, "http_error", "Request path or method is unavailable")
 
@@ -588,6 +671,9 @@ always uses this checkout's fixed built directory and public numerical adapters.
                             Route("/api/v2d/validate", polarization_validate, methods=["POST"]),
                             Route("/api/v2d/simulate", polarization_simulate, methods=["POST"]),
                             Route("/api/v2d/sweep", polarization_sweep, methods=["POST"]),
+                            Route("/api/v2g/validate", polarized_two_path_validate, methods=["POST"]),
+                            Route("/api/v2g/simulate", polarized_two_path_simulate, methods=["POST"]),
+                            Route("/api/v2g/sweep", polarized_two_path_sweep, methods=["POST"]),
                             Route("/api/v2e/documents/validate", document_validate, methods=["POST"]),
                             Route("/api/{path:path}", unavailable_api,
                                   methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"]),

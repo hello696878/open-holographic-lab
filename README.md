@@ -69,8 +69,19 @@ most two ordered terminal Jones actions per arm, and returns both raw Jones
 outputs with measured norm/loss histories. Output analyzers remain separate.
 See the [V2f API and supported numerical domain](docs/handoffs/v2f/implementation_summary.md)
 and [actual evidence and limitations](docs/handoffs/v2f/tests_and_evidence.md).
-V2g interactive integration requires separate approval and an explicit
-experiment-document compatibility decision; V2e's three-mode schema is unchanged.
+V2g integrates a fourth **polarized two-path** bench mode with explicit single
+simulations and 17-point phase sweeps. Raw and optional analyzed outputs share
+one comparison scale; analyzer loss remains separate from raw propagation.
+Settings documents have an explicit compatibility boundary: version 1 keeps
+the existing three modes, and version 2 accepts only `polarized_two_path`.
+Applying settings performs no optics. The deliberate **Release retained
+calculation results in all modes; keep experiment settings and documents**
+action frees app-owned calculations while preserving drafts, documents and camera.
+See the [V2g application contract](docs/handoffs/v2g/implementation_summary.md),
+[validation evidence](docs/handoffs/v2g/tests_and_evidence.md) and
+[limits](docs/handoffs/v2g/known_limitations.md). V2f's published numerical
+revision is `431346c16e7275f2a4d6798c6efbf689b0056e91`; its historical evidence
+remains unchanged.
 
 The standalone example opens no GUI, browser or server. Use a fresh output
 directory for each evidence capture:
@@ -893,6 +904,61 @@ Fault controls run isolated copies; they do not start a server or browser.
 Browser capture redirection and explicit controlled-child commands are in
 [tests and evidence](docs/handoffs/v2d/tests_and_evidence.md). Use fresh capture
 directories to preserve historical screenshots. Teaching remains separate.
+
+## Interactive polarized two-path mode (V2g)
+
+Use the existing installed frontend and project interpreter. From the repository
+root, build the default assets and explicitly launch the local bench:
+
+```powershell
+Push-Location frontend/bench
+& 'C:\Program Files\nodejs\node.exe' node_modules/vite/bin/vite.js build
+Pop-Location
+.\.venv\Scripts\python.exe -B -X utf8 -m apps.virtual_bench.server
+```
+
+Open [the local bench](http://127.0.0.1:8510) and choose polarized two-path.
+Sequential remains the passive default. Configure the full uniform/Gaussian
+source, arbitrary complex x/y coefficients, two forward distances, zero-to-two
+ordered terminal actions per arm, common arm-1 phase and optional shared output
+analyzer. The signed Gaussian waist position and transverse center remain
+effective. The analyzer angle is saved and validated even when disabled.
+
+**Simulate** makes one deliberate calculation; **17-point phase sweep** makes
+one deliberate sweep. Each enabled measurement keeps both raw and both analyzed
+outputs separate. View, color, picking and marker selection perform no optics.
+The single comparison range applies to every available image; original float64
+readouts, maxima and saturation remain visible. Choosing a phase marker requires
+a separate explicit action to obtain its full images. Failed measurements and
+partial sweeps never receive a complete-result label.
+
+Export the current valid draft to `polarized_two_path-settings.json`. A genuine
+new-mode document uses version2; the earlier three modes retain version1 and
+their original exports. Upload previews exact settings, and Apply requires
+replacement acknowledgement. Restored settings are **not yet simulated**.
+Neither document version contains results, sweep recipes or replay qualification.
+
+The deliberately scoped release action discards retained calculations and views
+in **all modes** while preserving settings, invalid editor text, metadata, useful
+document previews/downloads and camera. It is blocked during numerical work and
+does not compute, retry, revalidate documents or delete files. Fixed 16 MiB / 32 MiB
+app-owned budgets can reject work without eviction. Release permits a later
+deliberate calculation; numerical completion and display failure stay separate.
+
+New routes are `/api/v2g/validate`, `/api/v2g/simulate` and `/api/v2g/sweep`;
+the old routes are unchanged. `OHLABPT` carries ordered little-endian float64
+images and shared axes, public scalar histories and immutable request identity.
+At 128x128 the raw/analyzed payload caps are 264192/526336 bytes, with frame
+caps 280592/542736. Request and scalar-sweep caps remain 32768/65536. All seven
+compute kinds share one actual-worker-lifetime gate through encoding and
+disconnect. Health, validation and settings operations do no optics.
+
+The service remains only 127.0.0.1:8510. An occupied port is a blocker; do not
+manage its occupant or switch binding. No new dependency or browser installation
+is needed. Exact schemas, current evidence, classified controls and genuine
+screenshots are in the [V2g handoff](docs/handoffs/v2g/implementation_summary.md).
+This is an ideal aligned low-angle Jones-envelope model; later optics and
+deployment require separate approval. Teaching remains separate.
 
 ## Test
 

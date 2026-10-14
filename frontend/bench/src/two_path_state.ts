@@ -38,6 +38,7 @@ export class TwoPathController {
   private listeners = new Set<(state: TwoPathState) => void>();
   private generation = 0;
   private validatedHash: string | null = null;
+  private resultsGeneration = 0;
   constructor(initial: TwoPathExperiment, private api: TwoPathAPI = createTwoPathFetchAPI(),
       private idFactory: () => string = () => crypto.randomUUID(), readonly gate = new ClientOperationGate(),
       private prepareResult: PrepareDualResult = () => ({ commit() {}, dispose() {} })) {
@@ -47,6 +48,16 @@ export class TwoPathController {
       lastResult: null, currentResult: null, completedNumerical: null, lastSweep: null, currentSweep: null, selectedSweepIndex: null });
   }
   get state(): TwoPathState { return this.snapshot; }
+  get resultGeneration(): number { return this.resultsGeneration; }
+  /** Release result/sweep/recovery references without changing the scientific editor. */
+  releaseResults(): boolean {
+    if (this.gate.busy || this.snapshot.active) return false;
+    const previous = this.snapshot;
+    if (this.gate.busy || this.snapshot !== previous || this.snapshot.active) return false;
+    ++this.resultsGeneration;
+    this.publish({ lastResult: null, currentResult: null, completedNumerical: null,
+      lastSweep: null, currentSweep: null, selectedSweepIndex: null, renderError: null }); return true;
+  }
   setResultPreparer(preparer: PrepareDualResult): void { this.prepareResult = preparer; }
   subscribe(listener: (state: TwoPathState) => void): () => void {
     this.listeners.add(listener); this.notify(listener); return () => this.listeners.delete(listener);
@@ -209,7 +220,7 @@ export class TwoPathController {
   }
   async simulateSelectedPhase(): Promise<boolean> {
     if (this.gate.busy || this.snapshot.active || this.snapshot.selectedSweepIndex === null || !this.snapshot.lastSweep) return false;
-    const sweep = this.snapshot.lastSweep; const row = sweep.rows.find(item => item.index === this.snapshot.selectedSweepIndex);
+    const sweep = this.snapshot.lastSweep, resultsGeneration = this.resultsGeneration; const row = sweep.rows.find(item => item.index === this.snapshot.selectedSweepIndex);
     if (!row) return false;
     const fixed = sweep.fixedExperiment;
     const intended = freezeTwoPathExperiment({ wavelength_m: fixed.wavelength_m, grid: fixed.grid, source: fixed.source,
@@ -219,7 +230,7 @@ export class TwoPathController {
     await validating;
     // The explicit action belongs only to its captured draft and mode lifetime.
     // A later edit/away-and-back switch cannot turn it into a run of a different draft.
-    if (this.snapshot.revision !== revision || this.snapshot.attachmentEpoch !== attachmentEpoch
+    if (this.resultsGeneration !== resultsGeneration || this.snapshot.revision !== revision || this.snapshot.attachmentEpoch !== attachmentEpoch
         || !structuralEqual(this.snapshot.candidate, intended) || !structuralEqual(this.snapshot.validatedDraft, intended)) return false;
     return this.simulate();
   }

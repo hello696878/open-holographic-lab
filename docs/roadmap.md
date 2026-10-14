@@ -43,7 +43,7 @@ content-design work and is delivered in independently approved stages.
 | V2d | Approved interactive ideal Jones polarization experiment mode | Distinct common-plane mode, arbitrary complex coefficients, ordered ideal polarizer/retarder actions, actual fixed-sample trajectories, OHLABPL transport and genuine thirteen-point sweeps; acceptance and publication boundaries are recorded in the ledger and V2d handoff |
 | V2e | Approved priority: portable virtual-experiment settings documents | Current valid draft export; bounded raw validation, final canonical preview and explicitly acknowledged settings replacement in all three modes; fresh-session download/import and explicit recomputation; no saved numerical results or replay qualification |
 | V2f | Approved standalone ideal polarization-sensitive two-path numerical composition | Fixed ordered port/polarization indices, public B/ASM/Jones reuse, at most two terminal actions per arm, supported numerical intersection, actual raw outputs and independent complex/norm/loss references; no frontend or document changes |
-| V2g | Separately approved future interactive integration of validated V2f | Explicit new-mode transport/resources/worker/browser acceptance and experiment-document mode/model/version compatibility; do not silently extend V2e's closed three-mode schema |
+| V2g | Approved interactive integration of validated V2f | Fourth polarized two-path mode; raw/analyzed measurements, actual17-point sweep, one shared worker gate, fixed-budget explicit all-mode result release; v1 old-three/v2 new-only settings documents |
 | Later V2 | Separately modelled polarized interference, reflection/frame geometry and richer instruments | Both port and polarization indices, tilted/reflected frames, coating laws, noise and absolute radiometry each need explicit physical models and tests; unsupported geometry stays unsupported |
 | V3 | A remotely accessible service with saved/shared experiments and educational templates | Separate security, authentication/authorization, storage, resource limits and remote-compute planning before deployment |
 
@@ -120,10 +120,14 @@ polarizer/retarder actions, an explicit common arm phase and two raw outputs.
 Its [contract](handoffs/v2f/implementation_summary.md) keeps the existing scalar
 and same-plane Jones APIs unchanged and documents their complete-pipeline
 supported intersection. Downstream analyzers retain separately measured loss.
-V2g interactive and document integration remains separately approved future
-work. Numerical demonstration evidence is not a browser result, persistence
-format or qualified-replay badge. Existing V2e publication records supply its
-dated ledger closeout without rewriting earlier handoffs or measurements.
+V2g adds the bounded interactive application and an explicit v2-only-new-mode
+document branch; version1 remains closed to the earlier three modes. The
+[V2g handoff](handoffs/v2g/implementation_summary.md) specifies conditional
+raw/analyzed transport, actual phase sweeps, atomic presentation, shared
+worker lifetime and fixed-budget release/recovery. Settings portability is
+separate from numerical success and qualified replay. Historical numerical
+demonstrations and publication closeouts remain unchanged. Later optics,
+general topology, detector models and deployment require separate approval.
 
 Physical SLM integration, calibration, vendor SDKs and device services form a
 separate optional future track. The virtual laboratory can be useful without

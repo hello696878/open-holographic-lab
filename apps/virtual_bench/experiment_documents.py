@@ -15,12 +15,16 @@ from types import MappingProxyType
 from .adapter import strict_json_loads, validate_experiment as validate_sequential
 from .two_path_adapter import validate_experiment as validate_two_path
 from .polarization_adapter import PolarizationExperiment
+from .polarized_two_path_adapter import PolarizedTwoPathExperiment
 from .protocol import experiment_digest as sequential_digest
 from .two_path_protocol import experiment_digest as two_path_digest
 from .polarization_protocol import experiment_digest as polarization_digest
+from .polarized_two_path_protocol import experiment_digest as polarized_two_path_digest
 
 DOCUMENT_FORMAT = "ohlab_virtual_experiment"
 DOCUMENT_VERSION = 1
+POLARIZED_TWO_PATH_DOCUMENT_VERSION = 2
+POLARIZED_TWO_PATH_MODEL_CONTRACT = "v2g_ideal_polarized_two_path_v1"
 MAX_DOCUMENT_BYTES = 32_768
 MAX_CONTAINER_DEPTH = 12
 MAX_VALUE_NODES = 2048
@@ -153,13 +157,22 @@ def validate_document(payload: object) -> ValidatedDocument:
                             "experiment", "metadata"}, "document", "invalid_document")
     if value["document_format"] != DOCUMENT_FORMAT:
         raise DocumentError("invalid_document", f"document_format: expected {DOCUMENT_FORMAT}")
-    if type(value["document_version"]) is not int or value["document_version"] != DOCUMENT_VERSION:
-        raise DocumentError("unsupported_document_version", "document_version: expected integer 1")
+    version = value["document_version"]
+    if type(version) is not int or version not in (DOCUMENT_VERSION, POLARIZED_TWO_PATH_DOCUMENT_VERSION):
+        raise DocumentError("unsupported_document_version", "document_version: expected supported integer 1 or 2")
     mode = value["mode"]
-    if type(mode) is not str or mode not in MODEL_CONTRACTS:
-        raise DocumentError("unsupported_document_mode", "mode: expected sequential, two_path or polarization")
-    if value["model_contract"] != MODEL_CONTRACTS[mode]:
-        raise DocumentError("unsupported_model_contract", f"model_contract: expected {MODEL_CONTRACTS[mode]}")
+    if version == DOCUMENT_VERSION:
+        if type(mode) is not str or mode not in MODEL_CONTRACTS:
+            raise DocumentError("unsupported_document_mode", "version 1 mode: expected sequential, two_path or polarization")
+        model = MODEL_CONTRACTS[mode]
+    else:
+        if type(mode) is str and mode in MODEL_CONTRACTS:
+            raise DocumentError("unsupported_document_version", "old modes require document_version 1")
+        if mode != "polarized_two_path":
+            raise DocumentError("unsupported_document_mode", "version 2 mode: expected polarized_two_path")
+        model = POLARIZED_TWO_PATH_MODEL_CONTRACT
+    if value["model_contract"] != model:
+        raise DocumentError("unsupported_model_contract", f"model_contract: expected {model}")
     metadata = _keys(value["metadata"], {"title", "notes"}, "metadata", "invalid_metadata")
     for name, cap in (("title", MAX_TITLE_SCALARS), ("notes", MAX_NOTES_SCALARS)):
         if type(metadata[name]) is not str or len(metadata[name]) > cap:
@@ -171,13 +184,16 @@ def validate_document(payload: object) -> ValidatedDocument:
         elif mode == "two_path":
             experiment = validate_two_path(value["experiment"])
             digest = two_path_digest(experiment.to_dict())
-        else:
+        elif mode == "polarization":
             experiment = PolarizationExperiment.from_dict(value["experiment"])
             digest = polarization_digest(experiment.to_dict())
+        else:
+            experiment = PolarizedTwoPathExperiment.from_dict(value["experiment"])
+            digest = polarized_two_path_digest(experiment.to_dict())
     except (ValueError, TypeError, OverflowError) as exc:
         raise DocumentError("invalid_experiment", str(exc)) from exc
-    owned = {"document_format": DOCUMENT_FORMAT, "document_version": DOCUMENT_VERSION,
-             "mode": mode, "model_contract": MODEL_CONTRACTS[mode],
+    owned = {"document_format": DOCUMENT_FORMAT, "document_version": version,
+             "mode": mode, "model_contract": model,
              "experiment": experiment.to_dict(),
              "metadata": {"title": metadata["title"], "notes": metadata["notes"]}}
     encoded = (json.dumps(owned, sort_keys=True, indent=2, ensure_ascii=False,

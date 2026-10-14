@@ -4,7 +4,7 @@ export type { BenchAPI } from './contracts';
 
 /** One synchronous client operation slot, shared by all modes and sweeps. */
 export class ClientOperationGate {
-  private operation: Readonly<{ requestId: string; mode: 'sequential' | 'two_path' | 'polarization'; kind: 'single' | 'sweep' }> | null = null;
+  private operation: Readonly<{ requestId: string; mode: 'sequential' | 'two_path' | 'polarization' | 'polarized_two_path'; kind: 'single' | 'sweep' }> | null = null;
   private listeners = new Set<() => void>();
   get active() { return this.operation; }
   get busy(): boolean { return this.operation !== null; }
@@ -12,7 +12,7 @@ export class ClientOperationGate {
   private notify(): void {
     for (const listener of this.listeners) { try { listener(); } catch { /* Viewing cannot strand a client operation. */ } }
   }
-  acquire(requestId: string, mode: 'sequential' | 'two_path' | 'polarization', kind: 'single' | 'sweep'): boolean {
+  acquire(requestId: string, mode: 'sequential' | 'two_path' | 'polarization' | 'polarized_two_path', kind: 'single' | 'sweep'): boolean {
     if (this.operation) return false;
     this.operation = Object.freeze({ requestId, mode, kind }); this.notify(); return true;
   }
@@ -47,6 +47,7 @@ export class BenchController {
   private listeners = new Set<Listener>();
   private validationGeneration = 0;
   private validatedHash: string | null = null;
+  private resultsGeneration = 0;
   constructor(initial: Experiment, private api: BenchAPI = createFetchAPI(),
       private idFactory: () => string = () => crypto.randomUUID(), readonly gate = new ClientOperationGate()) {
     this.snapshot = Object.freeze({ candidate: freezeExperiment(initial), validatedDraft: null,
@@ -54,6 +55,15 @@ export class BenchController {
       selection: 'source', active: null, lastResult: null, currentResult: null, renderError: null });
   }
   get state(): BenchState { return this.snapshot; }
+  get resultGeneration(): number { return this.resultsGeneration; }
+  /** Release numerical ownership only; scientific drafts and document identity stay intact. */
+  releaseResults(): boolean {
+    if (this.gate.busy || this.snapshot.active) return false;
+    const previous = this.snapshot;
+    if (this.gate.busy || this.snapshot !== previous || this.snapshot.active) return false;
+    ++this.resultsGeneration;
+    this.publish({ lastResult: null, currentResult: null, renderError: null }); return true;
+  }
   /** Mode switches invalidate attachment even when switching away and back. */
   deactivate(): void {
     ++this.validationGeneration; this.validatedHash = null;

@@ -88,6 +88,34 @@ th { color: #587687; background: #f2f7fa; position: sticky; top: 0; }
 .error { background: #fff0eb; color: #a94431; border-left: 3px solid #d56349; padding: 10px 14px; font-size: 12px; line-height: 1.6; }
 .model-note { font-size: 10px; line-height: 1.8; color: #5f7b8c; padding: 14px 3px 0; }
 [hidden] { display: none !important; }
+#app:not([data-mode="polarized_two_path"]) .polarized-two-path-only { display: none !important; }
+#app[data-mode="polarized_two_path"] .sequential-only,
+#app[data-mode="polarized_two_path"] .two-path-only,
+#app[data-mode="polarized_two_path"] .polarization-only,
+#app[data-mode="polarized_two_path"] .components,
+#app[data-mode="polarized_two_path"] .inspector { display: none !important; }
+.release-panel { margin-bottom: 14px; padding: 12px 16px; }
+.release-panel summary { cursor: pointer; font-size: 12px; }
+.release-panel p, .release-panel output { font-size: 12px; line-height: 1.6; }
+.release-panel output { display: block; margin-top: 8px; color: #526e80; }
+.pt-controls, .pt-arm-controls { max-height: 850px; overflow: auto; }
+.pt-controls > label { margin-bottom: 10px; }
+#pt-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+#pt-fields .number-field, .pt-action .number-field { font-size: 10px; margin: 4px 0; }
+#pt-arms section { border-bottom: 1px solid #d3dfe7; padding-bottom: 12px; margin-bottom: 12px; }
+.pt-action { background: #f2f7fa; border: 1px solid #d3dfe7; padding: 7px; margin-bottom: 8px; }
+.pt-action button { font-size: 10px; padding: 5px; margin: 3px; }
+.pt-action input { width: 100%; }
+#pt-result-area pre { font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; background: #f4f8fa; padding: 9px; }
+#pt-current-content { margin-top: 12px; }
+#pt-pixel-readout { font-size: 11px; line-height: 1.6; margin-top: 12px; }
+#pt-previous-result { background: #fff9ef; border: 1px solid #ddb780; padding: 10px; }
+#pt-sweep-chart { width: 100%; max-height: 280px; font-size: 11px; }
+#pt-sweep-chart circle { cursor: pointer; }
+#pt-sweep-chart circle:focus { stroke: #da9b3d; stroke-width: 3px; }
+#pt-sweep-identity, #pt-sweep-selected { font-size: 10px; }
+#pt-status { font-size: 12px; color: #526e80; }
+@media (max-width: 820px) { .pt-controls, .pt-arm-controls { max-height: none; } }
 #app[data-mode="sequential"] .polarization-only,
 #app[data-mode="two_path"] .polarization-only { display: none !important; }
 #app[data-mode="polarization"] .sequential-only,

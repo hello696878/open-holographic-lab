@@ -7,12 +7,14 @@ import { detectorEdges, pixelFromUV, worldPosition } from './mapping';
 import { createDetectorTexture, prepareDualTextures, type ColorLimits } from './detector';
 import type { DecodedTwoPathResult, TwoPathExperiment } from './two_path_contracts';
 import type { DecodedPolarizationResult, PolarizationExperiment } from './polarization_contracts';
+import type { DecodedPolarizedTwoPathResult, PolarizedTwoPathExperiment } from './polarized_two_path_contracts';
 
 export interface SceneCallbacks {
   select: (ids: string[]) => void;
   pixel: (row: number, column: number) => void;
   dualPixel?: (port: 0 | 1, row: number, column: number) => void;
   polarizationPixel?: (view: 0 | 1, row: number, column: number) => void;
+  polarizedTwoPathPixel?: (view: 'raw' | 'analyzed', port: 0 | 1, row: number, column: number) => void;
   commitZ: (id: string, z_m: number) => void;
   notice: (message: string) => void;
   presentationFailure: (message: string | null) => void;
@@ -36,7 +38,13 @@ export class BenchScene {
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
   private experiment: Experiment | null = null;
-  private mode: 'sequential' | 'two_path' | 'polarization' = 'sequential';
+  private mode: 'sequential' | 'two_path' | 'polarization' | 'polarized_two_path' = 'sequential';
+  private polarizedTwoPathExperiment: PolarizedTwoPathExperiment | null = null;
+  private polarizedTwoPathDetectors: readonly [DetectorMesh, DetectorMesh] | null = null;
+  private polarizedTwoPathTextures: readonly THREE.DataTexture[] | null = null;
+  private polarizedTwoPathResult: DecodedPolarizedTwoPathResult | null = null;
+  private polarizedTwoPathView: 'raw' | 'analyzed' = 'raw';
+  private resultGeneration = 0;
   private polarizationExperiment: PolarizationExperiment | null = null;
   private polarizationDetectors: readonly [DetectorMesh, DetectorMesh] | null = null;
   private polarizationTextures: readonly [THREE.DataTexture, THREE.DataTexture] | null = null;
@@ -100,6 +108,7 @@ export class BenchScene {
       this.cancelDrag();
       this.frameCallback = null;
       this.detachPolarizationResult();
+      this.detachPolarizedTwoPathResult();
       this.callbacks.presentationFailure('WebGL2 顯示內容已遺失；數值結果保留，不會自動重算。');
     };
     this.onContextRestored = () => {
@@ -179,6 +188,7 @@ export class BenchScene {
       this.updateResult(null, { min: 0, max: 10 });
       this.detachDualResult();
       this.detachPolarizationResult(); this.polarizationExperiment = null; this.polarizationDetectors = null;
+      this.detachPolarizedTwoPathResult(); this.polarizedTwoPathExperiment = null; this.polarizedTwoPathDetectors = null;
       this.disposeGroup(this.bench);
       this.mode = 'sequential';
       this.twoPathExperiment = null;
@@ -275,6 +285,7 @@ export class BenchScene {
       this.updateResult(null, { min: 0, max: 10 });
       this.detachDualResult();
       this.detachPolarizationResult(); this.polarizationExperiment = null; this.polarizationDetectors = null;
+      this.detachPolarizedTwoPathResult(); this.polarizedTwoPathExperiment = null; this.polarizedTwoPathDetectors = null;
       this.disposeGroup(this.bench); this.disposeGroup(this.rail);
       this.handle = null; this.experiment = null; this.detector = null;
       this.mode = 'two_path'; this.twoPathExperiment = experiment;
@@ -384,6 +395,7 @@ export class BenchScene {
       this.ensureDisplayFinite([width, height, lane, end, radius, edges.centerX * 1000, edges.centerY * 1000]);
       const changedMode = this.mode !== 'polarization';
       this.updateResult(null, { min: 0, max: 10 }); this.detachDualResult(); this.detachPolarizationResult();
+      this.detachPolarizedTwoPathResult(); this.polarizedTwoPathExperiment = null; this.polarizedTwoPathDetectors = null;
       this.disposeGroup(this.bench); this.disposeGroup(this.rail); this.handle = null;
       this.experiment = null; this.twoPathExperiment = null; this.dualDetectors = null; this.detector = null;
       this.mode = 'polarization'; this.polarizationExperiment = experiment;
@@ -450,13 +462,135 @@ export class BenchScene {
     for (const mesh of this.polarizationDetectors ?? []) { mesh.material.map = null; mesh.material.color.set('#d4e6ed'); mesh.material.needsUpdate = true; }
   }
 
+  /** Ideal unfolded lanes; actions occupy cosmetic terminal slots, never extra propagation. */
+  updatePolarizedTwoPathExperiment(experiment: PolarizedTwoPathExperiment, selection: string): void {
+    if (this.mode !== 'polarized_two_path' || !structuralEqual(this.polarizedTwoPathExperiment, experiment)) {
+      const edges = detectorEdges(experiment.grid), width = edges.width * 1000, height = edges.height * 1000;
+      const lane = Math.max(width * 0.8, 0.26), end = Math.max(width * 3, height * 2, 1.4), radius = Math.max(width * 0.12, 0.04);
+      this.ensureDisplayFinite([width, height, lane, end, radius, end * 100,
+        edges.centerX * 1000 - lane, edges.centerX * 1000 + lane, edges.centerY * 1000]);
+      const changedMode = this.mode !== 'polarized_two_path';
+      const next = new THREE.Group(), geometries = new Set<THREE.BufferGeometry>(), materials = new Set<THREE.Material>();
+      const geometry = <T extends THREE.BufferGeometry>(value: T): T => { geometries.add(value); return value; };
+      const material = <T extends THREE.Material>(value: T): T => { materials.add(value); return value; };
+      let detectors: readonly [DetectorMesh, DetectorMesh];
+      try {
+      const token = (id: string, x: number, z: number, color: string, angle?: number) => {
+        const mesh = new THREE.Mesh(geometry(new THREE.CircleGeometry(radius, 32)),
+          material(new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide, toneMapped: false })));
+        mesh.position.set(x, 0, z); mesh.userData.identity = id; next.add(mesh);
+        if (angle !== undefined) {
+          const c = Math.cos(angle), s = Math.sin(angle);
+          const marker = new THREE.Line(geometry(new THREE.BufferGeometry().setFromPoints([
+            new THREE.Vector3(x - radius * c, radius * s, z), new THREE.Vector3(x + radius * c, -radius * s, z),
+          ])), material(new THREE.LineBasicMaterial({ color: '#183b4c' })));
+          marker.userData.identity = id; next.add(marker);
+        }
+      };
+      token('input', 0, 0, '#ce922e'); token('splitter', 0, end * 0.2, '#50a3c0'); token('combiner', 0, end * 0.8, '#50a3c0');
+      for (const port of [0, 1] as const) {
+        const arm = port === 0 ? experiment.arm_0 : experiment.arm_1, x = port === 0 ? -lane : lane;
+        token(`arm_${port}`, x, end * 0.38, port === 0 ? '#087f89' : '#9665a8');
+        arm.actions.forEach((action, index) => token(action.id, x, end * (0.5 + index * 0.13),
+          action.kind === 'linear_polarizer' ? '#087f89' : '#a880b4', action.axis_angle_rad));
+        const guide = new THREE.Line(geometry(new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, end * 0.2), new THREE.Vector3(x, 0, end * 0.36),
+          new THREE.Vector3(x, 0, end * 0.68), new THREE.Vector3(0, 0, end * 0.8), new THREE.Vector3(x, 0, end),
+        ])), material(new THREE.LineDashedMaterial({ color: '#779ba9', dashSize: 0.05, gapSize: 0.03 })));
+        guide.computeLineDistances(); next.add(guide);
+      }
+      if (experiment.analyzer.enabled) token('analyzer', 0, end * 0.9, '#c08028', experiment.analyzer.axis_angle_rad);
+      detectors = ([0, 1] as const).map(port => {
+        const mesh = new THREE.Mesh(geometry(new THREE.PlaneGeometry(width, height)),
+          material(new THREE.MeshBasicMaterial({ color: '#d4e6ed', side: THREE.DoubleSide, toneMapped: false })));
+        mesh.position.set((port === 0 ? -lane : lane) + edges.centerX * 1000, -edges.centerY * 1000, end);
+        mesh.userData.identity = `port_${port}`; mesh.userData.detector = true; mesh.userData.polarizedTwoPathPort = port;
+        next.add(mesh); return mesh;
+      }) as [DetectorMesh, DetectorMesh];
+      const buffers = new Set<ArrayBufferLike>();
+      for (const item of geometries) {
+        if (item.index) buffers.add(item.index.array.buffer);
+        for (const attribute of [...Object.values(item.attributes), ...Object.values(item.morphAttributes).flat()])
+          buffers.add(attribute instanceof THREE.InterleavedBufferAttribute ? attribute.data.array.buffer : attribute.array.buffer);
+      }
+      if ([...buffers].reduce((sum, buffer) => sum + buffer.byteLength, 0) > 131072)
+        throw new Error('Prepared polarized two-path geometry exceeds its 131072-byte reservation; previous scene preserved.');
+      } catch (error) {
+        next.clear(); geometries.forEach(item => item.dispose()); materials.forEach(item => item.dispose()); throw error;
+      }
+      this.releaseRetainedResults(); this.disposeGroup(this.bench); this.disposeGroup(this.rail); this.handle = null;
+      this.experiment = null; this.twoPathExperiment = null; this.polarizationExperiment = null;
+      this.detector = null; this.dualDetectors = null; this.polarizationDetectors = null;
+      this.mode = 'polarized_two_path'; this.polarizedTwoPathExperiment = experiment; this.polarizedTwoPathDetectors = detectors;
+      geometries.forEach(item => this.geometries.add(item)); materials.forEach(item => this.materials.add(item));
+      this.bench.add(...[...next.children]);
+      if (changedMode || !this.initializedCamera) { this.resetCamera(); this.initializedCamera = true; }
+    }
+    this.selection = selection;
+  }
+
+  /** Entire result is retained as one owner; selecting a prepared pair allocates no scientific data. */
+  preparePolarizedTwoPathResult(result: DecodedPolarizedTwoPathResult, textures: readonly THREE.DataTexture[], view: 'raw' | 'analyzed'): {
+    commit(): void; dispose(): void; finalize(): void;
+  } {
+    if (this.lost || this.mode !== 'polarized_two_path' || !this.polarizedTwoPathDetectors
+        || !structuralEqual(result.experiment, this.polarizedTwoPathExperiment)
+        || textures.length !== (result.analyzedPorts ? 4 : 2) || view === 'analyzed' && !result.analyzedPorts) {
+      throw new Error('Polarized two-path presentation does not match the complete active result.');
+    }
+    const meshes = this.polarizedTwoPathDetectors, oldTextures = this.polarizedTwoPathTextures,
+      oldResult = this.polarizedTwoPathResult, oldView = this.polarizedTwoPathView, generation = this.resultGeneration;
+    let committed = false, closed = false;
+    return {
+      commit: () => {
+        if (closed || committed || generation !== this.resultGeneration || meshes !== this.polarizedTwoPathDetectors) throw new Error('Polarized two-path presentation expired');
+        committed = true;
+        this.polarizedTwoPathTextures = textures; this.polarizedTwoPathResult = result;
+        textures.forEach(texture => this.textures.add(texture)); this.selectPolarizedTwoPathView(view);
+      },
+      dispose: () => {
+        if (closed) return; closed = true;
+        if (committed && generation === this.resultGeneration && this.polarizedTwoPathTextures === textures) {
+          this.polarizedTwoPathTextures = oldTextures; this.polarizedTwoPathResult = oldResult;
+          this.selectPolarizedTwoPathView(oldView);
+        }
+        textures.forEach(texture => this.textures.delete(texture));
+      },
+      finalize: () => {
+        if (closed || !committed) return; closed = true;
+        for (const texture of oldTextures ?? []) { texture.dispose(); this.textures.delete(texture); }
+      },
+    };
+  }
+
+  selectPolarizedTwoPathView(view: 'raw' | 'analyzed'): void {
+    if (view === 'analyzed' && !this.polarizedTwoPathResult?.analyzedPorts) throw new Error('No analyzed output is available');
+    const offset = view === 'raw' ? 0 : 2;
+    for (const [port, mesh] of (this.polarizedTwoPathDetectors ?? []).entries()) {
+      mesh.material.map = this.polarizedTwoPathTextures?.[offset + port] ?? null;
+      mesh.material.color.set(mesh.material.map ? '#ffffff' : '#d4e6ed'); mesh.material.needsUpdate = true;
+    }
+    this.polarizedTwoPathView = view;
+  }
+  detachPolarizedTwoPathResult(): void {
+    ++this.resultGeneration;
+    for (const texture of this.polarizedTwoPathTextures ?? []) { texture.dispose(); this.textures.delete(texture); }
+    this.polarizedTwoPathTextures = null; this.polarizedTwoPathResult = null; this.polarizedTwoPathView = 'raw';
+    for (const mesh of this.polarizedTwoPathDetectors ?? []) { mesh.material.map = null; mesh.material.color.set('#d4e6ed'); mesh.material.needsUpdate = true; }
+  }
+  /** Result-only cleanup leaves current schematic, renderer, camera and controls usable. */
+  releaseRetainedResults(): void {
+    this.frameCallback = null; this.updateResult(null, { min: 0, max: 10 }); this.detachDualResult();
+    this.detachPolarizationResult(); this.detachPolarizedTwoPathResult();
+  }
+
   /** One replaceable callback inside the shared renderer; no additional RAF chain. */
   setFrameCallback(callback: ((time: number) => void) | null): void { this.frameCallback = callback; }
 
   /** Internal ownership inventory uses actual references, never cloned evidence summaries. */
   ownedNumericalResults(): Readonly<{ sequential: DecodedResult | null; dual: DecodedTwoPathResult | null;
-    polarization: DecodedPolarizationResult | null }> {
-    return { sequential: this.result, dual: this.dualResult, polarization: this.polarizationResult };
+    polarization: DecodedPolarizationResult | null; polarizedTwoPath: DecodedPolarizedTwoPathResult | null }> {
+    return { sequential: this.result, dual: this.dualResult, polarization: this.polarizationResult, polarizedTwoPath: this.polarizedTwoPathResult };
   }
 
   /** Exact CPU texture-source backing stores; GPU disposal does not erase them. */
@@ -575,7 +709,7 @@ export class BenchScene {
   }
 
   private pointerDown(event: PointerEvent): void {
-    if (event.button !== 0 || this.lost || (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment)) return;
+    if (event.button !== 0 || this.lost || (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment && !this.polarizedTwoPathExperiment)) return;
     this.setRay(event);
     if (this.handle && this.raycaster.intersectObject(this.handle).length) {
       if (!this.draftValidated) {
@@ -647,6 +781,11 @@ export class BenchScene {
       const pixel = pixelFromUV(this.polarizationExperiment.grid, detectorHit.uv.x, detectorHit.uv.y);
       if (pixel && (view === 0 || view === 1)) this.callbacks.polarizationPixel?.(view, pixel.row, pixel.column);
     }
+    if (detectorHit?.uv && this.polarizedTwoPathResult && this.polarizedTwoPathExperiment) {
+      const port = detectorHit.object.userData.polarizedTwoPathPort;
+      const pixel = pixelFromUV(this.polarizedTwoPathExperiment.grid, detectorHit.uv.x, detectorHit.uv.y);
+      if (pixel && (port === 0 || port === 1)) this.callbacks.polarizedTwoPathPixel?.(this.polarizedTwoPathView, port, pixel.row, pixel.column);
+    }
   }
 
   private cancelDrag(): void {
@@ -657,13 +796,13 @@ export class BenchScene {
   }
 
   resetCamera(): void {
-    if (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment) return;
+    if (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment && !this.polarizedTwoPathExperiment) return;
     // Consume residual public OrbitControls damping before assigning the reset view.
     // Otherwise a prior gesture continues moving the camera after a manual reset.
     const damping = this.controls.enableDamping;
     this.controls.enableDamping = false;
     this.controls.update();
-    const edges = detectorEdges((this.experiment ?? this.twoPathExperiment ?? this.polarizationExperiment!).grid);
+    const edges = detectorEdges((this.experiment ?? this.twoPathExperiment ?? this.polarizationExperiment ?? this.polarizedTwoPathExperiment!).grid);
     const end = this.experiment ? this.experiment.observation.z_m * 100
       : Math.max(edges.width * 3000, edges.height * 2000, 1.4);
     const span = Math.max(edges.width * 1000, edges.height * 1000, end, 1);
@@ -733,6 +872,14 @@ export class BenchScene {
       y: mesh.position.y - ((row - Math.floor(grid.ny / 2)) * grid.dy - edges.centerY) * 1000, z: mesh.position.z };
   }
 
+  polarizedTwoPathPixelWorld(port: 0 | 1, row: number, column: number): { x: number; y: number; z: number } | null {
+    const grid = this.polarizedTwoPathExperiment?.grid, mesh = this.polarizedTwoPathDetectors?.[port];
+    if (!grid || !mesh || !Number.isInteger(row) || !Number.isInteger(column) || row < 0 || row >= grid.ny || column < 0 || column >= grid.nx) return null;
+    const edges = detectorEdges(grid);
+    return { x: mesh.position.x + ((column - Math.floor(grid.nx / 2)) * grid.dx - edges.centerX) * 1000,
+      y: mesh.position.y - ((row - Math.floor(grid.ny / 2)) * grid.dy - edges.centerY) * 1000, z: mesh.position.z };
+  }
+
   /** Read-only browser evidence, without simulation or state-mutation hooks. */
   snapshot(): object {
     const gl = this.renderer.getContext();
@@ -746,6 +893,10 @@ export class BenchScene {
     return {
       available: true, contextLost: this.lost, textureRequestId: this.result?.requestId ?? null,
       mode: this.mode,
+      polarizedTwoPath: { view: this.polarizedTwoPathView,
+        textureRequestIds: this.polarizedTwoPathTextures ? [this.polarizedTwoPathResult?.requestId, this.polarizedTwoPathResult?.requestId] : [null, null],
+        retainedRoles: this.polarizedTwoPathTextures?.length ?? 0,
+        detectors: this.polarizedTwoPathDetectors?.map((mesh, port) => ({ port, position: mesh.position.toArray() })) ?? [], resultGeneration: this.resultGeneration },
       polarization: { textureRequestIds: this.polarizationTextures ? [this.polarizationResult?.requestId, this.polarizationResult?.requestId] : [null, null],
         detectors: this.polarizationDetectors?.map((mesh, view) => ({ view, position: mesh.position.toArray() })) ?? [], frameCallbacks: this.frameCallback ? 1 : 0 },
       dualTextureRequestIds: this.dualTextures ? [this.dualResult?.requestId, this.dualResult?.requestId] : [null, null],
@@ -796,6 +947,7 @@ export class BenchScene {
     this.updateResult(null, { min: 0, max: 10 });
     this.detachDualResult();
     this.detachPolarizationResult();
+    this.detachPolarizedTwoPathResult();
     this.disposeGroup(this.rail);
     this.disposeGroup(this.bench);
     this.renderer.dispose();

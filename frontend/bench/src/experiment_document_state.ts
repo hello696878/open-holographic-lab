@@ -1,51 +1,51 @@
 /** Explicit, generation-bound settings operations, independent of scientific workers. */
-import { assertDocumentCorrespondence, browserDocumentBytes, createDocumentFetchAPI, makeExperimentDocument,
-  ownExperimentDocument, validateDocumentMetadata, MAX_DOCUMENT_BYTES, type BenchMode, type DocumentAPI,
-  type DocumentMetadata, type ExperimentDocument, type ScientificExperiment, type ValidatedDocument } from './experiment_documents';
+import { assertDocumentCorrespondence, browserSupportedDocumentBytes, createSupportedDocumentFetchAPI, makeExperimentDocument,
+  ownSupportedExperimentDocument, validateDocumentMetadata, MAX_DOCUMENT_BYTES, type BenchMode, type SupportedBenchMode, type DocumentAPI,
+  type DocumentMetadata, type DocumentByMode, type ScientificExperiment, type ValidatedDocument } from './experiment_documents';
 import { ExperimentDocumentFiles, type DocumentFiles, type PreparedDownload } from './experiment_document_files';
 import { assertOwnedBudgets } from './polarization_display';
 import { parseStrictJSON } from './contracts';
 
-export interface DocumentContext { readonly mode: BenchMode; readonly token: string }
-export interface ValidDraft { readonly mode: BenchMode; readonly experiment: ScientificExperiment;
+export interface DocumentContext<M extends SupportedBenchMode = BenchMode> { readonly mode: M; readonly token: string }
+export interface ValidDraft<M extends SupportedBenchMode = BenchMode> { readonly mode: M; readonly experiment: ScientificExperiment;
   readonly revision: number; readonly attachmentEpoch: number }
-export interface ImportPreview extends ValidatedDocument { readonly generation: number; readonly contextToken: string }
-export interface DownloadState extends PreparedDownload { readonly document: ExperimentDocument; readonly revision: number;
+export interface ImportPreview<M extends SupportedBenchMode = BenchMode> extends ValidatedDocument<M> { readonly generation: number; readonly contextToken: string }
+export interface DownloadState<M extends SupportedBenchMode = BenchMode> extends PreparedDownload { readonly document: DocumentByMode<M>; readonly revision: number;
   readonly requested: boolean }
-export interface DocumentState {
-  readonly metadata: Readonly<Record<BenchMode, DocumentMetadata>>;
-  readonly metadataErrors: Readonly<Partial<Record<BenchMode, string>>>;
+export interface DocumentState<M extends SupportedBenchMode = BenchMode> {
+  readonly metadata: Readonly<Record<M, DocumentMetadata>>;
+  readonly metadataErrors: Readonly<Partial<Record<M, string>>>;
   readonly pending: boolean; readonly operation: 'import' | 'export' | null;
   readonly status: 'idle' | 'reading' | 'validating' | 'preview' | 'download_prepared' | 'download_requested' | 'restored' | 'error';
-  readonly error: string | null; readonly preview: ImportPreview | null;
-  readonly acknowledged: boolean; readonly preparedDownload: DownloadState | null;
-  readonly restored: Readonly<{ mode: BenchMode; generation: number }> | null;
+  readonly error: string | null; readonly preview: ImportPreview<M> | null;
+  readonly acknowledged: boolean; readonly preparedDownload: DownloadState<M> | null;
+  readonly restored: Readonly<{ mode: M; generation: number }> | null;
 }
-export interface DocumentControllerOptions {
-  context(): DocumentContext;
-  currentValidDraft(): ValidDraft | null;
+export interface DocumentControllerOptions<M extends SupportedBenchMode = BenchMode> {
+  context(): DocumentContext<M>;
+  currentValidDraft(): ValidDraft<M> | null;
   busy(): boolean;
   /** Preparation must not mutate; returned synchronous commit must not render or throw after assignment. */
-  prepareApply(document: ValidatedDocument): () => void;
-  api?: DocumentAPI; files?: DocumentFiles;
+  prepareApply(document: ValidatedDocument<M>): () => void;
+  api?: DocumentAPI<M>; files?: DocumentFiles;
   /** Existing all-mode ownership excluding this controller. No resources are discarded to make room. */
   retainedBytes?(): number;
   /** Future allocations of an active scientific operation, above current actual retention. */
   reservedBytes?(): Readonly<{ persistent: number; transient: number }>;
 }
-type Intent = { kind: 'import'; file: File; generation: number; contextToken: string; resolve: (ok: boolean) => void }
-  | { kind: 'export'; document: ExperimentDocument; revision: number; generation: number; resolve: (ok: boolean) => void };
+type Intent<M extends SupportedBenchMode> = { kind: 'import'; file: File; generation: number; contextToken: string; resolve: (ok: boolean) => void }
+  | { kind: 'export'; document: DocumentByMode<M>; revision: number; generation: number; resolve: (ok: boolean) => void };
 const textOf = (error: unknown) => error instanceof Error ? error.message : 'Document operation failed';
-export class ExperimentDocumentController {
-  private snapshot: DocumentState;
-  private api: DocumentAPI;
+export class ExperimentDocumentController<M extends SupportedBenchMode = BenchMode> {
+  private snapshot: DocumentState<M>;
+  private api: DocumentAPI<M>;
   private files: DocumentFiles;
-  private listeners = new Set<(state: DocumentState) => void>();
+  private listeners = new Set<(state: DocumentState<M>) => void>();
   private generation = 0;
   private metadataGeneration = 0;
   private lastContext: string;
-  private pendingIntent: Intent | null = null;
-  private activeIntent: Intent | null = null;
+  private pendingIntent: Intent<M> | null = null;
+  private activeIntent: Intent<M> | null = null;
   private abort: AbortController | null = null;
   private pumping = false;
   private applying = false;
@@ -53,25 +53,26 @@ export class ExperimentDocumentController {
   private operationBuffers = new Set<ArrayBufferLike>();
   private operationStrings: string[] = [];
   private transientReserved = 0;
-  constructor(private options: DocumentControllerOptions) {
-    this.api = options.api ?? createDocumentFetchAPI(); this.files = options.files ?? new ExperimentDocumentFiles();
+  constructor(private options: DocumentControllerOptions<M>) {
+    // Current UI explicitly selects SupportedBenchMode; the generic default retains legacy caller types.
+    this.api = options.api ?? createSupportedDocumentFetchAPI() as unknown as DocumentAPI<M>; this.files = options.files ?? new ExperimentDocumentFiles();
     const empty = Object.freeze({ title: '', notes: '' });
-    this.snapshot = Object.freeze({ metadata: Object.freeze({ sequential: empty, two_path: empty, polarization: empty }),
+    this.snapshot = Object.freeze({ metadata: Object.freeze({ sequential: empty, two_path: empty, polarization: empty, polarized_two_path: empty }) as Readonly<Record<M, DocumentMetadata>>,
       metadataErrors: Object.freeze({}), pending: false, operation: null, status: 'idle', error: null,
       preview: null, acknowledged: false, preparedDownload: null, restored: null });
     this.lastContext = this.contextToken();
   }
-  get state(): DocumentState { return this.snapshot; }
+  get state(): DocumentState<M> { return this.snapshot; }
   get isApplying(): boolean { return this.applying; }
   private contextToken(): string { const context = this.options.context(); return `${context.mode}|${context.token}|metadata:${this.metadataGeneration}`; }
-  subscribe(listener: (state: DocumentState) => void): () => void {
+  subscribe(listener: (state: DocumentState<M>) => void): () => void {
     this.listeners.add(listener); listener(this.snapshot); return () => this.listeners.delete(listener);
   }
-  private publish(change: Partial<DocumentState>): void {
+  private publish(change: Partial<DocumentState<M>>): void {
     this.snapshot = Object.freeze({ ...this.snapshot, ...change });
     for (const listener of this.listeners) { try { listener(this.snapshot); } catch { /* Presentation cannot turn settings into a failed scientific request. */ } }
   }
-  setMetadata(mode: BenchMode, value: DocumentMetadata): void {
+  setMetadata(mode: M, value: DocumentMetadata): void {
     const errors = { ...this.snapshot.metadataErrors }; let copied: DocumentMetadata;
     try {
       copied = validateDocumentMetadata(value);
@@ -92,7 +93,7 @@ export class ExperimentDocumentController {
     if (this.snapshot.restored) this.publish({ restored: null, ...(this.snapshot.status === 'restored' ? { status: 'idle' as const } : {}) });
   }
   acknowledgeReplacement(value: boolean): void { this.publish({ acknowledged: !!this.snapshot.preview && value }); }
-  private current(intent: Intent): boolean {
+  private current(intent: Intent<M>): boolean {
     return !this.disposed && intent.generation === this.generation
       && (intent.kind !== 'import' || intent.contextToken === this.contextToken());
   }
@@ -102,12 +103,12 @@ export class ExperimentDocumentController {
     assertOwnedBudgets(external + own.retainedBytes + reserved.persistent + Math.max(extraPersistent, own.projectedPersistentBytes),
       external + own.retainedBytes + reserved.transient + Math.max(own.transientReservedBytes, extraTransient));
   }
-  private schedule(intent: Omit<Extract<Intent, { kind: 'import' }>, 'resolve'> | Omit<Extract<Intent, { kind: 'export' }>, 'resolve'>): Promise<boolean> {
+  private schedule(intent: Omit<Extract<Intent<M>, { kind: 'import' }>, 'resolve'> | Omit<Extract<Intent<M>, { kind: 'export' }>, 'resolve'>): Promise<boolean> {
     if (this.disposed) return Promise.resolve(false);
     this.pendingIntent?.resolve(false);
     this.abort?.abort();
     return new Promise(resolve => {
-      this.pendingIntent = { ...intent, resolve } as Intent;
+      this.pendingIntent = { ...intent, resolve } as Intent<M>;
       this.publish({ pending: true, operation: intent.kind, status: intent.kind === 'import' ? 'reading' : 'validating', error: null, preview: null, acknowledged: false });
       if (!this.pumping) void this.pump();
     });
@@ -115,7 +116,7 @@ export class ExperimentDocumentController {
   exportCurrent(): Promise<boolean> {
     const draft = this.options.currentValidDraft();
     if (!draft || this.snapshot.metadataErrors[draft.mode]) { this.publish({ error: '目前草稿尚未通過驗證，無法匯出。' }); return Promise.resolve(false); }
-    let document: ExperimentDocument;
+    let document: DocumentByMode<M>;
     try { document = makeExperimentDocument(draft.mode, draft.experiment, this.snapshot.metadata[draft.mode]); }
     catch (error) { this.publish({ error: textOf(error) }); return Promise.resolve(false); }
     const generation = ++this.generation;
@@ -133,23 +134,23 @@ export class ExperimentDocumentController {
       this.publish({ preview: null, acknowledged: false, pending: false, operation: null, status: 'idle', error: null });
     }
   }
-  private async validate(bytes: Uint8Array, intent: Intent, signal: AbortSignal): Promise<ValidatedDocument | null> {
+  private async validate(bytes: Uint8Array, intent: Intent<M>, signal: AbortSignal): Promise<ValidatedDocument<M> | null> {
     if (!this.current(intent)) return null;
     this.operationBuffers.add(bytes.buffer); this.transientReserved = 16 * MAX_DOCUMENT_BYTES; this.admit();
     const result = await this.api.validate(bytes, signal);
     if (!this.current(intent) || signal.aborted) return null;
     if (!(result.bytes instanceof Uint8Array) || result.bytes.byteLength > MAX_DOCUMENT_BYTES || !/^[0-9a-f]{64}$/.test(result.experimentSha256)) throw new Error('Invalid authoritative document reply');
     this.operationBuffers.add(result.bytes.buffer);
-    const owned = ownExperimentDocument(result.document);
+    const owned = ownSupportedExperimentDocument(result.document) as DocumentByMode<M>;
     this.operationStrings.push(JSON.stringify(owned)); this.admit();
     return Object.freeze({ document: owned, bytes: result.bytes, experimentSha256: result.experimentSha256 });
   }
-  private async execute(intent: Intent, signal: AbortSignal): Promise<boolean> {
+  private async execute(intent: Intent<M>, signal: AbortSignal): Promise<boolean> {
     this.transientReserved = 16 * MAX_DOCUMENT_BYTES;
     // Reserve the incoming owned file before its FileReader can allocate it.
     this.admit(intent.kind === 'import' ? intent.file.size : MAX_DOCUMENT_BYTES);
     if (intent.kind === 'export') {
-      const body = browserDocumentBytes(intent.document);
+      const body = browserSupportedDocumentBytes(intent.document);
       const validated = await this.validate(body, intent, signal); if (!validated) return false;
       assertDocumentCorrespondence(intent.document, validated.document);
       this.admit(validated.bytes.byteLength + 2 * JSON.stringify(validated.document).length);
@@ -164,10 +165,10 @@ export class ExperimentDocumentController {
     if (!this.current(intent) || signal.aborted) return false;
     // Raw uploaded bytes must reach the authoritative parser before any browser parse.
     const first = await this.validate(raw, intent, signal); if (!first) return false;
-    const rawDefinition = ownExperimentDocument(parseStrictJSON(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(raw)));
+    const rawDefinition = ownSupportedExperimentDocument(parseStrictJSON(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(raw)));
     assertDocumentCorrespondence(rawDefinition, first.document);
     this.publish({ status: 'validating' });
-    const body = browserDocumentBytes(first.document);
+    const body = browserSupportedDocumentBytes(first.document);
     const second = await this.validate(body, intent, signal); if (!second) return false;
     assertDocumentCorrespondence(first.document, second.document);
     this.admit(2 * JSON.stringify(second.document).length);
@@ -231,7 +232,7 @@ export class ExperimentDocumentController {
     const bufferBytes = [...buffers].reduce((total, buffer) => total + buffer.byteLength, 0), files = this.files.ownershipSnapshot();
     const logicalStringBytes = [...documents].reduce((total, document) => total + 2 * JSON.stringify(document).length, 0)
       + this.operationStrings.reduce((total, string) => total + 2 * string.length, 0)
-      + Object.values(this.snapshot.metadata).reduce((total, metadata) => total + 2 * (metadata.title.length + metadata.notes.length), 0);
+      + (Object.values(this.snapshot.metadata) as DocumentMetadata[]).reduce((total, metadata) => total + 2 * (metadata.title.length + metadata.notes.length), 0);
     return Object.freeze({ retainedBytes: bufferBytes + files.blobBytes + logicalStringBytes + files.readerReservedBytes,
       bufferBytes, blobBytes: files.blobBytes, logicalStringBytes, transientReservedBytes: this.transientReserved,
       projectedPersistentBytes: this.snapshot.pending ? 4 * MAX_DOCUMENT_BYTES : 0,

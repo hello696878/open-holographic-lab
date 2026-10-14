@@ -4,6 +4,7 @@ import type { DecodedResult, GridSpec } from './contracts';
 import type { DecodedTwoPathResult, DecodedTwoPathSweep } from './two_path_contracts';
 import { createArrayDetectorTexture, intensityRGBA, validateColorLimits, type ColorLimits } from './detector';
 import type { ComplexPair, DecodedPolarizationResult, DecodedPolarizationSweep } from './polarization_contracts';
+import type { DecodedPolarizedTwoPathResult, DecodedPolarizedTwoPathSweep } from './polarized_two_path_contracts';
 import { OWNED_PERSISTENT_BUDGET_BYTES, OWNED_TRANSIENT_BUDGET_BYTES } from './phase_sweep';
 export const TRAJECTORY_VERTICES = 257;
 /** Exact zero test on returned components, independent of squared-intensity underflow. */
@@ -104,15 +105,20 @@ export class PolarizationPlayback {
 }
 /** Deduplicated scientific backing stores plus explicit logical metadata charges. */
 export function ownedScientificBytes(sequential: DecodedResult | null | readonly (DecodedResult | null)[], dual: readonly (DecodedTwoPathResult | null)[],
-    polarization: readonly (DecodedPolarizationResult | null)[], sweeps: readonly (DecodedTwoPathSweep | DecodedPolarizationSweep | null)[]): number {
+    polarization: readonly (DecodedPolarizationResult | null)[], sweeps: readonly (DecodedTwoPathSweep | DecodedPolarizationSweep | DecodedPolarizedTwoPathSweep | null)[],
+    polarizedTwoPath: readonly (DecodedPolarizedTwoPathResult | null)[] = []): number {
   const buffers = new Set<ArrayBufferLike>(), results = new Set<object>();
   const add = (array: Float64Array | undefined) => { if (array) buffers.add(array.buffer); };
   const sequentialResults = Array.isArray(sequential) ? sequential : [sequential as DecodedResult | null];
   for (const result of sequentialResults) if (result) { results.add(result); add(result.intensity); add(result.x); add(result.y); }
   for (const result of dual) if (result) { results.add(result); result.ports.forEach(port => add(port.intensity)); add(result.x); add(result.y); }
   for (const result of polarization) if (result) { results.add(result); add(result.incidentIntensity); add(result.finalIntensity); add(result.x); add(result.y); }
-  const sweepSet = new Set(sweeps.filter((sweep): sweep is DecodedTwoPathSweep | DecodedPolarizationSweep => sweep !== null));
+  const newResults = new Set<object>();
+  for (const result of polarizedTwoPath) if (result) { newResults.add(result); result.rawPorts.forEach(port => add(port.intensity));
+    result.analyzedPorts?.forEach(port => add(port.intensity)); add(result.x); add(result.y); }
+  const sweepSet = new Set(sweeps.filter((sweep): sweep is DecodedTwoPathSweep | DecodedPolarizationSweep | DecodedPolarizedTwoPathSweep => sweep !== null));
   return [...buffers].reduce((n, buffer) => n + buffer.byteLength, 0) + results.size * 16384
+    + newResults.size * 32768
     + [...sweepSet].reduce((n, sweep) => n + new TextEncoder().encode(JSON.stringify(sweep)).byteLength, 0);
 }
 export function estimateOwnedOperation(kind: 'sequential' | 'two_path' | 'polarization', grid: GridSpec, retained: number,

@@ -53,7 +53,7 @@ export class ExperimentDocumentFiles implements DocumentFiles {
   prepareDownload(bytes: Uint8Array, filename: string): PreparedDownload {
     if (this.disposed) throw new Error('Document files disposed');
     if (!(bytes instanceof Uint8Array) || bytes.byteLength < 2 || bytes.byteLength > MAX_DOCUMENT_BYTES) throw new Error('Document download byte cap');
-    if (!/^(sequential|two_path|polarization)-settings\.json$/.test(filename)) throw new Error('Document download filename');
+    if (!/^(sequential|two_path|polarization|polarized_two_path)-settings\.json$/.test(filename)) throw new Error('Document download filename');
     const blob = (this.options.blobFactory ?? (data => new Blob([new Uint8Array(data).buffer], { type: 'application/json;charset=utf-8' })))(bytes);
     const urlAPI = this.options.urlAPI ?? URL;
     const url = urlAPI.createObjectURL(blob);

@@ -19,12 +19,14 @@ def assert_validation_boundary(source):
         "adapter": {"strict_json_loads", "validate_experiment"},
         "two_path_adapter": {"validate_experiment"},
         "polarization_adapter": {"PolarizationExperiment"},
+        "polarized_two_path_adapter": {"PolarizedTwoPathExperiment"},
         "protocol": {"experiment_digest"},
         "two_path_protocol": {"experiment_digest"},
-        "polarization_protocol": {"experiment_digest"}}
+        "polarization_protocol": {"experiment_digest"},
+        "polarized_two_path_protocol": {"experiment_digest"}}
     allowed_absolute = {"__future__": {"annotations"}, "dataclasses": {"dataclass"},
                         "types": {"MappingProxyType"}}
-    forbidden = {"sample_source", "run_experiment", "run_two_arm", "apply_linear_polarizer",
+    forbidden = {"sample_source", "run_experiment", "run_two_arm", "run_polarized_two_arm", "mix_balanced_jones", "apply_linear_polarizer",
                  "apply_linear_retarder", "transmission_ratio", "from_scalar", "simulate_submission",
                  "sweep_submission", "fft", "fft2", "ifft2", "propagate_angular_spectrum",
                  "gerchberg_saxton", "open", "write_text", "write_bytes", "read_text", "read_bytes",

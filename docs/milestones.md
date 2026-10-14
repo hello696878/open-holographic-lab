@@ -1223,6 +1223,76 @@ or deployment is introduced. Teaching and learning records remain separate.
 
 ---
 
+## V2f publication closeout — recorded 2026-10-14
+
+The preceding V2f section remains its dated precommit evidence. The user
+accepted V2f within its reported validation scope. Read-back of the existing
+`runs/v2f_acceptance_20261013_01/final_closeout01.json` records commit
+`431346c16e7275f2a4d6798c6efbf689b0056e91`, normal push exit0, matching local
+HEAD/live origin/main/GitHub API main, clean synchronized main, one22-path
+commit,317 protected pre-existing files unchanged and53 installed distribution
+version/location/metadata records unchanged. Clean-postcommit imported-source
+and fresh demonstration checks passed. This is a dated publication closeout,
+not a rerun or replacement of its numerical measurements or handoffs. That
+exact published commit was reverified as clean synchronized main before V2g.
+
+## V2g — Interactive polarized two-path experiments
+
+Approved2026-10-14 from accepted V2f revision
+`431346c16e7275f2a4d6798c6efbf689b0056e91`. Frozen exact46-path scope:
+16 modifications and30 creations at opening. A later explicit user amendment
+adds only `frontend/bench/src/experiment_document_files.ts` to permit the new
+download filename: final47 paths,17 modifications/30 creations,322 protected
+pre-existing tracked files. The original planning inventory remains unchanged.
+The complete application/schema/transport/state/document contract was written
+in the [new handoff](handoffs/v2g/implementation_summary.md) before executable
+implementation. The numerical core and mathematical conventions are unchanged.
+
+The fourth mode samples the full public source and constructs incident Jones
+once per deliberate operation. A single solve calls V2f once, with zero or two
+separate public output analyzers. The real17-point sweep calls V2f17times and
+enabled analyzers34times, preserving independently calculated endpoints and
+genuine failure prefixes. Raw/analyzed roles share one display scale; scientific
+analyzer edits invalidate attachments while view switches compute nothing.
+
+`OHLABPT` transports only ordered float64 intensity images and shared axes,
+complete scalar histories and immutable full-request identity. Analyzer-off
+settings preserve their angle while analyzed data is absent. An analyzer
+failure fails the entire requested measurement; later display-preparation
+failure is reported separately. All seven computations share actual backend
+worker lifetime through encoding and disconnect.
+
+Version1 portable settings remain limited to sequential/two_path/polarization;
+version2 accepts only polarized_two_path. Import/export and transactional Apply
+perform no optics or gate operation. Apply restores a not-yet-simulated state.
+Explicit all-mode result release preserves drafts, invalid edits, stable IDs,
+metadata, useful documents and camera. Fixed16/32MiB app-owned budgets do not
+automatically evict or retry. The [evidence handoff](handoffs/v2g/tests_and_evidence.md)
+records current checks, classified controls, screenshots and limitations;
+publication is a separate postcommit gate.
+
+Actual precommit closeout: fresh baseline 2942 passed / 1 skipped; restored final
+3242 passed / 1 skipped in 331.13s, with the same Windows file-symlink privilege
+skip. Installed frontend typecheck passed and 304 unit tests in 18 files passed.
+Production build passed with its unchanged large-chunk warning. Current old
+browser assertions passed 33 cases with 6 controlled-only skips; current new
+ordinary browser passed 10 cases with 2 controlled-only skips. Separate new
+controlled browser runs passed 8 selected cases, including both actual disconnected
+workers/all-seven contenders and six genuine failure prefixes. Eight controlled
+HTTP cases passed. 26 unit-copy and 3 actual production-main browser-copy fault
+variants each detected their intended assertion and restored exactly. 36 complete
+new browser frames matched independent direct-public arrays/scalars. The three
+genuine screenshots were inspected. 322 protected files and all 53 Python / 7 frontend
+package records remain unchanged. Exact commands, unedited streams, measured
+limits/tolerances, actual corrections and remaining model limitations are in
+the evidence handoff; these counts do not merge separate suites or skips.
+
+No saved numerical-result format, replay qualification, new optics, reflected
+frames, materials, detector electronics, hardware or deployment is added.
+No later stage or learning-record change is included.
+
+---
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.
