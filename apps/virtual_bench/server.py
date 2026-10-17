@@ -41,13 +41,15 @@ from .two_path_protocol import (MAX_RESPONSE_BYTES as MAX_TWO_PATH_RESPONSE_BYTE
 from . import polarization_adapter, polarization_protocol
 from . import experiment_documents
 from . import polarized_two_path_adapter, polarized_two_path_protocol
+from . import r03_fig2a_adapter, r03_fig2a_protocol
 
 Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission |
               two_path_adapter.ValidatedSweepSubmission |
               polarization_adapter.ValidatedPolarizationSubmission |
               polarization_adapter.ValidatedPolarizationSweepSubmission |
               polarized_two_path_adapter.ValidatedPolarizedTwoPathSubmission |
-              polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission)
+              polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission |
+              r03_fig2a_adapter.ValidatedIdealSubmission)
 WorkerResult = bytes | SweepReply | polarization_protocol.SweepReply | polarized_two_path_protocol.SweepReply
 
 HOST = "127.0.0.1"
@@ -340,6 +342,7 @@ def create_app(*, assets_dir: Path | None = None,
                polarization_sweep_worker: Callable[[polarization_adapter.ValidatedPolarizationSweepSubmission], polarization_protocol.SweepReply] | None = None,
                polarized_two_path_worker: Callable[[polarized_two_path_adapter.ValidatedPolarizedTwoPathSubmission], bytes] | None = None,
                polarized_two_path_sweep_worker: Callable[[polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission], polarized_two_path_protocol.SweepReply] | None = None,
+               r03_ideal_worker: Callable[[r03_fig2a_adapter.ValidatedIdealSubmission], bytes] | None = None,
                executor: Executor | None = None) -> Starlette:
     """Create the local service; no numerical work or network listeners start.
 
@@ -351,6 +354,9 @@ always uses this checkout's fixed built directory and public numerical adapters.
     if not index_path or index_stat is None or not stat.S_ISREG(index_stat.st_mode):
         raise RuntimeError("Build V1 frontend assets before starting the bench")
     def dispatch(submission: Submission) -> WorkerResult:
+        if isinstance(submission, r03_fig2a_adapter.ValidatedIdealSubmission):
+            return (r03_ideal_worker if r03_ideal_worker is not None
+                    else r03_fig2a_adapter.simulate_submission)(submission)
         if isinstance(submission, polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission):
             return (polarized_two_path_sweep_worker if polarized_two_path_sweep_worker is not None
                     else polarized_two_path_adapter.sweep_submission)(submission)
@@ -638,6 +644,58 @@ always uses this checkout's fixed built directory and public numerical adapters.
             return polarized_two_path_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
         return Response(encoded, media_type="application/octet-stream")
 
+    def r03_ideal_error(status: int, code: str, message: str,
+                        request_id: str | None = None) -> JSONResponse:
+        return JSONResponse({"protocol_version": 1, "message_type": "r03_ideal_error",
+                             "request_id": request_id,
+                             "error": {"code": code[:64], "message": message[:300]}}, status_code=status)
+
+    async def r03_ideal_validate(request: Request) -> Response:
+        return await r03_ideal_process(request, simulate=False)
+
+    async def r03_ideal_simulate(request: Request) -> Response:
+        return await r03_ideal_process(request, simulate=True)
+
+    async def r03_ideal_process(request: Request, *, simulate: bool) -> Response:
+        request_id = None
+        try:
+            payload = await _read_json(request, parser=r03_fig2a_protocol.strict_json_loads)
+            request_id = _parsed_id(payload)
+            submission = r03_fig2a_adapter.validate_submission(payload, require_digest=simulate)
+        except BodyError as exc:
+            return r03_ideal_error(exc.status, exc.code, str(exc), request_id)
+        except ClientDisconnect:
+            return r03_ideal_error(499, "disconnected", "Client disconnected before submission", request_id)
+        except (ValueError, TypeError, OverflowError) as exc:
+            return r03_ideal_error(422, "invalid_experiment", str(exc), request_id)
+        if not simulate:
+            return JSONResponse({"protocol_version": 1, "message_type": "r03_ideal_validation",
+                "request_id": submission.request_id, "experiment_sha256": submission.experiment_sha256,
+                "experiment": submission.experiment_dict()})
+        try:
+            future = gate.submit(submission)
+        except BusyError:
+            return r03_ideal_error(409, "busy", "A Python computation is still running; submit again deliberately later",
+                                   submission.request_id)
+        except Exception:
+            return r03_ideal_error(500, "submission_failed", "Could not submit the computation", submission.request_id)
+        try:
+            encoded = await _worker_response(request, future)
+        except CancelledBeforeStart:
+            return r03_ideal_error(503, "cancelled_before_start", "Computation did not start; no result was produced",
+                                   submission.request_id)
+        except NumericalError as exc:
+            return r03_ideal_error(422, "numerical_failure", str(exc), submission.request_id)
+        except Exception:
+            return r03_ideal_error(500, "simulation_failed", "Numerical computation or result encoding failed",
+                                   submission.request_id)
+        if encoded is None:
+            return r03_ideal_error(499, "disconnected", "Client disconnected; backend completion is unknown",
+                                   submission.request_id)
+        if not isinstance(encoded, bytes) or not 16 <= len(encoded) <= r03_fig2a_protocol.MAX_RESPONSE_BYTES:
+            return r03_ideal_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
+        return Response(encoded, media_type="application/json")
+
     async def document_validate(request: Request) -> Response:
         try:
             payload = await _read_json(request, parser=experiment_documents.strict_document_loads)
@@ -659,6 +717,7 @@ always uses this checkout's fixed built directory and public numerical adapters.
             "/api/v2b/validate", "/api/v2b/simulate", "/api/v2b/sweep",
             "/api/v2d/validate", "/api/v2d/simulate", "/api/v2d/sweep",
             "/api/v2g/validate", "/api/v2g/simulate", "/api/v2g/sweep",
+            "/api/research/r03-fig2a/validate", "/api/research/r03-fig2a/simulate",
             "/api/v2e/documents/validate"} else 404
         return _error(status, "http_error", "Request path or method is unavailable")
 
@@ -674,6 +733,8 @@ always uses this checkout's fixed built directory and public numerical adapters.
                             Route("/api/v2g/validate", polarized_two_path_validate, methods=["POST"]),
                             Route("/api/v2g/simulate", polarized_two_path_simulate, methods=["POST"]),
                             Route("/api/v2g/sweep", polarized_two_path_sweep, methods=["POST"]),
+                            Route("/api/research/r03-fig2a/validate", r03_ideal_validate, methods=["POST"]),
+                            Route("/api/research/r03-fig2a/simulate", r03_ideal_simulate, methods=["POST"]),
                             Route("/api/v2e/documents/validate", document_validate, methods=["POST"]),
                             Route("/api/{path:path}", unavailable_api,
                                   methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"]),

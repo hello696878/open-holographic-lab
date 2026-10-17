@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.12 — 2026-10-06
+**Version:** 0.14 — 2026-10-17
 
 ---
 
@@ -1812,6 +1812,119 @@ isolated controls, demonstrations/resources/figures and publication are recorded
 in tests_and_evidence.md and fresh ignored evidence as they complete. This
 opening record does not predict their success or assert qualified replay.
 
+### 3.21 A: ideal statistical polarization, independently declared ensemble
+
+This is an independent theoretical model, not Figure 2a agreement, PAX channel
+semantics or an experimental collection model. Earlier scalar/Jones contracts
+and dated evidence are unchanged. New APIs are imported directly from
+`ohlab.optics.polarization_statistics` and `ohlab.optics.r03_fig2a`.
+
+#### Measurement, units and Stokes
+
+A plain native complex128 `(M,2)` array holds local coherent Jones states,
+`1 <= M <= 256`. Explicit plain native float64 `(M,)` probabilities are finite,
+nonnegative and sum to one within absolute `16*eps`; they are not renormalized.
+The declared ideal measurement is the uncentered second moment
+`C=sum_m p_m E_m E_m.conj().T`, a mean in amplitude-unit squared, not watts
+or an area integral. Weights are not field-amplitude scaling. No centered
+covariance, M-1 divisor, per-state normalization or outer product of the mean
+field substitutes for C. A random static mask does not establish the physical
+conditions for deleting coherent propagation cross terms.
+
+`coherency_from_samples(samples, *, probabilities)` and
+`measure_coherency(coherency)` return a frozen keyword-only
+`PolarizationMeasurement`: owned readonly complex128 C, full Stokes,
+normalized Stokes, polarized direction, DoP, ascending eigenvalues and
+`roundoff_limited`. `analyzer_intensity(measurement, *, axis_angle_rad)`
+uses `a.conj().T @ C @ a`, `a=(cos(theta),sin(theta))`, in amplitude-unit squared.
+Check shape/dtype/finiteness/domain and sample cap before substantial allocation.
+
+With `Cxy=<Ex Ey*>`, unchanged (+x,+y) basis and `exp(-i*omega*t)`:
+
+```text
+S0 = Re(Cxx + Cyy)       S1 = Re(Cxx - Cyy)
+S2 = 2 Re(Cxy)          S3 = -2 Im(Cxy)
+```
+
+Thus `(1,i)/sqrt(2)` has positive S3; no untranslated R/L or manufacturer
+handedness label is inferred. For positive S0, normalized Stokes is
+`(S1,S2,S3)/S0`, and DoP is its Euclidean norm. Polarized direction divides
+the Stokes vector by its own radius only when positive. Exactly dark C=0
+returns None for DoP, normalized Stokes and direction. Nonzero unpolarized
+light has DoP zero and undefined direction. No epsilon denominator is used.
+
+#### Numerical domain and ownership
+
+Hermiticity, PSD and Stokes-domain checks use up to `64*eps` relative to
+actual C/S0, without a scale floor of one. A Hermitian part is allowed only
+for near-Hermitian eigenvalue diagnostics; retain authoritative input C.
+Material antisymmetry, negative eigenvalues/intensity or DoP above
+`1+64*eps` fails. Accepted small domain residuals set `roundoff_limited`;
+retain raw eigenvalues/DoP, never clip or project them. This is an arithmetic
+policy, not measurement uncertainty. Nonzero source/sample energy reducing
+to an unusable zero second moment fails instead of becoming a dark state.
+Type/dtype errors are TypeError; invalid values give contextual ValueError.
+Local error handling preserves caller NumPy global settings.
+
+Snapshots are independently owned and readonly under the existing reversible
+ndarray write-flag contract, not hardened storage. Independent ordinary-case
+checks predeclare rtol `2e-13`, atol `2e-13*S0`, and matrix rtol `2e-14`;
+exactdark and hand identities are separate. Measured errors and finite-sample
+variation are recorded separately in the A handoff.
+
+#### One bounded Gaussian realization
+
+`IdealPolarizationSpec(*, amplitude, mean_phase_rad, phase_std_rad,
+qwp_angle_rad, hwp_angle_rad, seed)` permits real amplitude `[0,1e6]`, finite
+mean/element angles in `[-2*pi,2*pi]` radians, Gaussian standard deviation
+`[0,pi]` radians (not variance), and integer seed `[0,2**32-1]`, excluding bool.
+These are software limits, not inferred experimental ranges. Illustrative
+defaults are amplitude1, mean pi, standard deviation1.2rad, output angles0rad,
+seed20261017. Positive extreme weak inputs can fail numerical usability.
+
+`run_ideal_polarization(spec)` uses local public `default_rng(seed)`, verifies
+its actual bit generator is PCG64 before drawing, and makes exactly one
+float64 `standard_normal((16,16))` call in C order, even at zero spread.
+This obeys the unchanged modern-RNG architecture guard. On the tested NumPy
+version its entire stream is checked against the opening contract's explicit
+`default_rng(PCG64(seed))` reference; a different future default fails closed.
+M=256 and `p=1/256`. Preserve unwrapped `phi=mean+std*Z` and separately stored
+`mod(phi,2*pi)` for both SLM action and display. No centering, variance
+correction, sorting, rejection, clipping, truncation or resampling occurs.
+Binary64 modulo can round an extremely small negative phase to the exact
+stored2*pi endpoint (for example `phi=-5e-324`). Retain this actual NumPy
+result for action, transport and inspection. The display accepts that endpoint
+as the periodic high end of its declared scale; it never rewrites the sample.
+
+D input is `(A/sqrt(2),A/sqrt(2))`. Apply `diag(exp(i*phi),1)`, uniform QWP,
+then uniform HWP using section3.19's `R diag(1,exp(i*delta)) R.T`, with
+delta pi/2 then pi. Record source, after-SLM, after-QWP and output finite
+measurements. The sample list has no physical pitch/wavelength plane, so
+runtime must not invent SamplingGrid for JonesField reuse. The small explicit
+matrix action is independently cross-checked against existing public Jones
+operations on legitimate test-only fields; old implementations remain unchanged.
+
+Phase-only sample action conserves mean S0, while different sample phases can
+change the ensemble eigenvalues and DoP under the declared measurement.
+Uniform lossless retarders conserve mean S0, eigenvalues and DoP within
+arithmetic tolerance. Analyzer/polarizer loss is measured
+separately, not normalized away. The separately labelled infinite Gaussian
+population DoP is `exp(-std**2/2)` for this D-input model, or None for an
+exactly dark optical source. It never replaces the actual finite result.
+
+For iid phases under this specific equal-weight model,
+`E[DoP_M**2]=|mu|**2+(1-|mu|**2)/M`, `mu=E[exp(i*phi)]`.
+A test-only uniform phase reference has expectation `1/M`, not a per-seed
+requirement `DoP=1/sqrt(M)`. The predeclared bounded check uses512 fixed-seed
+PCG64 realizations,M16, bound `6*sqrt((M-1)/(M**3*512))`. This adds no product
+distribution, sweep, experimental confidence interval or paper criterion.
+
+Results preserve the spec, readonly actual phase arrays, four measurements
+and population prediction. Reproduction is scoped to the tested same-platform
+library environment, not cross-version RNG or cross-platform bitwise equality.
+The apparatus is a functional schematic, not propagation, reflected-frame
+transformation, diffraction, detector noise, hardware LUT or calibration.
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -1859,6 +1972,7 @@ historical scope. It adds no polarized propagation or general 3D scene.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.14 | 2026-10-17 | **§3.21 added** — declared probability-weighted uncentered second moment, signed Stokes/dark-state/domain policy and one bounded seeded Gaussian finite ensemble. | Approved A-only independent theoretical workspace. Existing scalar/Jones/interference implementations, conventions and historical evidence are preserved; Figure 2a comparison remains separately gated. |
 | 0.13 | 2026-10-13 | **§3.20 added** — fixed ideal polarized two-path composition, exact typed records/checkpoints/action histories, supported scalar/Jones domain, public pad1 propagation and Jones reuse, raw outputs and input-normalized budgets. | Approved V2f numerical integration. Existing scalar/Jones implementations, signs, initializers/tests, wire/document/bundle contracts and historical evidence remain unchanged; V2g requires separate approval. |
 | 0.12 | 2026-10-06 | **§3.19 added** — ideal common-plane Jones components, public constructor ownership, arbitrary complex coefficients, explicit eigenaxis phase reference, polarizer/retarder actions, intensity/norm/causality-neutral ratios, bounded arithmetic and focused weak-signal references. Scope notes distinguish this addition from the unchanged scalar model. | Approved V2c numerical foundation. Existing scalar signs, implementations/tests/exports, schemas, UI/protocols, replay and historical evidence remain unchanged; V2d is deferred. |
 | 0.11 | 2026-10-05 | **§3.18 added** — ideal B/B_dagger ordered two-path API, uniform arm-1 phase, public ASM reuse, public constructor ownership, ten sampled norms and input-normalized ratios including propagation survival, contextual arithmetic, independent complex/near-dark/reference bounds and explicit primary-reference translation. | Approved V2a numerical foundation. Existing M0–V1 code/contracts, physical signs, initializers, tests and historical evidence remain unchanged; V2b and richer geometry remain deferred. |

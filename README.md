@@ -15,6 +15,24 @@ workflow. `CLAUDE.md` is retained as legacy reference material.
 
 ---
 
+## Independent ideal statistical polarization workspace
+
+The research workspace is **Ideal statistical polarization — independent
+theoretical model**. One explicitly submitted 256-state Gaussian phase ensemble
+drives the actual phase-mask display beside coherency, full/normalized Stokes,
+DoP and mean intensity. Its second-moment observation is an explicit ideal
+assumption; a random mask does not itself establish incoherent collection.
+The labelled population prediction never replaces the finite result.
+
+Use the existing virtual-bench service and its separate research navigation.
+The four original modes and version1/version2 settings documents are unchanged.
+Research settings export, sweeps, fitting and measured-data import are absent.
+Visible functional light paths are schematic, not calculated rays or diffraction.
+See the [model conventions](docs/math_conventions.md#321-a-ideal-statistical-polarization-independently-declared-ensemble)
+and [A handoff](docs/handoffs/r03_fig2a/implementation_summary.md).
+**Figure 2a experimental reproduction, PAX calibration and experimental
+agreement remain unestablished.**
+
 ## Current goal
 
 A CGH simulator that can:

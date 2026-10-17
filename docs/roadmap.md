@@ -129,6 +129,26 @@ separate from numerical success and qualified replay. Historical numerical
 demonstrations and publication closeouts remain unchanged. Later optics,
 general topology, detector models and deployment require separate approval.
 
+A adds a separately named **Ideal statistical polarization — independent
+theoretical model** research workspace in the existing bench. Its complete
+mounted apparatus, visible functional paths, actual submitted phase texture
+and adjacent coherency/Stokes/DoP/intensity readout share one finite-ensemble
+identity. Its probability-weighted second moment is explicitly assumed,
+independently tested, and distinct from coherent propagation or a calibrated
+instrument. It preserves the four original modes, old settings versions,
+one actual-worker gate and fixed retained/transient resource budgets.
+The [A handoff](handoffs/r03_fig2a/implementation_summary.md) records the
+bounded model and acceptance evidence. There is no sweep, reference import,
+paper residual, result archive or new settings format.
+
+B, Figure2a reference-data comparison, remains separately gated by relevant
+observable/axis/estimator mapping; uncertainty-qualified experimental validation
+requires further evidence beyond descriptive discrepancies. A does not need
+author correspondence to be useful and cannot substitute its synthetic/ideal
+experiment for Figure2a. The completed ignored readiness/semantics evidence and
+unsent author-question draft remain unchanged. R02 remains the later display
+candidate; no later paper or hardware stage follows automatically from A.
+
 Physical SLM integration, calibration, vendor SDKs and device services form a
 separate optional future track. The virtual laboratory can be useful without
 purchasing or connecting physical equipment. No V-stage, public deployment or

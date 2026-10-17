@@ -1293,6 +1293,56 @@ No later stage or learning-record change is included.
 
 ---
 
+## R03 A — Ideal statistical polarization workspace
+
+Approved2026-10-17 from accepted revision
+`2b3046682b0b5aefc4e712b901393209a9cede7e`. The unchanged readiness/semantics
+split supplies the frozen41-path A inventory:10 modifications/31 creations.
+Its source hash, exact Windows identities, baseline and preservation records
+are under `runs/r03_ideal_polarization_impl_01/`. Earlier evidence and learning
+records retain their historical state.
+
+Identity: **Ideal statistical polarization — independent theoretical model**.
+One explicit submission generates a fixed16×16 Gaussian phase realization using
+local PCG64, applies an ideal phase-only SLM followed by uniform QWP/HWP, and
+reports four finite uncentered probability-mean coherency measurements. Actual
+phase samples, complete settings/seed, full Stokes, raw DoP/eigenvalues, units
+and limitations share one immutable result identity. Dark normalized quantities
+are null. The infinite Gaussian population expectation is separately labelled.
+The appended mathematical contract is [section3.21](math_conventions.md#321-a-ideal-statistical-polarization-independently-declared-ensemble).
+
+The dedicated research workspace reuses the existing service and renderer,
+provides an original mounted functional schematic, actual submitted phase mask,
+parameter inspector and adjacent readout. The four ordinary modes and v1/v2
+documents stay closed and unchanged. A has no settings export, sweep, MAT import,
+measurement overlay or fitting. Shared actual-worker/client operation gates and
+global16/32MiB declared ownership budgets include A and transactional overlap.
+See [the implementation handoff](handoffs/r03_fig2a/implementation_summary.md)
+and [current evidence](handoffs/r03_fig2a/tests_and_evidence.md).
+
+**B / Figure2a experimental reproduction remains unestablished and separately
+gated.** A's ideal second-moment observation does not recover PAX measurement
+semantics, historical geometry, observable/axis/estimator lineage or calibration.
+No author correspondence, third-party research assets or later stage is included.
+One commit and normal push are conditional on the required clean-postcommit
+checks; failure preserves evidence and stops before push.
+
+Current implementation/precommit evidence: unchanged baseline3242passed/1skip;
+restored final3447passed/1skip, retaining the Windows symlink privilege skip.
+Frontend typecheck and346unit tests/21files pass; production build retains its
+large-chunk warning. Independent ideal references and9deliberate scientific
+fault controls pass. Two actual A browser cases pass, including full submitted
+phase/readout identity and manual display recovery. The four old modes have
+current browser/HTTP evidence; a document-fixture precondition failure is retained
+separately and the unchanged affected document suite passes with its existing
+proper fixture generator. Controlled-child-only old browser skips are explicit.
+Genuine application screenshots, interaction recording, numerical/resource
+observations, exact41paths and protection/publication gates are in the new
+evidence handoff. This paragraph does not claim an unperformed push or rewrite
+the historical Chrome response-capture failure.
+
+---
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.
