@@ -1079,6 +1079,29 @@ comparison states its tolerance explicitly.
 
 ---
 
+## W1 — calculated wave-field sections
+
+In the existing Sequential bench, enable **Computed Sections** and explicitly
+load the W1 example or configure a Gaussian source, one circular/rectangular
+aperture, one ideal thin lens, and an observation plane in that order. Press
+**Simulate** to calculate. W1 accepts at most 128 samples on either transverse
+axis and 25 sections; ordinary Sequential retains its existing 512-axis limit.
+Unsupported drafts are rejected without changing their parameters.
+
+The cursor selects cached calculated sections, including distinct before/after
+events at the same position. Camera, cursor and display changes do not propagate
+fields. Optical edits detach the displayed result until explicit recomputation.
+The common initial intensity scale is 0–3 amplitude-unit² and remains fixed
+across calculations until deliberately changed. Decorative glow is labelled;
+raw intensity, physical coordinates and sampled norms remain authoritative.
+
+This is a scalar periodic-window ASM preview with ideal paraxial Gaussian/lens
+elements, not ray tracing, side-scattering measurement or a volumetric Maxwell
+solution. Strong clipping and insufficient sampling can produce substantial
+window/grid sensitivity. Read the [W1 handoff](docs/handoffs/w1/implementation_summary.md)
+and [numerical contract](docs/math_conventions.md#322-w1-computed-wave-field-sections).
+The existing loopback-service commands above serve W1 without new dependencies.
+
 ## Licence
 
 Not yet chosen — see decision **D-1** in

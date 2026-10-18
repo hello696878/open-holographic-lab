@@ -32,7 +32,9 @@ def test_backend_uses_public_optics_without_replacement_or_unrelated_science():
                                        if path.name == "polarization_adapter.py" else set()) | (
                     {"ohlab.optics.polarization", "ohlab.optics.polarized_interference"}
                     if path.name == "polarized_two_path_adapter.py" else set()) | (
-                    {"ohlab.optics.r03_fig2a"} if path.name == "r03_fig2a_adapter.py" else set())
+                    {"ohlab.optics.r03_fig2a"} if path.name == "r03_fig2a_adapter.py" else set()) | (
+                    {"ohlab.optics.wave_field"} if path.name in
+                    {"wave_field_adapter.py", "wave_field_protocol.py"} else set())
                 assert name in permitted, (path, name)
             assert name.split(".")[0] not in {"streamlit", "matplotlib", "PIL", "scipy"}, (path, name)
         for node in ast.walk(tree):

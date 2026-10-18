@@ -1343,6 +1343,46 @@ the historical Chrome response-capture failure.
 
 ---
 
+## W1 — Computed wave-field sections in the existing Sequential bench
+
+**Status:** implemented and validated within the bounded scope below.
+Publication is conditional on the separately recorded clean-postcommit gate.
+
+The bounded vertical slice adds an optional Computed Sections view for a
+Gaussian source → one circular/rectangular aperture → ideal thin lens →
+observation plane. It retains the ordinary Sequential domain and its existing
+limits. W1 rejects unsupported trains/grids without altering the draft.
+At most 25 actual calculated sections use a maximum 128×128 grid, explicit
+positions and distinct same-z element-event identities. One unchanged V0 run
+provides three upstream anchors and the authoritative terminal field; interior
+sections use the existing public pad1 ASM from the appropriate anchor.
+
+Acceptance includes independent complex-field/DFT/Gaussian/coordinate/norm
+checks, meaningful negative controls, complete transport validation, the same
+actual-worker-lifetime gate, aggregate 16/32 MiB ownership admission and genuine
+production-browser/visual evidence. Parameter edits detach stale results;
+cursor, camera and shared-color changes do not propagate fields. Mounted
+apparatus and labelled beam presentation do not claim ray tracing, realistic
+side scattering or a volumetric electromagnetic calculation.
+
+Current numerical acceptance records 3653 passed with the unchanged Windows
+symlink-privilege skip. The production browser covers calculated sections,
+all parameter fixtures, cached inspection, stale/context recovery, mixed
+ownership/release, three desktop sizes and actual 200% zoom. The genuine
+33.44-second recording shows inspection and a changed focal pattern. Retained
+legacy checks pass, including 19 separate controlled executions. Exact outputs,
+all earlier failures, sampling counterexamples and current frontend results
+remain in the W1 handoff and task-owned evidence; no old measurements change.
+
+The approved envelope is exactly 40 paths (8 modifications, 32 creations),
+including the [W1 handoff](handoffs/w1/implementation_summary.md). One commit and
+a normal push are authorized only after required precommit acceptance and the
+clean-postcommit gate. A required postcommit failure stops before push without
+history rewriting or automatic retry. Existing milestones, R03 A/B boundaries,
+document/bundle contracts and historical evidence remain unchanged.
+
+---
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.

@@ -42,6 +42,7 @@ from . import polarization_adapter, polarization_protocol
 from . import experiment_documents
 from . import polarized_two_path_adapter, polarized_two_path_protocol
 from . import r03_fig2a_adapter, r03_fig2a_protocol
+from . import wave_field_adapter, wave_field_protocol
 
 Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission |
               two_path_adapter.ValidatedSweepSubmission |
@@ -49,7 +50,8 @@ Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission 
               polarization_adapter.ValidatedPolarizationSweepSubmission |
               polarized_two_path_adapter.ValidatedPolarizedTwoPathSubmission |
               polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission |
-              r03_fig2a_adapter.ValidatedIdealSubmission)
+              r03_fig2a_adapter.ValidatedIdealSubmission |
+              wave_field_adapter.ValidatedWaveFieldSubmission)
 WorkerResult = bytes | SweepReply | polarization_protocol.SweepReply | polarized_two_path_protocol.SweepReply
 
 HOST = "127.0.0.1"
@@ -343,6 +345,7 @@ def create_app(*, assets_dir: Path | None = None,
                polarized_two_path_worker: Callable[[polarized_two_path_adapter.ValidatedPolarizedTwoPathSubmission], bytes] | None = None,
                polarized_two_path_sweep_worker: Callable[[polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission], polarized_two_path_protocol.SweepReply] | None = None,
                r03_ideal_worker: Callable[[r03_fig2a_adapter.ValidatedIdealSubmission], bytes] | None = None,
+               wave_field_worker: Callable[[wave_field_adapter.ValidatedWaveFieldSubmission], bytes] | None = None,
                executor: Executor | None = None) -> Starlette:
     """Create the local service; no numerical work or network listeners start.
 
@@ -354,6 +357,9 @@ always uses this checkout's fixed built directory and public numerical adapters.
     if not index_path or index_stat is None or not stat.S_ISREG(index_stat.st_mode):
         raise RuntimeError("Build V1 frontend assets before starting the bench")
     def dispatch(submission: Submission) -> WorkerResult:
+        if isinstance(submission, wave_field_adapter.ValidatedWaveFieldSubmission):
+            return (wave_field_worker if wave_field_worker is not None
+                    else wave_field_adapter.simulate_submission)(submission)
         if isinstance(submission, r03_fig2a_adapter.ValidatedIdealSubmission):
             return (r03_ideal_worker if r03_ideal_worker is not None
                     else r03_fig2a_adapter.simulate_submission)(submission)
@@ -696,6 +702,52 @@ always uses this checkout's fixed built directory and public numerical adapters.
             return r03_ideal_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
         return Response(encoded, media_type="application/json")
 
+    def wave_field_error(status: int, code: str, message: str,
+                         request_id: str | None = None) -> JSONResponse:
+        return JSONResponse({"protocol_version": 1, "message_type": "w1_wave_field_error",
+                             "request_id": request_id,
+                             "error": {"code": code[:64], "message": message[:300]}}, status_code=status)
+
+    async def wave_field_simulate(request: Request) -> Response:
+        # The dedicated route plus exact sampling envelope discriminate W1;
+        # all existing request and response formats remain unchanged.
+        request_id = None
+        try:
+            payload = await _read_json(request, parser=wave_field_protocol.strict_json_loads)
+            request_id = _parsed_id(payload)
+            submission = wave_field_adapter.validate_submission(payload)
+        except BodyError as exc:
+            return wave_field_error(exc.status, exc.code, str(exc), request_id)
+        except ClientDisconnect:
+            return wave_field_error(499, "disconnected", "Client disconnected before submission", request_id)
+        except (ValueError, TypeError, OverflowError) as exc:
+            return wave_field_error(422, "invalid_experiment", str(exc), request_id)
+        try:
+            future = gate.submit(submission)
+        except BusyError:
+            return wave_field_error(409, "busy", "A Python computation is still running; submit again deliberately later",
+                                    submission.request_id)
+        except Exception:
+            return wave_field_error(500, "submission_failed", "Could not submit the computation", submission.request_id)
+        try:
+            encoded = await _worker_response(request, future)
+        except asyncio.CancelledError:
+            raise
+        except CancelledBeforeStart:
+            return wave_field_error(503, "cancelled_before_start", "Computation did not start; no result was produced",
+                                    submission.request_id)
+        except NumericalError as exc:
+            return wave_field_error(422, "numerical_failure", str(exc), submission.request_id)
+        except Exception:
+            return wave_field_error(500, "simulation_failed", "Numerical computation or result encoding failed",
+                                    submission.request_id)
+        if encoded is None:
+            return wave_field_error(499, "disconnected", "Client disconnected; Python work may still be running",
+                                    submission.request_id)
+        if not isinstance(encoded, bytes) or not 16 <= len(encoded) <= wave_field_protocol.MAX_RESPONSE_BYTES:
+            return wave_field_error(500, "simulation_failed", "Result encoding failed", submission.request_id)
+        return Response(encoded, media_type="application/octet-stream")
+
     async def document_validate(request: Request) -> Response:
         try:
             payload = await _read_json(request, parser=experiment_documents.strict_document_loads)
@@ -718,7 +770,7 @@ always uses this checkout's fixed built directory and public numerical adapters.
             "/api/v2d/validate", "/api/v2d/simulate", "/api/v2d/sweep",
             "/api/v2g/validate", "/api/v2g/simulate", "/api/v2g/sweep",
             "/api/research/r03-fig2a/validate", "/api/research/r03-fig2a/simulate",
-            "/api/v2e/documents/validate"} else 404
+            "/api/v2e/documents/validate", "/api/w1/simulate"} else 404
         return _error(status, "http_error", "Request path or method is unavailable")
 
     app = Starlette(routes=[Route("/api/v1/health", health, methods=["GET"]),
@@ -736,6 +788,7 @@ always uses this checkout's fixed built directory and public numerical adapters.
                             Route("/api/research/r03-fig2a/validate", r03_ideal_validate, methods=["POST"]),
                             Route("/api/research/r03-fig2a/simulate", r03_ideal_simulate, methods=["POST"]),
                             Route("/api/v2e/documents/validate", document_validate, methods=["POST"]),
+                            Route("/api/w1/simulate", wave_field_simulate, methods=["POST"]),
                             Route("/api/{path:path}", unavailable_api,
                                   methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"]),
                             Mount("/", app=assets)],

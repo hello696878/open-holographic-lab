@@ -9,6 +9,8 @@ import type { DecodedTwoPathResult, TwoPathExperiment } from './two_path_contrac
 import type { DecodedPolarizationResult, PolarizationExperiment } from './polarization_contracts';
 import type { DecodedPolarizedTwoPathResult, PolarizedTwoPathExperiment } from './polarized_two_path_contracts';
 import { calculateResearchCameraFit, researchBoundsCorners, type ResearchCameraView } from './r03_fig2a_camera';
+/** W1 overview sees the linear z train from the side; unchanged R03 retains its own overview. */
+export const W1_OVERVIEW_DIRECTION = Object.freeze([-1.4, .9, .2] as const);
 
 export interface SceneCallbacks {
   select: (ids: string[]) => void;
@@ -76,6 +78,16 @@ export class BenchScene {
   private researchFraming: { view: ResearchCameraView; bounds: THREE.Box3; aspect: number; topTiltRad: number } | null = null;
   private researchFitCount = 0;
   private researchLabelUpdater: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null = null;
+  private waveFieldGroup: THREE.Group | null = null;
+  private waveFieldLabelUpdater: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null = null;
+  private waveFieldInteraction: ((id: string, row: number, column: number) => void) | null = null;
+  private waveFieldCamera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; near: number; far: number; minDistance: number; maxDistance: number } | null = null;
+  private waveFieldOverviewBounds: THREE.Box3 | null = null;
+  private waveFieldFitCount = 0;
+  private waveFieldFraming: { view: ResearchCameraView; bounds: THREE.Box3 } | null = null;
+  private waveFieldIntervals: number[] = [];
+  private waveFieldSubmissions: number[] = [];
+  private waveFieldLastFrame: number | null = null;
   private initializedCamera = false;
   private draftValidated = false;
   private readonly onPointerDown: (event: PointerEvent) => void;
@@ -156,6 +168,7 @@ export class BenchScene {
   /** Reuse the one renderer; research geometry/resources remain owned by its workspace. */
   showResearchApparatus(host: HTMLElement, group: THREE.Group): void {
     if (this.disposed || this.lost) throw new Error('Shared WebGL2 renderer unavailable');
+    if (this.waveFieldGroup) throw new Error('Leave Computed Sections before entering the research apparatus');
     if (!this.researchGroup) {
       this.cancelDrag(); this.frameCallback = null; this.settleResearchCameraMotion();
       this.oldCamera = { position: this.camera.position.clone(), target: this.controls.target.clone(), up: this.camera.up.clone(), near: this.camera.near,
@@ -214,6 +227,45 @@ export class BenchScene {
   /** Shares the existing frame loop; cleared automatically on research leave. */
   setResearchLabelUpdater(callback: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null): void {
     this.researchLabelUpdater = callback;
+  }
+
+  /** W1 borrows the existing renderer/canvas/controls/observer and owns its own external resources. */
+  showWaveFieldApparatus(group: THREE.Group): void {
+    if (this.disposed || this.lost || this.researchGroup) throw new Error('Shared W1 renderer unavailable; numerical data retained');
+    if (this.waveFieldGroup === group) return;
+    if (this.waveFieldGroup) throw new Error('Detach the previous W1 apparatus before replacement');
+    this.cancelDrag(); this.settleResearchCameraMotion();
+    this.waveFieldCamera = { position: this.camera.position.clone(), target: this.controls.target.clone(), up: this.camera.up.clone(),
+      near: this.camera.near, far: this.camera.far, minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance };
+    this.waveFieldGroup = group; this.scene.add(group); this.bench.visible = this.rail.visible = false;
+    this.scene.background = new THREE.Color('#102733'); this.waveFieldLastFrame = null;
+  }
+  hideWaveFieldApparatus(): void {
+    if (!this.waveFieldGroup) return;
+    this.settleResearchCameraMotion(); this.waveFieldGroup.removeFromParent(); this.waveFieldGroup = null; this.waveFieldLabelUpdater = null;
+    this.bench.visible = this.rail.visible = true; this.scene.background = new THREE.Color('#f1f6fa');
+    const old = this.waveFieldCamera;
+    if (old) { this.camera.position.copy(old.position); this.controls.target.copy(old.target); this.camera.up.copy(old.up);
+      this.camera.near = old.near; this.camera.far = old.far; this.controls.minDistance = old.minDistance; this.controls.maxDistance = old.maxDistance;
+      this.camera.updateProjectionMatrix(); this.settleResearchCameraMotion(); }
+    this.waveFieldCamera = null; this.waveFieldLastFrame = null;
+  }
+  replaceWaveFieldApparatus(group: THREE.Group): void {
+    this.assertWaveFieldReady(); this.waveFieldGroup!.removeFromParent(); this.waveFieldGroup = group; this.scene.add(group);
+  }
+  assertWaveFieldReady(): void { if (!this.waveFieldGroup || this.disposed || this.lost) throw new Error('W1 renderer unavailable; calculation will not be replayed'); }
+  setWaveFieldLabelUpdater(callback: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null): void { this.waveFieldLabelUpdater = callback; }
+  setWaveFieldInteraction(callback: ((id: string, row: number, column: number) => void) | null): void { this.waveFieldInteraction = callback; }
+  fitWaveFieldApparatus(bounds: THREE.Box3, view: ResearchCameraView): void {
+    this.assertWaveFieldReady(); const fit = calculateResearchCameraFit(bounds, this.camera, view === 'overview' ? 'focus' : view,
+      view === 'overview' ? new THREE.Vector3(...W1_OVERVIEW_DIRECTION) : view === 'focus' ? this.camera.position.clone().sub(this.controls.target) : undefined);
+    if (view !== 'focus') this.waveFieldOverviewBounds = bounds.clone();
+    const damping = this.controls.enableDamping; this.controls.enableDamping = false;
+    try { this.controls.update(); this.camera.position.copy(fit.position); this.camera.up.copy(fit.up); this.controls.target.copy(fit.target);
+      this.camera.near = fit.near; this.camera.far = fit.far; this.controls.minDistance = fit.minDistance; this.controls.maxDistance = fit.maxDistance;
+      this.camera.updateProjectionMatrix(); this.controls.update(); this.camera.updateMatrixWorld(true); ++this.waveFieldFitCount;
+      this.waveFieldFraming = { view, bounds: bounds.clone() }; }
+    finally { this.controls.enableDamping = damping; }
   }
 
   private disposeGroup(group: THREE.Group): void {
@@ -787,7 +839,7 @@ export class BenchScene {
   }
 
   private pointerDown(event: PointerEvent): void {
-    if (this.researchGroup) { this.down = { x: event.clientX, y: event.clientY }; return; }
+    if (this.researchGroup || this.waveFieldGroup) { this.down = { x: event.clientX, y: event.clientY }; return; }
     if (event.button !== 0 || this.lost || (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment && !this.polarizedTwoPathExperiment)) return;
     this.setRay(event);
     if (this.handle && this.raycaster.intersectObject(this.handle).length) {
@@ -842,9 +894,15 @@ export class BenchScene {
     }
     this.down = null;
     this.setRay(event);
-    const hits = this.raycaster.intersectObjects(this.researchGroup?.children ?? this.bench.children, true);
+    const hits = this.raycaster.intersectObjects(this.researchGroup?.children ?? this.waveFieldGroup?.children ?? this.bench.children, true);
     const ids = [...new Set(hits.map((hit) => hit.object.userData.identity as string | undefined).filter((id): id is string => !!id))];
     if (ids.length) this.callbacks.select(ids);
+    const sectionHit = hits.find(hit => hit.object.userData.waveFieldSection && hit.uv);
+    if (sectionHit?.uv) {
+      const grid = sectionHit.object.userData.waveFieldGrid;
+      const pixel = pixelFromUV(grid, sectionHit.uv.x, sectionHit.uv.y);
+      if (pixel) this.waveFieldInteraction?.(sectionHit.object.userData.waveFieldSection, pixel.row, pixel.column);
+    }
     const detectorHit = hits.find((hit) => hit.object.userData.detector && hit.uv);
     if (detectorHit?.uv && this.result && this.experiment) {
       const pixel = pixelFromUV(this.experiment.grid, detectorHit.uv.x, detectorHit.uv.y);
@@ -875,6 +933,7 @@ export class BenchScene {
   }
 
   resetCamera(): void {
+    if (this.waveFieldGroup) { if (this.waveFieldOverviewBounds) this.fitWaveFieldApparatus(this.waveFieldOverviewBounds, 'overview'); return; }
     if (this.researchGroup) {
       if (this.researchOverviewBounds) this.fitResearchApparatus(this.researchOverviewBounds, 'overview');
       return;
@@ -939,7 +998,13 @@ export class BenchScene {
           this.camera.updateMatrixWorld(true);
           this.researchLabelUpdater?.(this.camera, Math.max(1, this.researchHost.clientWidth), Math.max(1, this.researchHost.clientHeight));
         }
-        this.renderer.render(this.scene, this.camera); }
+        if (this.waveFieldGroup) { this.camera.updateMatrixWorld(true); this.waveFieldLabelUpdater?.(this.camera, Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight)); }
+        const renderStart = this.waveFieldGroup ? performance.now() : 0;
+        this.renderer.render(this.scene, this.camera);
+        if (this.waveFieldGroup) { this.waveFieldSubmissions.push(performance.now() - renderStart);
+          if (this.waveFieldLastFrame !== null) this.waveFieldIntervals.push(time - this.waveFieldLastFrame); this.waveFieldLastFrame = time;
+          if (this.waveFieldSubmissions.length > 600) this.waveFieldSubmissions.shift(); if (this.waveFieldIntervals.length > 600) this.waveFieldIntervals.shift(); }
+      }
       catch (error) { this.lost = true; this.callbacks.presentationFailure(`3D 顯示失敗：${String(error)}`); }
     }
   };
@@ -982,6 +1047,10 @@ export class BenchScene {
     return {
       available: true, contextLost: this.lost, textureRequestId: this.result?.requestId ?? null,
       researchActive: this.researchGroup !== null,
+      waveField: { active: this.waveFieldGroup !== null, fitCount: this.waveFieldFitCount, frameIntervalsMs: [...this.waveFieldIntervals],
+        framing: this.waveFieldFraming ? { view: this.waveFieldFraming.view, projectedCorners: researchBoundsCorners(this.waveFieldFraming.bounds).map(point => point.project(this.camera).toArray()) } : null,
+        rendererSubmissionMs: [...this.waveFieldSubmissions], renderCalls: this.renderer.info.render.calls,
+        rendererCount: this.disposed ? 0 : 1, controlsCount: this.disposed ? 0 : 1, resizeObserverCount: this.disposed ? 0 : 1, rafCount: this.disposed ? 0 : 1 },
       researchLabelCallbacks: this.researchLabelUpdater ? 1 : 0,
       researchFraming: this.researchGroup && this.researchFraming ? {
         view: this.researchFraming.view, bounds: { min: this.researchFraming.bounds.min.toArray(), max: this.researchFraming.bounds.max.toArray() },
@@ -1042,6 +1111,7 @@ export class BenchScene {
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.controls.dispose();
     this.researchLabelUpdater = null;
+    this.hideWaveFieldApparatus(); this.waveFieldInteraction = null;
     this.frameCallback = null;
     this.updateResult(null, { min: 0, max: 10 });
     this.detachDualResult();

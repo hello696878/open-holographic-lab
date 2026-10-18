@@ -24,6 +24,9 @@ import { ownedScientificBytes4, estimatePolarizedTwoPathOperation, preparePolari
   type PolarizedTwoPathResources } from './polarized_two_path_display';
 import { R03Controller } from './r03_fig2a_state';
 import { R03Workspace } from './r03_fig2a_workspace';
+import { WaveFieldController } from './wave_field_state';
+import { WaveFieldWorkspace } from './wave_field_workspace';
+import { W1_EXAMPLE } from './wave_field_contracts';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('缺少應用程式容器。');
@@ -37,6 +40,7 @@ app.innerHTML = `
       <label>模式 <select id="mode" data-testid="mode"><option value="sequential">順序光路（Sequential）</option><option value="two_path">兩路干涉（Two-path）</option><option value="polarization">理想偏振（Jones polarization）</option><option value="polarized_two_path">偏振兩路干涉（Polarized two-path）</option></select></label>
       <label class="sequential-only">載入預設 <select id="preset" data-testid="preset"></select></label>
       <button id="simulate" class="primary sequential-only" data-testid="simulate">模擬（Simulate）</button>
+      <button id="w1-view" class="sequential-only" data-testid="w1-view" aria-pressed="false">Computed Sections</button>
       <output id="status" class="sequential-only" data-testid="status" aria-live="polite"></output>
       <button id="tp-simulate" class="primary two-path-only" data-testid="tp-simulate">模擬兩埠（Simulate）</button>
       <button id="tp-sweep" class="two-path-only" data-testid="tp-sweep">相位掃描（17 points）</button>
@@ -114,6 +118,7 @@ app.innerHTML = `
       </aside>
       <section class="bench-panel"><div class="bench-heading"><h2>3D 光學實驗台</h2><span id="bench-label">等待草稿驗證</span></div>
         <div id="bench" data-testid="bench-host"></div>
+        <div id="w1-bench-controls" class="w1-bench-controls" data-testid="w1-bench-controls" hidden></div>
         <div class="camera-controls" aria-label="視角控制"><button id="reset-view" data-testid="reset-view">重設視角</button>
           <button id="zoom-in" data-testid="zoom-in" aria-label="放大視角">＋</button><button id="zoom-out" data-testid="zoom-out" aria-label="縮小視角">−</button>
           <button data-pan="-1,0" data-testid="pan-left" aria-label="向左平移視角">←</button><button data-pan="1,0" aria-label="向右平移視角">→</button>
@@ -138,6 +143,7 @@ app.innerHTML = `
         <p class="muted">每臂先做一次傳播，再按列表執行最多兩個作用。QWP/HWP 只設定延遲器 δ。示意位置不增加傳播、反射或相位。</p>
         <p class="muted">B → arm 0/1 → B†；兩輸出使用相同橫向座標。3D 只展示選取的 raw 或 analyzed 兩埠，面板同時保留全部可用影像。</p></aside>
     </section>
+    <section id="w1-workspace" class="w1-workspace sequential-only" data-testid="w1-workspace"></section>
     <section class="result-panel panel sequential-only"><div class="result-heading"><h2>觀察結果</h2><strong id="result-status" data-testid="result-status">尚未提交模擬</strong></div>
       <div class="results"><div><div class="color-controls"><label>顯示下限 <input id="color-min" data-testid="color-min" type="text" inputmode="decimal" value="0"></label>
           <label>顯示上限 <input id="color-max" data-testid="color-max" type="text" inputmode="decimal" value="10"></label>
@@ -223,6 +229,8 @@ const polarizedTwoPathController = new PolarizedTwoPathController(polarizedTwoPa
 const idealController = new R03Controller(undefined, undefined, undefined, operationGate);
 let researchActive = false;
 let idealWorkspace: R03Workspace | null = null;
+let waveController: WaveFieldController | null = null;
+let waveWorkspace: WaveFieldWorkspace | null = null;
 let mode: SupportedBenchMode = 'sequential';
 app.dataset.mode = mode;
 let scene: BenchScene | null = null;
@@ -273,6 +281,7 @@ function dropResultCanvases(host: ParentNode): void {
 function reportPresentation(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   if (researchActive) { if (idealController.state.renderError !== message) idealController.reportRenderFailure(message); return; }
+  if (mode === 'sequential' && waveController?.enabled) { waveController.reportPresentationFailure(message); return; }
   if (mode === 'polarized_two_path') { if (polarizedTwoPathController.state.renderError !== message) polarizedTwoPathController.reportRenderFailure(message); }
   else if (mode === 'polarization') { if (polarizationController.state.renderError !== message) polarizationController.reportRenderFailure(message); }
   else if (mode === 'two_path') {
@@ -315,6 +324,10 @@ try {
     presentationFailure(message) {
       if (researchActive) { if (message) idealController.invalidatePresentation(message);
         else idealController.reportRenderFailure(idealController.canRetryPresentation ? 'WebGL2 顯示環境已恢復；請明確按下重新顯示已計算結果，不會重新計算。' : null); return; }
+      if (mode === 'sequential' && waveController?.enabled) {
+        waveController.reportPresentationFailure(message ?? (waveController.canRetryPresentation
+          ? 'WebGL2 已恢復；請明確重建已計算的顯示，不會重新傳播。' : null)); return;
+      }
       if (mode === 'polarized_two_path') {
         if (message) polarizedTwoPathController.invalidatePresentation(message);
         else polarizedTwoPathController.reportRenderFailure(null);
@@ -343,7 +356,8 @@ preset.addEventListener('change', () => {
   controller.replaceCandidate(presetExperiment(preset.value));
   notice('已載入預設並驗證；請明確按下模擬。');
 });
-element('simulate').addEventListener('click', () => { void controller.simulate(); });
+element('simulate').addEventListener('click', () => { if (waveController?.enabled) void waveController.simulate(); else void controller.simulate(); });
+element('w1-view').addEventListener('click', () => waveController?.setContext(!waveController.enabled, mode === 'sequential' && !researchActive));
 element('reset-view').addEventListener('click', () => scene?.resetCamera());
 element('zoom-in').addEventListener('click', () => scene?.zoom(0.8));
 element('zoom-out').addEventListener('click', () => scene?.zoom(1.25));
@@ -887,7 +901,7 @@ function twoPathSnapshot(): object {
 
 /** All modes share these ownership calculations. Aliased arrays are counted once. */
 function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathResult | DecodedPolarizedTwoPathResult | null = null): {
-  scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; documentBytes: number; idealWorkspaceBytes: number; retainedBytes: number;
+  scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; documentBytes: number; idealWorkspaceBytes: number; waveFieldBytes: number; sharedGeometryAliasBytes: number; retainedBytes: number;
 } {
   const sceneResults = scene?.ownedNumericalResults();
   const scientificBytes = ownedScientificBytes4({ sequential: [controller.state.lastResult, displayedResult, sceneResults?.sequential ?? null],
@@ -908,8 +922,15 @@ function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathRes
   const geometryBytes = scene?.ownedGeometryBuffers().reduce((n, buffer) => n + buffer.byteLength, 0) ?? 0;
   const documentBytes = documents?.ownershipSnapshot().retainedBytes ?? 0;
   const idealWorkspaceBytes = idealWorkspace?.ownedBytes() ?? 0;
-  return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes, idealWorkspaceBytes,
-    retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes + documentBytes + idealWorkspaceBytes };
+  // Both apparatus factories borrow Three's one global Sprite quad. R03 already
+  // charges those backing buffers while its labels exist; charge their W1 alias
+  // only when R03 is absent. Neither factory owns or disposes that shared quad.
+  const idealApparatus = (idealWorkspace?.snapshot() as { apparatus?: { borrowedGeometryCount?: number } } | undefined)?.apparatus;
+  const sharedGeometryAliasBytes = (idealApparatus?.borrowedGeometryCount ?? 0) > 0
+    ? waveWorkspace?.borrowedGeometryBytes() ?? 0 : 0;
+  const waveFieldBytes = (waveWorkspace?.ownedBytes() ?? 0) - sharedGeometryAliasBytes;
+  return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes, idealWorkspaceBytes, waveFieldBytes, sharedGeometryAliasBytes,
+    retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes + documentBytes + idealWorkspaceBytes + waveFieldBytes };
 }
 function admitOperation(kind: SupportedBenchMode, grid: Experiment['grid'], operation: 'single' | 'sweep' = 'single', analyzerEnabled = false): void {
   const bytes = ownedSnapshot().retainedBytes, estimate = kind === 'polarized_two_path'
@@ -1552,7 +1573,7 @@ element('release-results').addEventListener('click', () => {
   ++resultAttachmentGeneration; applyingDocument = true;
   try {
     for (const actor of [controller, twoPathController, polarizationController, polarizedTwoPathController]) actor.releaseResults();
-    idealWorkspace?.releaseResults();
+    idealWorkspace?.releaseResults(); waveWorkspace?.releaseResults();
     scene?.releaseRetainedResults(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose();
     polarizationResources = null; polarizedTwoPathResources = null; polarizationPublished = null; polarizedTwoPathPublished = null;
     displayedResult = null; dualPublished = null; selectedPixel = null; dualSelectedPixel = null; polarizationSelectedPixel = null; polarizedTwoPathSelectedPixel = null;
@@ -1614,6 +1635,7 @@ function renderModeHelp(): void {
 function presentDocumentApplication(): void {
   // Presentation is subsequent to the coherent settings commit and fails separately.
   app!.dataset.mode = mode; element<HTMLSelectElement>('mode').value = mode;
+  waveWorkspace?.setActive(!researchActive && mode === 'sequential');
   try {
     ++resultAttachmentGeneration; detachPolarizedTwoPathPresentation();
     detachPolarizationPresentation(); scene?.updateResult(null, limits); scene?.detachDualResult();
@@ -1691,6 +1713,7 @@ element('mode').addEventListener('change', () => {
   scene?.updateResult(null, limits); scene?.detachDualResult();
   const chosen = element<HTMLSelectElement>('mode').value;
   mode = chosen === 'polarized_two_path' ? 'polarized_two_path' : chosen === 'polarization' ? 'polarization' : chosen === 'two_path' ? 'two_path' : 'sequential'; app!.dataset.mode = mode;
+  waveWorkspace?.setActive(!researchActive && mode === 'sequential');
   dualPublished = null; dualSelectedPixel = null; dualDisplayKey = ''; displayedResult = null; displayKey = '';
   dropResultCanvases(element('tp-result-area'));
   element('tp-current-content').replaceChildren(); element('tp-prior-images').replaceChildren(); priorDisplayKey = '';
@@ -1734,14 +1757,27 @@ function admitIdeal(extraPersistent: number, extraTransient: number): void {
 idealWorkspace = new R03Workspace(element('r03-workspace'), idealController, scene, { admit: admitIdeal,
   chrome: { navigation: app.querySelector<HTMLElement>('.workspace-navigation')!, releaseButton: element<HTMLButtonElement>('release-results'), releaseStatus: element('release-status') },
   reserveOperation(persistent, transient) { admitIdeal(persistent, transient); scientificReservations = { persistent, transient }; } });
+waveController = new WaveFieldController(controller, { admit: admitIdeal,
+  reserveOperation(persistent, transient) { admitIdeal(persistent, transient); scientificReservations = { persistent, transient }; } });
+waveWorkspace = new WaveFieldWorkspace(element('w1-workspace'), scene, waveController, { admit: admitIdeal,
+  cursorHost: element('w1-bench-controls'),
+  loadExample: () => { controller.select('source'); void controller.replaceCandidate(cloneExperiment(W1_EXAMPLE)); }, select: id => controller.select(id) });
+waveController.subscribe(() => {
+  const active = waveController!.enabled && mode === 'sequential' && !researchActive;
+  app!.dataset.computedSections = String(active); element('w1-view').setAttribute('aria-pressed', String(active));
+  if (active) { element('bench-label').textContent = waveController!.state.currentResult ? '已計算截面 · 共用色階 · 稀疏物理平面' : '波場未附著 · 明確 Simulate 後顯示'; }
+});
+waveWorkspace.setActive(true);
 function switchWorkspace(research: boolean): void {
   if (researchActive === research) return; researchActive = research; app!.dataset.workspace = research ? 'research' : 'ordinary';
   element('research-workspace').classList.toggle('selected', research); element('ordinary-workspace').classList.toggle('selected', !research);
   if (research) {
+    waveWorkspace?.setActive(false);
     for (const actor of [controller, twoPathController, polarizationController, polarizedTwoPathController]) actor.deactivate();
     polarizationPlayback.detach(); scene?.setFrameCallback(null); idealWorkspace!.enter();
   } else {
     idealWorkspace!.leave();
+    waveWorkspace?.setActive(mode === 'sequential');
     if (mode === 'sequential') { render(controller.state); void controller.validateInitial(); }
     else if (mode === 'two_path') { renderTwoPath(twoPathController.state); void twoPathController.activate(); }
     else if (mode === 'polarization') { renderPolarization(polarizationController.state); void polarizationController.activate(); }
@@ -1763,6 +1799,7 @@ function stateSnapshot(): object {
     mode,
     workspace: researchActive ? 'research' : 'ordinary',
     idealPolarization: idealWorkspace?.snapshot() ?? null,
+    waveField: waveWorkspace?.snapshot() ?? null,
     candidate: cloneExperiment(state.candidate), validatedDraft: state.validatedDraft ? cloneExperiment(state.validatedDraft) : null,
     revision: state.revision, selection: state.selection, status: state.status,
     pendingValidation: state.pendingValidation, invalidEdits: { ...state.invalidEdits },
@@ -1796,4 +1833,4 @@ Object.defineProperty(window, '__benchDebug', { value: Object.freeze({
   dualPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.dualPixelWorld(port, row, column) ?? null,
   polarizedTwoPathPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.polarizedTwoPathPixelWorld(port, row, column) ?? null,
 }), writable: false, configurable: false });
-window.addEventListener('pagehide', () => { disposed = true; idealWorkspace?.dispose(); documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });
+window.addEventListener('pagehide', () => { disposed = true; waveWorkspace?.dispose(); idealWorkspace?.dispose(); documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });

@@ -1925,6 +1925,81 @@ library environment, not cross-version RNG or cross-platform bitwise equality.
 The apparatus is a functional schematic, not propagation, reflected-frame
 transformation, diffraction, detector noise, hardware LUT or calibration.
 
+### 3.22 W1 computed wave-field sections
+
+W1 is an optional observation of the unchanged §3.17 sequential calculation.
+Its first supported train is exactly a Gaussian source at z=0, one circular or
+rectangular aperture, one ideal thin lens, and the observation plane, in stored
+nondecreasing-z order. Negative finite nonzero focal lengths are permitted by
+the existing lens model. W1 rejects other trains and grids above 128 samples
+on either axis; it never changes the submitted grid or optical parameters.
+The ordinary Sequential domain and limits remain unchanged.
+
+Each accepted operation calls public `run_experiment` exactly once with three
+`record_fields` selectors: `source`, `after:<aperture-id>`, and
+`after:<lens-id>`. The separately returned observation is authoritative.
+The six required event sections are source, before/after aperture,
+before/after lens, and observation. Their ordered identities remain distinct
+even at identical z; intensity equality at a phase-only lens does not imply
+complex-field equality. The existing V0 record-selector cap remains four;
+observation is not an intermediate selector.
+
+At most 19 explicitly specified interior positions supplement those six
+events. Interiors lie strictly within positive-length free-space gaps.
+The default plan apportions 19 samples across the three positive gaps in
+proportion to length using floor plus largest remainders, with earlier gaps
+winning equal remainders; positions divide each gap uniformly. Zero-length
+gaps receive no interiors. All-zero longitudinal spans retain all six events.
+Submitted positions and ordered section IDs are echoed in the result.
+
+For an interior absolute position z, the upstream complex field is the source,
+the field after the aperture, or the field after the lens for the corresponding
+gap. Propagation uses public ASM with separation z−z_anchor ≥0 and explicit
+`pad_factor=1`. Every section derives from an actual complex field; no
+source-to-detector image interpolation supplies scientific samples. The
+terminal complex field remains the original V0 observation by object and
+byte identity, not a replacement obtained by sampled stepping.
+
+All existing SI, complex128/float64, phase, Fourier, `(ny,nx)`, pixel-center
+coordinate and complete periodic-window conventions apply. Arrays transported
+to the browser are raw float64 intensity `(section,ny,nx)` plus physical x/y
+axes. Full intermediate complex arrays are not transported. Norms use the
+canonical sampled `sum(abs(U)**2)*dx*dy`; intensity uses the field's public
+pointwise intensity. Their last rounding bits need not equal a different
+browser reduction. Canonical event norms, signed differences and dark null
+ratios remain authoritative. Interior differences compare to their upstream
+anchor, not an unrelated neighboring section. Aperture loss remains physical
+transmission; signed free-space residuals are not inferred escaped power.
+
+The axial profile displays sampled on-axis intensity (the coordinate-zero
+pixel), transverse maximum intensity and total sampled norm. Co-located event
+records remain distinct. A clipped/diffracted field is not assigned a universal
+Gaussian waist. The cursor selects only returned section identities and never
+requests propagation. Sheets and longitudinal display interpolation use one
+common initial range 0–3 amplitude-unit² retained across recomputation;
+manual/Auto changes are explicit. Raw values and saturation remain visible.
+Longitudinal curtains stop/start on the correct before/after element sides,
+so display interpolation never bridges an aperture transmission jump.
+Glow/opacity and mounted equipment are labelled presentation, not numerical
+scattering, volume-field or ray-tracing measurements. Quantitative detector
+textures and readouts are not glow-enhanced or independently normalized.
+
+W1 adds the distinct version-1 `OHLABWF\0` binary frame and
+`/api/w1/simulate` route. It does not alter old wire or settings-document
+contracts. A complete validated frame is required before publication.
+The same actual-worker-lifetime gate remains held through computation and
+encoding even if the HTTP handler disconnects. At most 25 sections and
+128×128 samples bound the raw intensity stack to 3,276,800 bytes. Aggregate
+app-owned admission remains 16 MiB persistent / 32 MiB transient; this is
+declared ownership accounting, not total browser heap or GPU-driver memory.
+
+These observations preserve the existing ideal/paraxial and discrete-window
+limitations. Hard clipping, inadequate pitch and periodic wraparound require
+fixture-specific sensitivity evidence. Numerical agreement and visual
+plausibility do not establish general continuous-solution accuracy.
+
+---
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -1972,6 +2047,7 @@ historical scope. It adds no polarized propagation or general 3D scene.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.15 | 2026-10-18 | **§3.22 added** — bounded event-aware wave-field section observation, original V0 terminal ownership, explicit anchor propagation, raw shared-scale intensity and app-owned resource limits. | Approved W1 integrated visualization; existing optical implementations, conventions, old wire/settings/bundle contracts and historical evidence preserved. |
 | 0.14 | 2026-10-17 | **§3.21 added** — declared probability-weighted uncentered second moment, signed Stokes/dark-state/domain policy and one bounded seeded Gaussian finite ensemble. | Approved A-only independent theoretical workspace. Existing scalar/Jones/interference implementations, conventions and historical evidence are preserved; Figure 2a comparison remains separately gated. |
 | 0.13 | 2026-10-13 | **§3.20 added** — fixed ideal polarized two-path composition, exact typed records/checkpoints/action histories, supported scalar/Jones domain, public pad1 propagation and Jones reuse, raw outputs and input-normalized budgets. | Approved V2f numerical integration. Existing scalar/Jones implementations, signs, initializers/tests, wire/document/bundle contracts and historical evidence remain unchanged; V2g requires separate approval. |
 | 0.12 | 2026-10-06 | **§3.19 added** — ideal common-plane Jones components, public constructor ownership, arbitrary complex coefficients, explicit eigenaxis phase reference, polarizer/retarder actions, intensity/norm/causality-neutral ratios, bounded arithmetic and focused weak-signal references. Scope notes distinguish this addition from the unchanged scalar model. | Approved V2c numerical foundation. Existing scalar signs, implementations/tests/exports, schemas, UI/protocols, replay and historical evidence remain unchanged; V2d is deferred. |
