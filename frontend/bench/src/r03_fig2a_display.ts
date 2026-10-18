@@ -44,3 +44,7 @@ export function r03ResultSnapshot(result: R03Result | null): object | null { ret
   stages: structuredClone(result.stages), population: { ...result.population }, provenance: structuredClone(result.provenance), limitations: [...result.limitations],
 } : null; }
 export function formatR03Number(value: number | null): string { return value === null ? 'undefined' : Object.is(value, -0) ? '−0' : value.toPrecision(10); }
+/** Readout only: never use these strings as editable or submitted values. */
+export function formatR03Readout(value: number | null, fullPrecision = false): string {
+  return value === null ? 'undefined (null)' : Object.is(value, -0) ? '−0' : value.toPrecision(fullPrecision ? 17 : 5);
+}

@@ -1732,6 +1732,7 @@ function admitIdeal(extraPersistent: number, extraTransient: number): void {
     own + extraTransient + (reservation?.transientReservedBytes ?? 0));
 }
 idealWorkspace = new R03Workspace(element('r03-workspace'), idealController, scene, { admit: admitIdeal,
+  chrome: { navigation: app.querySelector<HTMLElement>('.workspace-navigation')!, releaseButton: element<HTMLButtonElement>('release-results'), releaseStatus: element('release-status') },
   reserveOperation(persistent, transient) { admitIdeal(persistent, transient); scientificReservations = { persistent, transient }; } });
 function switchWorkspace(research: boolean): void {
   if (researchActive === research) return; researchActive = research; app!.dataset.workspace = research ? 'research' : 'ordinary';

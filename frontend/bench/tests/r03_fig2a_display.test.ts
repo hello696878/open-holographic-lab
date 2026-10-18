@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
-import { R03_PHASE_DISPLAY_BYTES, phaseColor, prepareR03Display, r03OwnedResults } from '../src/r03_fig2a_display';
+import { R03_PHASE_DISPLAY_BYTES, phaseColor, prepareR03Display, r03OwnedResults, formatR03Readout } from '../src/r03_fig2a_display';
 import { createR03Apparatus } from '../src/r03_fig2a_apparatus';
 import { R03_DEFAULT, type R03Result } from '../src/r03_fig2a_contracts';
 function result(): R03Result { return { requestId: 'display-only-fixture', experimentSha256: 'a'.repeat(64), experiment: { ...R03_DEFAULT },
@@ -9,6 +9,13 @@ function result(): R03Result { return { requestId: 'display-only-fixture', exper
 function canvas(failed = false): HTMLCanvasElement { return { width: 0, height: 0, dataset: {}, setAttribute() {}, getContext() { return failed ? null : {
   putImageData() {}, fillRect() {}, fillText() {}, set fillStyle(_v: string) {}, set font(_v: string) {}, set textAlign(_v: string) {} }; } } as unknown as HTMLCanvasElement; }
 describe('phase identity, display ownership and original apparatus', () => {
+  it('separates compact readouts from exact dark, signed zero and unclamped roundoff inspection', () => {
+    const value = 1 + Number.EPSILON;
+    expect(formatR03Readout(null)).toBe('undefined (null)'); expect(formatR03Readout(-0, true)).toBe('−0');
+    expect(formatR03Readout(value, true)).toBe('1.0000000000000002');
+    expect(formatR03Readout(0.5104123456789)).toBe('0.51041');
+    expect(Number(formatR03Readout(value, true))).toBe(value);
+  });
   it('maps exact known phase endpoints without using RNG, rescaling samples or clamping', () => {
     expect(phaseColor(0)).toEqual([107, 85, 171]); expect(phaseColor(Math.PI)).toEqual([204, 193, 99]);
     expect(phaseColor(2 * Math.PI), 'A_MODULO_ROUNDOFF_ENDPOINT').toEqual(phaseColor(0));

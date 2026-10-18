@@ -4,8 +4,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { R03_IDENTITY } from '../src/r03_fig2a_contracts';
 const root = resolve('../..');
-const evidence = resolve(root, process.env.R03_EVIDENCE_DIR ?? 'runs/r03_ideal_polarization_impl_01/browser');
-const figures = resolve(root, process.env.R03_FIGURE_DIR ?? 'docs/handoffs/r03_fig2a/figures');
+const evidence = resolve(root, process.env.R03_EVIDENCE_DIR ?? 'runs/research_workspace_ux_v1_01/browser/ideal');
+const figures = resolve(root, process.env.R03_FIGURE_DIR ?? resolve(evidence, 'figures'));
 const smoke = process.env.R03_SMOKE === '1';
 test.use({ viewport: { width: 1760, height: 1100 }, video: { mode: 'on', size: { width: 1280, height: 800 } } });
 function save(name: string, value: unknown): void { mkdirSync(evidence, { recursive: true }); writeFileSync(resolve(evidence, `${name}.json`), JSON.stringify(value, null, 2), { flag: 'wx' }); }
@@ -14,8 +14,9 @@ const ideal = async (page: Page): Promise<any> => (await snapshot(page)).idealPo
 const computing = (path: string) => /\/api\/(?:v1|v2b|v2d|v2g)\/(?:simulate|sweep)$/.test(path) || path === '/api/research/r03-fig2a/simulate';
 async function ready(page: Page): Promise<void> { await expect.poll(async () => { const state = await ideal(page); return !!state.validatedDraft && !state.pendingValidation && !state.active; }).toBe(true); await expect(page.getByTestId('r03-compute')).toBeEnabled(); }
 async function load(page: Page): Promise<void> { await page.goto('/'); await page.getByTestId('research-workspace').click(); await ready(page); }
-async function edit(page: Page, key: string, text: string): Promise<void> { await page.getByTestId(`r03-edit-${key}`).fill(text); await page.getByTestId(`r03-edit-${key}`).blur(); await expect.poll(async () => (await ideal(page)).pendingValidation).toBe(false); }
+async function edit(page: Page, key: string, text: string): Promise<void> { const field = page.getByTestId(`r03-edit-${key}`); if (!await field.isVisible()) await page.getByTestId('r03-all-parameters').click(); await field.fill(text); await field.blur(); await expect.poll(async () => (await ideal(page)).pendingValidation).toBe(false); }
 async function releaseResults(page: Page): Promise<void> {
+  if (await page.getByTestId('r03-workspace').isVisible()) { await page.getByTestId('release-results').click(); return; }
   const details = page.locator('.release-panel');
   if (!await details.evaluate(node => (node as HTMLDetailsElement).open)) await details.locator('summary').click();
   await page.getByTestId('release-results').click();
@@ -28,7 +29,8 @@ async function compute(page: Page, label: string): Promise<any> {
 }
 test.beforeEach(async ({ page }) => { await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:8510' ? route.continue() : route.abort('blockedbyclient')); });
 test('genuine mounted ideal workspace uses one finite response for mask and all readouts', async ({ page, browser }, info) => {
-  await load(page); await expect(page.getByRole('heading', { name: R03_IDENTITY, exact: true })).toBeVisible();
+  await load(page); await page.getByTestId('r03-tab-evidence').click(); await expect(page.getByRole('heading', { name: R03_IDENTITY, exact: true })).toBeVisible();
+  await page.getByTestId('r03-tab-phase').click();
   await expect(page.getByTestId('r03-viewport')).toBeVisible(); expect((await snapshot(page)).scene.researchActive).toBe(true);
   const calls: string[] = []; page.on('request', request => { const path = new URL(request.url()).pathname; if (request.method() === 'POST' && computing(path)) calls.push(path); });
   const actual = await compute(page, smoke ? 'postcommit_actual' : 'actual'), state = await ideal(page);

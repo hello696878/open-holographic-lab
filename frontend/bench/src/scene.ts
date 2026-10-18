@@ -8,6 +8,7 @@ import { createDetectorTexture, prepareDualTextures, type ColorLimits } from './
 import type { DecodedTwoPathResult, TwoPathExperiment } from './two_path_contracts';
 import type { DecodedPolarizationResult, PolarizationExperiment } from './polarization_contracts';
 import type { DecodedPolarizedTwoPathResult, PolarizedTwoPathExperiment } from './polarized_two_path_contracts';
+import { calculateResearchCameraFit, researchBoundsCorners, type ResearchCameraView } from './r03_fig2a_camera';
 
 export interface SceneCallbacks {
   select: (ids: string[]) => void;
@@ -69,8 +70,12 @@ export class BenchScene {
   private disposed = false;
   private researchGroup: THREE.Group | null = null;
   private researchHost: HTMLElement | null = null;
-  private oldCamera: { position: THREE.Vector3; target: THREE.Vector3; near: number; far: number; maxDistance: number } | null = null;
-  private researchCamera: { position: THREE.Vector3; target: THREE.Vector3 } | null = null;
+  private oldCamera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; near: number; far: number; minDistance: number; maxDistance: number } | null = null;
+  private researchCamera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; near: number; far: number; minDistance: number; maxDistance: number } | null = null;
+  private researchOverviewBounds: THREE.Box3 | null = null;
+  private researchFraming: { view: ResearchCameraView; bounds: THREE.Box3; aspect: number; topTiltRad: number } | null = null;
+  private researchFitCount = 0;
+  private researchLabelUpdater: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null = null;
   private initializedCamera = false;
   private draftValidated = false;
   private readonly onPointerDown: (event: PointerEvent) => void;
@@ -142,17 +147,26 @@ export class BenchScene {
     return material;
   }
 
+  private settleResearchCameraMotion(): void {
+    const damping = this.controls.enableDamping;
+    this.controls.enableDamping = false;
+    try { this.controls.update(); } finally { this.controls.enableDamping = damping; }
+  }
+
   /** Reuse the one renderer; research geometry/resources remain owned by its workspace. */
   showResearchApparatus(host: HTMLElement, group: THREE.Group): void {
     if (this.disposed || this.lost) throw new Error('Shared WebGL2 renderer unavailable');
     if (!this.researchGroup) {
-      this.cancelDrag(); this.frameCallback = null;
-      this.oldCamera = { position: this.camera.position.clone(), target: this.controls.target.clone(), near: this.camera.near,
-        far: this.camera.far, maxDistance: this.controls.maxDistance };
+      this.cancelDrag(); this.frameCallback = null; this.settleResearchCameraMotion();
+      this.oldCamera = { position: this.camera.position.clone(), target: this.controls.target.clone(), up: this.camera.up.clone(), near: this.camera.near,
+        far: this.camera.far, minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance };
       this.researchGroup = group; this.scene.add(group); this.bench.visible = this.rail.visible = false;
       this.scene.background = new THREE.Color('#122c3b'); this.camera.near = .01; this.camera.far = 100; this.controls.maxDistance = 40;
       this.camera.position.copy(this.researchCamera?.position ?? new THREE.Vector3(5.3, 5.8, 7.4));
       this.controls.target.copy(this.researchCamera?.target ?? new THREE.Vector3(.2, .5, -.15));
+      this.camera.up.copy(this.researchCamera?.up ?? new THREE.Vector3(0, 1, 0));
+      if (this.researchCamera) { this.camera.near = this.researchCamera.near; this.camera.far = this.researchCamera.far;
+        this.controls.minDistance = this.researchCamera.minDistance; this.controls.maxDistance = this.researchCamera.maxDistance; }
       const damping = this.controls.enableDamping; this.controls.enableDamping = false; this.controls.update(); this.controls.enableDamping = damping;
     } else if (this.researchGroup !== group) throw new Error('Another research apparatus is already attached');
     this.researchHost = host; host.append(this.canvas); this.resizeObserver.observe(host); this.resize();
@@ -160,17 +174,47 @@ export class BenchScene {
 
   hideResearchApparatus(): void {
     if (!this.researchGroup) return;
-    this.researchCamera = { position: this.camera.position.clone(), target: this.controls.target.clone() };
+    this.settleResearchCameraMotion();
+    this.researchCamera = { position: this.camera.position.clone(), target: this.controls.target.clone(), up: this.camera.up.clone(),
+      near: this.camera.near, far: this.camera.far, minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance };
+    this.researchLabelUpdater = null;
     this.researchGroup.removeFromParent(); this.researchGroup = null;
     if (this.researchHost) this.resizeObserver.unobserve(this.researchHost); this.researchHost = null;
     this.host.append(this.canvas); this.bench.visible = this.rail.visible = true; this.scene.background = new THREE.Color('#f1f6fa');
     if (this.oldCamera) { this.camera.position.copy(this.oldCamera.position); this.controls.target.copy(this.oldCamera.target);
-      this.camera.near = this.oldCamera.near; this.camera.far = this.oldCamera.far; this.controls.maxDistance = this.oldCamera.maxDistance;
+      this.camera.up.copy(this.oldCamera.up); this.camera.near = this.oldCamera.near; this.camera.far = this.oldCamera.far;
+      this.controls.minDistance = this.oldCamera.minDistance; this.controls.maxDistance = this.oldCamera.maxDistance;
       const damping = this.controls.enableDamping; this.controls.enableDamping = false; this.controls.update(); this.controls.enableDamping = damping; }
     this.oldCamera = null; this.resize();
   }
 
   assertResearchReady(): void { if (!this.researchGroup || this.lost || this.disposed) throw new Error('Shared research renderer is unavailable; numerical data retained'); }
+
+  /** Called only on initial research entry or an explicit view command. */
+  fitResearchApparatus(bounds: THREE.Box3, view: ResearchCameraView): void {
+    this.assertResearchReady();
+    const fit = calculateResearchCameraFit(bounds, this.camera, view,
+      view === 'focus' ? this.camera.position.clone().sub(this.controls.target) : undefined);
+    if (view !== 'focus') this.researchOverviewBounds = bounds.clone();
+    const damping = this.controls.enableDamping;
+    // Public update with damping disabled consumes outstanding gesture deltas
+    // before assigning this explicit view; no private controls manipulation.
+    this.controls.enableDamping = false;
+    try {
+      this.controls.update();
+      this.camera.position.copy(fit.position); this.camera.up.copy(fit.up); this.controls.target.copy(fit.target);
+      this.camera.near = fit.near; this.camera.far = fit.far;
+      this.controls.minDistance = fit.minDistance; this.controls.maxDistance = fit.maxDistance;
+      this.camera.updateProjectionMatrix(); this.controls.update(); this.camera.updateMatrixWorld(true);
+    } finally { this.controls.enableDamping = damping; }
+    this.researchFraming = { view, bounds: bounds.clone(), aspect: fit.aspect, topTiltRad: fit.topTiltRad };
+    ++this.researchFitCount;
+  }
+
+  /** Shares the existing frame loop; cleared automatically on research leave. */
+  setResearchLabelUpdater(callback: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null): void {
+    this.researchLabelUpdater = callback;
+  }
 
   private disposeGroup(group: THREE.Group): void {
     const geometries = new Set<THREE.BufferGeometry>();
@@ -832,8 +876,8 @@ export class BenchScene {
 
   resetCamera(): void {
     if (this.researchGroup) {
-      const damping = this.controls.enableDamping; this.controls.enableDamping = false; this.controls.update();
-      this.camera.position.set(5.3, 5.8, 7.4); this.controls.target.set(.2, .5, -.15); this.controls.update(); this.controls.enableDamping = damping; return;
+      if (this.researchOverviewBounds) this.fitResearchApparatus(this.researchOverviewBounds, 'overview');
+      return;
     }
     if (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment && !this.polarizedTwoPathExperiment) return;
     // Consume residual public OrbitControls damping before assigning the reset view.
@@ -890,7 +934,12 @@ export class BenchScene {
     if (this.disposed) return;
     this.frame = requestAnimationFrame(this.animate);
     if (!this.lost) {
-      try { this.frameCallback?.(time); this.controls.update(); this.renderer.render(this.scene, this.camera); }
+      try { this.frameCallback?.(time); this.controls.update();
+        if (this.researchGroup && this.researchHost) {
+          this.camera.updateMatrixWorld(true);
+          this.researchLabelUpdater?.(this.camera, Math.max(1, this.researchHost.clientWidth), Math.max(1, this.researchHost.clientHeight));
+        }
+        this.renderer.render(this.scene, this.camera); }
       catch (error) { this.lost = true; this.callbacks.presentationFailure(`3D 顯示失敗：${String(error)}`); }
     }
   };
@@ -921,6 +970,7 @@ export class BenchScene {
 
   /** Read-only browser evidence, without simulation or state-mutation hooks. */
   snapshot(): object {
+    if (this.researchGroup) this.camera.updateMatrixWorld(true);
     const gl = this.renderer.getContext();
     const extension = gl.getExtension('WEBGL_debug_renderer_info');
     const identities: { id: string; position: number[] }[] = [];
@@ -932,6 +982,13 @@ export class BenchScene {
     return {
       available: true, contextLost: this.lost, textureRequestId: this.result?.requestId ?? null,
       researchActive: this.researchGroup !== null,
+      researchLabelCallbacks: this.researchLabelUpdater ? 1 : 0,
+      researchFraming: this.researchGroup && this.researchFraming ? {
+        view: this.researchFraming.view, bounds: { min: this.researchFraming.bounds.min.toArray(), max: this.researchFraming.bounds.max.toArray() },
+        projectedCorners: researchBoundsCorners(this.researchFraming.bounds).map(point => point.project(this.camera).toArray()),
+        fitAspect: this.researchFraming.aspect, currentAspect: this.camera.aspect, fitCount: this.researchFitCount,
+        topTiltRad: this.researchFraming.topTiltRad,
+      } : null,
       mode: this.mode,
       polarizedTwoPath: { view: this.polarizedTwoPathView,
         textureRequestIds: this.polarizedTwoPathTextures ? [this.polarizedTwoPathResult?.requestId, this.polarizedTwoPathResult?.requestId] : [null, null],
@@ -957,7 +1014,8 @@ export class BenchScene {
         version: gl.getParameter(gl.VERSION), toneMapping: this.renderer.toneMapping,
         outputColorSpace: this.renderer.outputColorSpace },
       camera: { position: this.camera.position.toArray(), target: this.controls.target.toArray(),
-        aspect: this.camera.aspect },
+        aspect: this.camera.aspect, up: this.camera.up.toArray(), near: this.camera.near, far: this.camera.far,
+        minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance },
       drawingBuffer: { width: this.canvas.width, height: this.canvas.height, dpr: this.renderer.getPixelRatio() },
       identities,
       rail: this.handle ? { id: this.selection, position: this.handle.position.toArray(),
@@ -983,6 +1041,7 @@ export class BenchScene {
     this.canvas.removeEventListener('webglcontextlost', this.onContextLost);
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.controls.dispose();
+    this.researchLabelUpdater = null;
     this.frameCallback = null;
     this.updateResult(null, { min: 0, max: 10 });
     this.detachDualResult();
