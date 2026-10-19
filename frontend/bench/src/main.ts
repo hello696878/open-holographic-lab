@@ -29,192 +29,192 @@ import { WaveFieldWorkspace } from './wave_field_workspace';
 import { W1_EXAMPLE } from './wave_field_contracts';
 
 const app = document.querySelector<HTMLDivElement>('#app');
-if (!app) throw new Error('缺少應用程式容器。');
+if (!app) throw new Error('Application container is missing.');
 app.innerHTML = `
-  <header class="app-header"><div><span class="eyebrow">OPEN HOLOGRAPHIC LAB / FOUR EXPERIMENT MODES</span><h1>虛擬光學實驗台</h1></div>
-    <div class="header-detail">單色 · 純量 · 同軸前向光路<br><span>本機運作／明確提交</span></div></header>
+  <header class="app-header"><div><span class="eyebrow">OPEN HOLOGRAPHIC LAB / FOUR EXPERIMENT MODES</span><h1>Open Holographic Lab</h1></div>
+    <div class="header-detail">Monochromatic · Scalar · Aligned Forward Optics<br><span>Local Operation / Explicit Submission</span></div></header>
   <main>
-    <nav class="workspace-navigation" aria-label="工作區"><button id="ordinary-workspace" data-testid="ordinary-workspace" class="selected">四種光學模式</button>
-      <button id="research-workspace" data-testid="research-workspace">理想統計偏振 · Research workspace</button></nav>
-    <section class="toolbar" aria-label="實驗控制">
-      <label>模式 <select id="mode" data-testid="mode"><option value="sequential">順序光路（Sequential）</option><option value="two_path">兩路干涉（Two-path）</option><option value="polarization">理想偏振（Jones polarization）</option><option value="polarized_two_path">偏振兩路干涉（Polarized two-path）</option></select></label>
-      <label class="sequential-only">載入預設 <select id="preset" data-testid="preset"></select></label>
-      <button id="simulate" class="primary sequential-only" data-testid="simulate">模擬（Simulate）</button>
+    <nav class="workspace-navigation" aria-label="Workspaces"><button id="ordinary-workspace" data-testid="ordinary-workspace" class="selected">Optical Experiments</button>
+      <button id="research-workspace" data-testid="research-workspace">Ideal Statistical Polarization</button></nav>
+    <section class="toolbar" aria-label="Experiment Controls">
+      <label>Mode <select id="mode" data-testid="mode"><option value="sequential">Sequential Optics</option><option value="two_path">Two-Path Interference</option><option value="polarization">Jones Polarization</option><option value="polarized_two_path">Polarized Interference</option></select></label>
+      <label class="sequential-only">Load Preset <select id="preset" data-testid="preset"></select></label>
+      <button id="simulate" class="primary sequential-only" data-testid="simulate">Simulate</button>
       <button id="w1-view" class="sequential-only" data-testid="w1-view" aria-pressed="false">Computed Sections</button>
       <output id="status" class="sequential-only" data-testid="status" aria-live="polite"></output>
-      <button id="tp-simulate" class="primary two-path-only" data-testid="tp-simulate">模擬兩埠（Simulate）</button>
-      <button id="tp-sweep" class="two-path-only" data-testid="tp-sweep">相位掃描（17 points）</button>
+      <button id="tp-simulate" class="primary two-path-only" data-testid="tp-simulate">Simulate</button>
+      <button id="tp-sweep" class="two-path-only" data-testid="tp-sweep">Phase Sweep (17 points)</button>
       <output id="tp-status" class="two-path-only" data-testid="tp-status" aria-live="polite"></output>
-      <button id="pl-simulate" class="primary polarization-only" data-testid="pl-simulate">偏振模擬（Simulate）</button>
-      <button id="pl-sweep" class="polarization-only" data-testid="pl-sweep">分析器角度掃描（13 points）</button>
+      <button id="pl-simulate" class="primary polarization-only" data-testid="pl-simulate">Simulate</button>
+      <button id="pl-sweep" class="polarization-only" data-testid="pl-sweep">Analyzer Sweep (13 points)</button>
       <output id="pl-status" class="polarization-only" data-testid="pl-status" aria-live="polite"></output>
-      <button id="pt-simulate" class="primary polarized-two-path-only" data-testid="pt-simulate">偏振兩路模擬（Simulate）</button>
-      <button id="pt-sweep" class="polarized-two-path-only" data-testid="pt-sweep">相位掃描（17 points）</button>
+      <button id="pt-simulate" class="primary polarized-two-path-only" data-testid="pt-simulate">Simulate</button>
+      <button id="pt-sweep" class="polarized-two-path-only" data-testid="pt-sweep">Phase Sweep (17 points)</button>
       <output id="pt-status" class="polarized-two-path-only" data-testid="pt-status" aria-live="polite"></output>
     </section>
-    <details class="panel release-panel"><summary>釋放保留的計算結果 · 保留設定與文件</summary>
-      <p>此操作移除所有模式的目前與先前計算、掃描、讀值及圖像；保留實驗草稿、無效編輯文字、相機、匯入預覽與已準備的設定下載。計算中不可使用。</p>
-      <button id="release-results" data-testid="release-results">釋放所有模式保留的計算結果；保留設定與文件</button>
+    <details class="panel release-panel"><summary>Release Results · Keep Settings and Documents</summary>
+      <p>Removes current and previous results, sweeps, readouts, and images across all modes. Preserves experiment drafts, invalid input text, camera views, import previews, and prepared settings downloads. Unavailable during computation.</p>
+      <button id="release-results" data-testid="release-results">Release Results</button>
       <output id="release-status" data-testid="release-status" aria-live="polite"></output></details>
     <section id="r03-workspace" data-testid="r03-workspace" hidden></section>
     <p id="error" class="error" data-testid="error" role="alert" hidden></p>
     <p id="render-error" class="error" data-testid="render-error" role="alert" hidden></p>
     <details id="documents" class="panel document-panel" data-testid="documents">
-      <summary data-testid="doc-toggle">實驗設定檔 · 匯出目前草稿／匯入設定</summary>
-      <p class="muted">一個檔案保存一個實驗的設定，不包含計算結果或掃描。未匯出的草稿不會自動保存。</p>
+      <summary data-testid="doc-toggle">Experiment Settings · Export Draft / Import Settings</summary>
+      <p class="muted">Each file stores settings for one experiment, without results or sweeps. Drafts are not saved automatically; export them to keep a copy.</p>
       <div class="document-fields">
-        <label>設定標題 <input id="doc-title" data-testid="doc-title" type="text" autocomplete="off"></label>
-        <label>備註 <textarea id="doc-notes" data-testid="doc-notes" rows="2"></textarea></label>
+        <label>Document Title <input id="doc-title" data-testid="doc-title" type="text" autocomplete="off"></label>
+        <label>Notes <textarea id="doc-notes" data-testid="doc-notes" rows="2"></textarea></label>
       </div>
       <div class="document-actions">
-        <button id="doc-export" data-testid="doc-export">匯出實驗設定（目前有效草稿）</button>
-        <label>匯入實驗設定 <input id="doc-file" data-testid="doc-file" type="file" accept=".json,application/json"></label>
-        <button id="doc-cancel" data-testid="doc-cancel">取消匯入</button>
+        <button id="doc-export" data-testid="doc-export">Export Valid Draft</button>
+        <label>Import Settings <input id="doc-file" data-testid="doc-file" type="file" accept=".json,application/json"></label>
+        <button id="doc-cancel" data-testid="doc-cancel">Cancel Import</button>
       </div>
       <output id="doc-status" data-testid="doc-status" aria-live="polite"></output>
       <p id="doc-error" data-testid="doc-error" class="error" role="alert" hidden></p>
       <div id="doc-download-area" data-testid="doc-download-area" hidden><p id="doc-download-label"></p>
-        <a id="doc-download" data-testid="doc-download">下載實驗設定</a>
-        <button id="doc-dismiss" data-testid="doc-dismiss">關閉下載連結</button>
+        <a id="doc-download" data-testid="doc-download">Download Settings</a>
+        <button id="doc-dismiss" data-testid="doc-dismiss">Dismiss Download Link</button>
       </div>
       <div id="doc-preview" data-testid="doc-preview" hidden>
-        <h3>待套用設定</h3><pre id="doc-preview-text" data-testid="doc-preview-text"></pre>
-        <label class="document-ack"><input id="doc-ack" data-testid="doc-ack" type="checkbox">我了解這會取代該模式目前的設定，包括尚未匯出的編輯。</label>
-        <button id="doc-apply" data-testid="doc-apply" class="primary" disabled>取代目前設定並套用</button>
+        <h3>Settings Preview</h3><pre id="doc-preview-text" data-testid="doc-preview-text"></pre>
+        <label class="document-ack"><input id="doc-ack" data-testid="doc-ack" type="checkbox">I understand that this replaces the mode's current settings, including edits that have not been exported.</label>
+        <button id="doc-apply" data-testid="doc-apply" class="primary" disabled>Replace Settings and Apply</button>
       </div>
     </details>
     <section class="workspace">
-      <aside class="panel components"><h2>光路列表</h2><p class="muted">依列出的順序作用；同位置 ID 保留。</p>
+      <aside class="panel components"><h2>Optical Train</h2><p class="muted">Elements act in the listed order. Distinct IDs are preserved at shared positions.</p>
         <div id="components" data-testid="components"></div>
-        <div class="add-controls"><select id="add-kind" data-testid="add-kind" aria-label="新增元件種類">
-          <option value="thin_lens">薄透鏡（Thin lens）</option><option value="circular_aperture">圓形孔徑</option><option value="rectangular_aperture">矩形孔徑</option></select>
-          <button id="add" data-testid="add">新增元件</button><button id="delete" data-testid="delete">刪除選取元件</button></div>
-        <details class="sampling" open><summary>取樣與波長</summary><div id="general-fields"></div></details>
+        <div class="add-controls"><select id="add-kind" data-testid="add-kind" aria-label="Element Type to Add">
+          <option value="thin_lens">Thin Lens</option><option value="circular_aperture">Circular Aperture</option><option value="rectangular_aperture">Rectangular Aperture</option></select>
+          <button id="add" data-testid="add">Add Element</button><button id="delete" data-testid="delete">Delete Selected Element</button></div>
+        <details class="sampling" open><summary>Sampling and Wavelength</summary><div id="general-fields"></div></details>
       </aside>
-      <aside class="panel two-path-controls two-path-only"><h2>兩路實驗參數</h2>
-        <label>預設 <select id="tp-preset" data-testid="tp-preset"></select></label>
-        <label>光源 <select id="tp-source-kind" data-testid="tp-source-kind"><option value="uniform">均勻（Uniform）</option><option value="gaussian">Gaussian</option></select></label>
+      <aside class="panel two-path-controls two-path-only"><h2>Two-Path Parameters</h2>
+        <label>Preset <select id="tp-preset" data-testid="tp-preset"></select></label>
+        <label>Source <select id="tp-source-kind" data-testid="tp-source-kind"><option value="uniform">Uniform</option><option value="gaussian">Gaussian</option></select></label>
         <div id="tp-fields" class="tp-fields"></div>
         <div class="phase-buttons"><button id="tp-phase-0" data-testid="tp-phase-0">0 rad</button><button id="tp-phase-halfpi" data-testid="tp-phase-halfpi">π/2 rad</button><button id="tp-phase-pi" data-testid="tp-phase-pi">π rad</button></div>
-        <p id="tp-phase-note" class="muted"></p><p class="muted">編輯只驗證；模擬與掃描分開提交。瀏覽器 -0 相位採用 +0。非零相位不繞回。</p>
+        <p id="tp-phase-note" class="muted"></p><p class="muted">Edits validate the draft only. Simulations and sweeps require separate submissions. Browser phase −0 is represented as +0; nonzero phases are not wrapped.</p>
       </aside>
-      <aside class="panel polarization-only polarization-controls"><h2>入射與有序元件</h2>
-        <label>預設 <select id="pl-preset" data-testid="pl-preset"></select></label>
-        <label>光源 <select id="pl-source-kind" data-testid="pl-source-kind"><option value="uniform">均勻 Uniform</option><option value="gaussian">Gaussian at waist</option></select></label>
-        <label>複數係數預設 <select id="pl-coefficients-preset" data-testid="pl-coefficients-preset"></select></label>
+      <aside class="panel polarization-only polarization-controls"><h2>Input and Ordered Elements</h2>
+        <label>Preset <select id="pl-preset" data-testid="pl-preset"></select></label>
+        <label>Source <select id="pl-source-kind" data-testid="pl-source-kind"><option value="uniform">Uniform</option><option value="gaussian">Gaussian at waist</option></select></label>
+        <label>Complex Coefficient Preset <select id="pl-coefficients-preset" data-testid="pl-coefficients-preset"></select></label>
         <div id="pl-fields"></div><div id="pl-elements" data-testid="pl-elements"></div>
-        <div class="add-controls"><select id="pl-add-kind" data-testid="pl-add-kind" aria-label="偏振元件種類"><option value="linear_polarizer">線偏振片</option><option value="linear_retarder">線性延遲器</option></select>
-          <button id="pl-add" data-testid="pl-add">新增元件</button><button id="pl-delete" data-testid="pl-delete">刪除選取元件</button>
-          <button id="pl-up" data-testid="pl-up">選取元件往前</button><button id="pl-down" data-testid="pl-down">選取元件往後</button></div>
+        <div class="add-controls"><select id="pl-add-kind" data-testid="pl-add-kind" aria-label="Polarization Element Type"><option value="linear_polarizer">Linear Polarizer</option><option value="linear_retarder">Linear Retarder</option></select>
+          <button id="pl-add" data-testid="pl-add">Add Element</button><button id="pl-delete" data-testid="pl-delete">Delete Selected Element</button>
+          <button id="pl-up" data-testid="pl-up">Move Selected Earlier</button><button id="pl-down" data-testid="pl-down">Move Selected Later</button></div>
       </aside>
-      <aside class="panel polarized-two-path-only pt-controls"><h2>偏振兩路 · 入射與設定</h2>
-        <label>預設 <select id="pt-preset" data-testid="pt-preset"></select></label>
-        <label>光源 <select id="pt-source-kind" data-testid="pt-source-kind"><option value="uniform">均勻 Uniform</option><option value="gaussian">完整 Gaussian</option></select></label>
-        <label>複數係數預設 <select id="pt-coefficients-preset" data-testid="pt-coefficients-preset"></select></label>
+      <aside class="panel polarized-two-path-only pt-controls"><h2>Polarized Interference · Input and Settings</h2>
+        <label>Preset <select id="pt-preset" data-testid="pt-preset"></select></label>
+        <label>Source <select id="pt-source-kind" data-testid="pt-source-kind"><option value="uniform">Uniform</option><option value="gaussian">Gaussian</option></select></label>
+        <label>Complex Coefficient Preset <select id="pt-coefficients-preset" data-testid="pt-coefficients-preset"></select></label>
         <div id="pt-fields"></div>
-        <label class="document-ack"><input type="checkbox" id="pt-analyzer-enabled" data-testid="pt-analyzer-enabled">兩個輸出使用相同下游分析器</label>
+        <label class="document-ack"><input type="checkbox" id="pt-analyzer-enabled" data-testid="pt-analyzer-enabled">Apply the Same Downstream Analyzer to Both Outputs</label>
         <div class="phase-buttons"><button id="pt-phase-0" data-testid="pt-phase-0">0 rad</button><button id="pt-phase-halfpi" data-testid="pt-phase-halfpi">π/2 rad</button><button id="pt-phase-pi" data-testid="pt-phase-pi">π rad</button></div>
-        <p class="muted">光源在 z=0 取樣；Gaussian 腰位置可正可負。係數不正規化；arm 1 extra phase 同時作用於 x/y。停用分析器仍保存其角度。</p>
+        <p class="muted">The source is sampled at z=0; its Gaussian waist position may be positive or negative. Coefficients are not normalized. The arm 1 extra phase acts on both x/y components. The analyzer angle is retained when disabled.</p>
       </aside>
-      <section class="bench-panel"><div class="bench-heading"><h2>3D 光學實驗台</h2><span id="bench-label">等待草稿驗證</span></div>
+      <section class="bench-panel"><div class="bench-heading"><h2>3D Optical Bench</h2><span id="bench-label">Awaiting Draft Validation</span></div>
         <div id="bench" data-testid="bench-host"></div>
         <div id="w1-bench-controls" class="w1-bench-controls" data-testid="w1-bench-controls" hidden></div>
-        <div class="camera-controls" aria-label="視角控制"><button id="reset-view" data-testid="reset-view">重設視角</button>
-          <button id="zoom-in" data-testid="zoom-in" aria-label="放大視角">＋</button><button id="zoom-out" data-testid="zoom-out" aria-label="縮小視角">−</button>
-          <button data-pan="-1,0" data-testid="pan-left" aria-label="向左平移視角">←</button><button data-pan="1,0" aria-label="向右平移視角">→</button>
-          <button data-pan="0,1" aria-label="向上平移視角">↑</button><button data-pan="0,-1" aria-label="向下平移視角">↓</button></div>
-        <p class="bench-help">左鍵旋轉（Orbit）・右鍵平移（Pan）・滾輪縮放（Zoom）・點擊選取<br>
-          橘色控制球：僅沿 z 軸拖曳；放開後驗證，無效位置拒絕。虛線是軸線指引。</p>
+        <div class="camera-controls" aria-label="Camera Controls"><button id="reset-view" data-testid="reset-view">Reset View</button>
+          <button id="zoom-in" data-testid="zoom-in" aria-label="Zoom In">＋</button><button id="zoom-out" data-testid="zoom-out" aria-label="Zoom Out">−</button>
+          <button data-pan="-1,0" data-testid="pan-left" aria-label="Pan Left">←</button><button data-pan="1,0" aria-label="Pan Right">→</button>
+          <button data-pan="0,1" aria-label="Pan Up">↑</button><button data-pan="0,-1" aria-label="Pan Down">↓</button></div>
+        <p class="bench-help">Left-drag to orbit · Right-drag to pan · Scroll to zoom · Click to select<br>
+          Orange handles drag along z only. Release to validate; invalid positions are rejected. Dashed lines are axis guides.</p>
         <output id="notice" data-testid="notice" aria-live="polite"></output>
-        <div id="pick-choices" aria-label="重疊元件選擇"></div>
-        <p class="scale-note">示意縮放：橫向 1 單位 = 1 mm；縱向 1 單位 = 10 mm。透鏡外形不代表物理孔徑。</p>
+        <div id="pick-choices" aria-label="Overlapping Element Selection"></div>
+        <p class="scale-note">Schematic scale: 1 transverse unit = 1 mm; 1 longitudinal unit = 10 mm. Lens housings do not define a physical aperture.</p>
       </section>
-      <aside class="panel inspector"><h2>元件屬性</h2><div id="inspector" data-testid="inspector"></div>
-        <p class="muted">編輯只驗證草稿。請按「模擬」產生新結果；視角與色階不改變實驗。</p></aside>
-      <aside class="panel two-path-note two-path-only"><h2>理想展開示意</h2><div id="tp-topology"></div>
-        <p class="muted">虛線為指引，不是計算的體積光束。畫面路長與間距僅供辨識；只有數值 L₀/L₁ 參與傳播。</p>
-        <p class="muted">輸出面位於 B† 之後立即量測；視覺分開不新增傳播。共同橫向座標，不加入鏡面反射翻轉。</p>
-        <p class="muted">extra phase 為獨立 arm 1 相位；傳播本身包含載波與繞射。未加入第二載波或鏡位移規則。</p></aside>
-      <aside class="panel polarization-only"><h2>選取元件屬性</h2><div id="pl-inspector"></div>
-        <button id="pl-qwp" data-testid="pl-qwp">QWP：δ=π/2 rad</button><button id="pl-hwp" data-testid="pl-hwp">HWP：δ=π rad</button>
-        <p class="muted">同一參考平面上的理想有序作用。示意間距與外殼不新增傳播、厚度或光學相位。Gaussian 腰位置固定為零，無物理 z 控制。</p>
-        <p class="muted">x/y 是偏振分量，不是光學埠。係數不自動正規化；數值欄位保留完整 radians 與 SI 值。編輯只驗證，請明確提交。</p></aside>
-      <aside class="panel polarized-two-path-only pt-arm-controls"><h2>兩臂有序終端作用</h2><div id="pt-arms"></div><div id="pt-topology"></div>
-        <p class="muted">每臂先做一次傳播，再按列表執行最多兩個作用。QWP/HWP 只設定延遲器 δ。示意位置不增加傳播、反射或相位。</p>
-        <p class="muted">B → arm 0/1 → B†；兩輸出使用相同橫向座標。3D 只展示選取的 raw 或 analyzed 兩埠，面板同時保留全部可用影像。</p></aside>
+      <aside class="panel inspector"><h2>Element Properties</h2><div id="inspector" data-testid="inspector"></div>
+        <p class="muted">Edits validate the draft only. Press Simulate for a new result. Camera views and color limits do not change the experiment.</p></aside>
+      <aside class="panel two-path-note two-path-only"><h2>Ideal Unfolded Schematic</h2><div id="tp-topology"></div>
+        <p class="muted">Dashed lines are guides, not a calculated volume beam. Displayed lengths and spacing identify elements; only the numerical L₀/L₁ values govern propagation.</p>
+        <p class="muted">Outputs are measured immediately after B†. Display separation adds no propagation. Both outputs use the same transverse coordinates, without mirror-reflection flips.</p>
+        <p class="muted">The extra phase is an independent arm 1 phase. Propagation already includes carrier phase and diffraction; no second carrier or mirror-displacement rule is added.</p></aside>
+      <aside class="panel polarization-only"><h2>Selected Element Properties</h2><div id="pl-inspector"></div>
+        <button id="pl-qwp" data-testid="pl-qwp">QWP: δ=π/2 rad</button><button id="pl-hwp" data-testid="pl-hwp">HWP: δ=π rad</button>
+        <p class="muted">Ideal ordered actions share one reference plane. Schematic spacing and housings add no propagation, thickness, or optical phase. The Gaussian waist position is fixed at zero; there is no physical z control.</p>
+        <p class="muted">x/y are polarization components, not optical ports. Coefficients are not automatically normalized; numerical inputs preserve full radian and SI values. Edits validate only; submit explicitly to calculate.</p></aside>
+      <aside class="panel polarized-two-path-only pt-arm-controls"><h2>Ordered Terminal Actions in Each Arm</h2><div id="pt-arms"></div><div id="pt-topology"></div>
+        <p class="muted">Each arm propagates once, then applies up to two listed actions in order. QWP/HWP presets set only the retarder δ. Schematic positions add no propagation, reflection, or phase.</p>
+        <p class="muted">B → arm 0/1 → B†. Both outputs share transverse coordinates. The 3D view shows the selected raw or analyzed port pair; the panel retains all available images.</p></aside>
     </section>
     <section id="w1-workspace" class="w1-workspace sequential-only" data-testid="w1-workspace"></section>
-    <section class="result-panel panel sequential-only"><div class="result-heading"><h2>觀察結果</h2><strong id="result-status" data-testid="result-status">尚未提交模擬</strong></div>
-      <div class="results"><div><div class="color-controls"><label>顯示下限 <input id="color-min" data-testid="color-min" type="text" inputmode="decimal" value="0"></label>
-          <label>顯示上限 <input id="color-max" data-testid="color-max" type="text" inputmode="decimal" value="10"></label>
-          <button id="auto-color" data-testid="auto-color">自動色階（不重算）</button></div>
-        <p id="color-info" data-testid="color-info">共用色階 0–10 amplitude-unit²</p><p id="color-error" class="error" hidden></p>
-        <div id="intensity-holder" class="intensity-holder" hidden><canvas id="intensity" data-testid="intensity-canvas" aria-label="原始強度的灰階顯示"></canvas></div>
-        <p id="pixel-readout" data-testid="pixel-readout">點擊強度圖或 3D 觀察面讀取原始 float64 像素。</p>
+    <section class="result-panel panel sequential-only"><div class="result-heading"><h2>Observation Results</h2><strong id="result-status" data-testid="result-status">No Simulation Submitted</strong></div>
+      <div class="results"><div><div class="color-controls"><label>Display Minimum <input id="color-min" data-testid="color-min" type="text" inputmode="decimal" value="0"></label>
+          <label>Display Maximum <input id="color-max" data-testid="color-max" type="text" inputmode="decimal" value="10"></label>
+          <button id="auto-color" data-testid="auto-color">Auto Range (No Recalculation)</button></div>
+        <p id="color-info" data-testid="color-info">Shared Range 0–10 amplitude-unit²</p><p id="color-error" class="error" hidden></p>
+        <div id="intensity-holder" class="intensity-holder" hidden><canvas id="intensity" data-testid="intensity-canvas" aria-label="Raw Intensity Grayscale"></canvas></div>
+        <p id="pixel-readout" data-testid="pixel-readout">Click the intensity image or 3D observation plane to inspect a raw float64 pixel.</p>
       </div><div class="result-details"><p id="result-identity" data-testid="result-identity" class="monospace">—</p>
         <p id="result-spec" data-testid="result-spec">—</p><p id="raw-max" data-testid="raw-max">—</p>
         <p id="saturation" data-testid="saturation" class="warning" hidden></p>
-        <label>階段 <select id="stage" data-testid="stage"></select></label>
-        <p id="stage-note" data-testid="stage-note">階段表將在完成模擬後顯示。</p>
-        <div class="table-scroll"><table><thead><tr><th>階段</th><th>z / mm</th><th>norm</th><th>Δnorm</th><th>比例</th></tr></thead><tbody id="stages" data-testid="stages"></tbody></table></div>
-        <p class="muted">norm：amplitude-unit²·m²；零入射時未定義比例顯示 null。</p></div></div>
+        <label>Stage <select id="stage" data-testid="stage"></select></label>
+        <p id="stage-note" data-testid="stage-note">The stage table appears after a completed simulation.</p>
+        <div class="table-scroll"><table><thead><tr><th>Stage</th><th>z / mm</th><th>norm</th><th>Δnorm</th><th>Ratio</th></tr></thead><tbody id="stages" data-testid="stages"></tbody></table></div>
+        <p class="muted">norm: amplitude-unit²·m². Ratios undefined for zero incident norm are shown as null.</p></div></div>
     </section>
     <section id="tp-result-area" class="result-panel panel two-path-only">
-      <div class="result-heading"><h2>兩埠立即輸出</h2><strong id="tp-result-status" data-testid="tp-result-status">尚未提交模擬</strong></div>
+      <div class="result-heading"><h2>Immediate Two-Port Outputs</h2><strong id="tp-result-status" data-testid="tp-result-status">No Simulation Submitted</strong></div>
       <p id="tp-error" data-testid="tp-error" class="error" hidden></p><p id="tp-render-error" data-testid="tp-render-error" class="error" hidden></p>
-      <div class="color-controls"><label>共用下限 <input id="tp-color-min" data-testid="tp-color-min" value="0"></label><label>共用上限 <input id="tp-color-max" data-testid="tp-color-max" value="1"></label>
-        <button id="tp-auto-color" data-testid="tp-auto-color">共同自動色階（不重算）</button></div>
+      <div class="color-controls"><label>Shared Minimum <input id="tp-color-min" data-testid="tp-color-min" value="0"></label><label>Shared Maximum <input id="tp-color-max" data-testid="tp-color-max" value="1"></label>
+        <button id="tp-auto-color" data-testid="tp-auto-color">Shared Auto Range (No Recalculation)</button></div>
       <p id="tp-color-info" class="muted"></p><p id="tp-color-error" class="error" hidden></p>
       <div id="tp-current-content"></div>
-      <details id="tp-previous-result" data-testid="tp-previous-result" hidden><summary>上次完成結果 · 與目前草稿分開</summary><pre id="tp-previous-spec"></pre><div id="tp-prior-images" class="dual-images"></div></details>
-      <p class="muted">兩埠共用橫向座標；norm 單位 amplitude-unit²·m²，非瓦特。極暗殘值與有號差異保留；零輸入比例 null。</p>
+      <details id="tp-previous-result" data-testid="tp-previous-result" hidden><summary>Previous Completed Result · Separate from Current Draft</summary><pre id="tp-previous-spec"></pre><div id="tp-prior-images" class="dual-images"></div></details>
+      <p class="muted">Both ports share transverse coordinates. Norm is measured in amplitude-unit²·m², not watts. Tiny residuals and signed differences are preserved; ratios for zero input are null.</p>
     </section>
-    <section class="panel result-panel two-path-only"><div class="result-heading"><h2>實際相位掃描</h2><strong id="tp-sweep-status" data-testid="tp-sweep-status">尚未提交掃描</strong></div>
-      <p class="muted">17 次真正計算；0 與 2π 分別呼叫。點擊標記只讀取該列，不模擬。連線僅視覺插值。</p>
-      <div class="color-controls"><label>圖表共用下限 <input id="tp-chart-min" value="0"></label><label>圖表共用上限 <input id="tp-chart-max" value="1"></label><button id="tp-chart-range">套用圖表範圍（不重算）</button></div>
-      <svg id="tp-sweep-chart" data-testid="tp-sweep-chart" viewBox="0 0 760 230" role="img" aria-label="實際計算的兩埠輸入比例"></svg>
+    <section class="panel result-panel two-path-only"><div class="result-heading"><h2>Calculated Phase Sweep</h2><strong id="tp-sweep-status" data-testid="tp-sweep-status">No Sweep Submitted</strong></div>
+      <p class="muted">17 actual calculations, with separate calls at 0 and 2π. Clicking a marker inspects that row without simulating. Connecting lines are visual interpolation only.</p>
+      <div class="color-controls"><label>Chart Shared Minimum <input id="tp-chart-min" value="0"></label><label>Chart Shared Maximum <input id="tp-chart-max" value="1"></label><button id="tp-chart-range">Apply Chart Range (No Recalculation)</button></div>
+      <svg id="tp-sweep-chart" data-testid="tp-sweep-chart" viewBox="0 0 760 230" role="img" aria-label="Calculated Two-Port Input Ratios"></svg>
       <p id="tp-sweep-identity" class="monospace"></p><p id="tp-sweep-selected" class="monospace"></p>
-      <button id="tp-simulate-phase" data-testid="tp-simulate-phase" disabled>明確模擬選取相位（使用該掃描的原始來源與路長）</button>
+      <button id="tp-simulate-phase" data-testid="tp-simulate-phase" disabled>Simulate Selected Phase (Original Sweep Source and Lengths)</button>
       <div class="table-scroll"><table><thead><tr><th>phase / rad</th><th>input norm</th><th>port 0 norm</th><th>port 1 norm</th><th>η0</th><th>η1</th><th>total ratio</th><th>total Δ</th></tr></thead><tbody id="tp-sweep-rows" data-testid="tp-sweep-rows"></tbody></table></div>
     </section>
-    <section class="panel result-panel polarization-only" id="pl-result-area"><div class="result-heading"><h2>偏振 · 實際場與固定樣本</h2><strong id="pl-result-status" data-testid="pl-result-status">尚未提交</strong></div>
+    <section class="panel result-panel polarization-only" id="pl-result-area"><div class="result-heading"><h2>Jones Polarization · Calculated Fields and Fixed Samples</h2><strong id="pl-result-status" data-testid="pl-result-status">Not Submitted</strong></div>
       <p id="pl-error" data-testid="pl-error" class="error" hidden></p><p id="pl-render-error" data-testid="pl-render-error" class="error" hidden></p>
-      <div class="color-controls"><label>共同強度下限 <input id="pl-color-min" data-testid="pl-color-min" value="0"></label><label>共同強度上限 <input id="pl-color-max" data-testid="pl-color-max" value="10"></label>
-        <button id="pl-auto-color" data-testid="pl-auto-color">共同自動色階（不重算）</button><button id="pl-retry-display" data-testid="pl-retry-display">重試顯示（不重算）</button></div>
+      <div class="color-controls"><label>Shared Intensity Minimum <input id="pl-color-min" data-testid="pl-color-min" value="0"></label><label>Shared Intensity Maximum <input id="pl-color-max" data-testid="pl-color-max" value="10"></label>
+        <button id="pl-auto-color" data-testid="pl-auto-color">Shared Auto Range (No Recalculation)</button><button id="pl-retry-display" data-testid="pl-retry-display">Retry Display (No Recalculation)</button></div>
       <p id="pl-color-info" class="muted"></p><div id="pl-current-content"></div>
-      <details id="pl-previous-result" data-testid="pl-previous-result" hidden><summary>先前結果 · 原提交與目前草稿分開</summary><pre id="pl-previous-spec"></pre></details>
-      <div class="color-controls"><label>共同 τ / rad <input id="pl-tau" data-testid="pl-tau" value="0"></label><button id="pl-play" data-testid="pl-play">播放 / 暫停 τ</button><button id="pl-reset" data-testid="pl-reset">暫停並重設 τ=0</button>
-        <label>共同振幅刻度 / amplitude-unit <input id="pl-amplitude-scale" data-testid="pl-amplitude-scale" value="1"></label><label>手動顯示放大（1..1e18）<input id="pl-display-gain" data-testid="pl-display-gain" value="1"></label></div>
-      <p class="muted">沿 +z 看橫向平面，+x 向右／+y 向下；等比例座標。Re([Ux,Uy] exp(−iτ))，保留共同相位；τ 是無因次示意，不是物理影格速率。手動放大只改顯示，所有階段共用刻度。</p>
+      <details id="pl-previous-result" data-testid="pl-previous-result" hidden><summary>Previous Result · Original Submission Kept Separate</summary><pre id="pl-previous-spec"></pre></details>
+      <div class="color-controls"><label>Shared τ / rad <input id="pl-tau" data-testid="pl-tau" value="0"></label><button id="pl-play" data-testid="pl-play">Play / Pause τ</button><button id="pl-reset" data-testid="pl-reset">Pause and Reset τ=0</button>
+        <label>Shared Amplitude Scale / amplitude-unit <input id="pl-amplitude-scale" data-testid="pl-amplitude-scale" value="1"></label><label>Display Gain (1..1e18)<input id="pl-display-gain" data-testid="pl-display-gain" value="1"></label></div>
+      <p class="muted">View the transverse plane along +z: +x right, +y down, with equal axis scales. Re([Ux,Uy] exp(−iτ)) preserves common phase. τ is a dimensionless illustration, not a physical frame rate. Display gain changes presentation only; all stages share one scale.</p>
     </section>
-    <section class="panel result-panel polarization-only"><div class="result-heading"><h2>實際分析器角度掃描</h2><strong id="pl-sweep-status" data-testid="pl-sweep-status">尚未掃描</strong></div>
-      <p class="muted">13 次真正完整序列計算，每點由原始入射重新開始；−90° 與 +90° 分開計算。點選不重算；連線只是視覺插值。失敗只顯示真正完成前綴。</p>
-      <svg id="pl-sweep-chart" data-testid="pl-sweep-chart" viewBox="0 0 760 230" role="img" aria-label="實際角度掃描"></svg>
+    <section class="panel result-panel polarization-only"><div class="result-heading"><h2>Calculated Analyzer-Angle Sweep</h2><strong id="pl-sweep-status" data-testid="pl-sweep-status">No Sweep Submitted</strong></div>
+      <p class="muted">13 complete sequence calculations, each starting from the original input. −90° and +90° are calculated separately. Selection does not recalculate; lines are visual interpolation only. On failure, only the completed prefix is shown.</p>
+      <svg id="pl-sweep-chart" data-testid="pl-sweep-chart" viewBox="0 0 760 230" role="img" aria-label="Calculated Angle Sweep"></svg>
       <p id="pl-sweep-identity" data-testid="pl-sweep-identity" class="monospace"></p><p id="pl-sweep-selected" class="monospace"></p>
-      <button id="pl-apply-angle" data-testid="pl-apply-angle" disabled>明確套用選取角度並模擬（原掃描設定）</button>
-      <div class="table-scroll"><table><thead><tr><th>index</th><th>θ / rad</th><th>final norm</th><th>原入射比例</th><th>signed Δnorm</th></tr></thead><tbody id="pl-sweep-rows" data-testid="pl-sweep-rows"></tbody></table></div>
+      <button id="pl-apply-angle" data-testid="pl-apply-angle" disabled>Apply Selected Angle and Simulate (Original Sweep Settings)</button>
+      <div class="table-scroll"><table><thead><tr><th>index</th><th>θ / rad</th><th>final norm</th><th>Original-Incident Ratio</th><th>signed Δnorm</th></tr></thead><tbody id="pl-sweep-rows" data-testid="pl-sweep-rows"></tbody></table></div>
     </section>
-    <section class="panel result-panel polarized-two-path-only" id="pt-result-area"><div class="result-heading"><h2>偏振兩路 · 原始與分析後輸出</h2><strong id="pt-result-status" data-testid="pt-result-status">尚未提交</strong></div>
+    <section class="panel result-panel polarized-two-path-only" id="pt-result-area"><div class="result-heading"><h2>Polarized Interference · Raw and Analyzed Outputs</h2><strong id="pt-result-status" data-testid="pt-result-status">Not Submitted</strong></div>
       <p id="pt-error" data-testid="pt-error" class="error" hidden></p><p id="pt-render-error" data-testid="pt-render-error" class="error" hidden></p>
-      <div class="color-controls"><label>共同強度下限 <input id="pt-color-min" data-testid="pt-color-min" value="0"></label><label>共同強度上限 <input id="pt-color-max" data-testid="pt-color-max" value="1"></label>
-        <button id="pt-auto-color" data-testid="pt-auto-color">全部影像共同自動色階（不重算）</button><button id="pt-retry-display" data-testid="pt-retry-display">重試完整顯示（不重算）</button>
-        <label>3D 兩埠顯示 <select id="pt-view" data-testid="pt-view"><option value="raw">原始 Raw</option><option value="analyzed">分析後 Analyzed</option></select></label></div>
+      <div class="color-controls"><label>Shared Intensity Minimum <input id="pt-color-min" data-testid="pt-color-min" value="0"></label><label>Shared Intensity Maximum <input id="pt-color-max" data-testid="pt-color-max" value="1"></label>
+        <button id="pt-auto-color" data-testid="pt-auto-color">Auto Range All Images (No Recalculation)</button><button id="pt-retry-display" data-testid="pt-retry-display">Retry Complete Display (No Recalculation)</button>
+        <label>3D Port-Pair View <select id="pt-view" data-testid="pt-view"><option value="raw">Raw</option><option value="analyzed">Analyzed</option></select></label></div>
       <p id="pt-color-info" class="muted"></p><div id="pt-current-content"></div>
-      <details id="pt-previous-result" data-testid="pt-previous-result" hidden><summary>先前結果 · 原提交獨立保留</summary><pre id="pt-previous-spec"></pre></details>
-      <p class="muted">強度為原始 float64；norm 單位 amplitude-unit²·m²，非瓦特。原入射比例與下游傳輸比例的分母不同。null 表示零分母未定義；有號損失與極暗殘值不裁切。</p></section>
-    <section class="panel result-panel polarized-two-path-only"><div class="result-heading"><h2>偏振兩路 · 實際相位掃描</h2><strong id="pt-sweep-status" data-testid="pt-sweep-status">尚未掃描</strong></div>
-      <p class="muted">17 個相位分別呼叫完整模型；0 與 2π 各自計算。分析器啟用時，每點保留完整 raw/analyzed 標量。連線只是插值；失敗只顯示真正完成前綴。</p>
-      <svg id="pt-sweep-chart" data-testid="pt-sweep-chart" viewBox="0 0 760 230" role="img" aria-label="實際偏振兩路相位掃描"></svg>
+      <details id="pt-previous-result" data-testid="pt-previous-result" hidden><summary>Previous Result · Original Submission Retained</summary><pre id="pt-previous-spec"></pre></details>
+      <p class="muted">Intensity is raw float64. Norm uses amplitude-unit²·m², not watts. Original-incident and downstream transmission ratios use different denominators. null indicates an undefined zero-denominator ratio; signed losses and tiny residuals are not clipped.</p></section>
+    <section class="panel result-panel polarized-two-path-only"><div class="result-heading"><h2>Polarized Interference · Calculated Phase Sweep</h2><strong id="pt-sweep-status" data-testid="pt-sweep-status">No Sweep Submitted</strong></div>
+      <p class="muted">The complete model is called separately for 17 phases, including distinct calculations at 0 and 2π. With the analyzer enabled, every point retains all raw/analyzed scalars. Lines are interpolation only; on failure, only the completed prefix is shown.</p>
+      <svg id="pt-sweep-chart" data-testid="pt-sweep-chart" viewBox="0 0 760 230" role="img" aria-label="Calculated Polarized-Interference Phase Sweep"></svg>
       <p id="pt-sweep-identity" data-testid="pt-sweep-identity" class="monospace"></p><p id="pt-sweep-selected" data-testid="pt-sweep-selected" class="monospace"></p>
-      <button id="pt-simulate-phase" data-testid="pt-simulate-phase" disabled>明確套用選取相位並模擬（原掃描完整設定）</button>
-      <div class="table-scroll"><table><thead><tr><th>index</th><th>phase / rad</th><th>raw η0</th><th>raw η1</th><th>analyzed η0</th><th>analyzed η1</th><th>完整標量紀錄</th></tr></thead><tbody id="pt-sweep-rows" data-testid="pt-sweep-rows"></tbody></table></div></section>
-    <footer class="model-note"><strong>模型限制</strong>　週期性取樣視窗；Gaussian 與理想薄透鏡為近軸描述；硬孔徑使用離散中心取樣。
-      不提供取樣精度保證、光線追跡、體積光束、校準瓦特或硬體控制。強度為任意 amplitude-unit²。</footer>
+      <button id="pt-simulate-phase" data-testid="pt-simulate-phase" disabled>Apply Selected Phase and Simulate (Complete Original Sweep Settings)</button>
+      <div class="table-scroll"><table><thead><tr><th>index</th><th>phase / rad</th><th>raw η0</th><th>raw η1</th><th>analyzed η0</th><th>analyzed η1</th><th>Complete Scalar Record</th></tr></thead><tbody id="pt-sweep-rows" data-testid="pt-sweep-rows"></tbody></table></div></section>
+    <footer class="model-note"><strong>Model Limitations</strong> Periodic sampled window. Gaussian and ideal thin-lens models are paraxial; hard apertures use discrete center sampling.
+      No sampling-accuracy guarantee, ray tracing, volume-beam model, calibrated watts, or hardware control. Intensity uses arbitrary amplitude-unit².</footer>
   </main>`;
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
-  if (!found) throw new Error(`缺少 ${id}`);
+  if (!found) throw new Error(`Missing ${id}`);
   return found as T;
 }
 const operationGate = new ClientOperationGate();
@@ -300,7 +300,7 @@ try {
       const choices = element('pick-choices');
       choices.replaceChildren();
       if (ids.length > 1) {
-        choices.append(document.createTextNode('此視線有多個元件：'));
+        choices.append(document.createTextNode('Multiple elements lie along this line of sight:'));
         for (const id of ids) {
           const button = document.createElement('button');
           button.textContent = id;
@@ -323,10 +323,10 @@ try {
     notice,
     presentationFailure(message) {
       if (researchActive) { if (message) idealController.invalidatePresentation(message);
-        else idealController.reportRenderFailure(idealController.canRetryPresentation ? 'WebGL2 顯示環境已恢復；請明確按下重新顯示已計算結果，不會重新計算。' : null); return; }
+        else idealController.reportRenderFailure(idealController.canRetryPresentation ? 'WebGL2 has recovered. Explicitly restore the calculated display; no computation will be repeated.' : null); return; }
       if (mode === 'sequential' && waveController?.enabled) {
         waveController.reportPresentationFailure(message ?? (waveController.canRetryPresentation
-          ? 'WebGL2 已恢復；請明確重建已計算的顯示，不會重新傳播。' : null)); return;
+          ? 'WebGL2 has recovered. Explicitly rebuild the calculated display; propagation will not be repeated.' : null)); return;
       }
       if (mode === 'polarized_two_path') {
         if (message) polarizedTwoPathController.invalidatePresentation(message);
@@ -340,7 +340,7 @@ try {
   });
 } catch (error) {
   element('bench').classList.add('unavailable');
-  element('bench').textContent = 'WebGL2 3D 顯示不可用；請確認瀏覽器設定。沒有產生替代光束或假結果。';
+  element('bench').textContent = 'WebGL2 3D display is unavailable. Check browser settings. No substitute beam or fabricated result has been generated.';
   reportPresentation(error);
 }
 
@@ -354,7 +354,7 @@ for (const item of PRESETS) {
 preset.addEventListener('change', () => {
   controller.select('source');
   controller.replaceCandidate(presetExperiment(preset.value));
-  notice('已載入預設並驗證；請明確按下模擬。');
+  notice('Preset loaded and submitted for validation. Press Simulate explicitly to calculate.');
 });
 element('simulate').addEventListener('click', () => { if (waveController?.enabled) void waveController.simulate(); else void controller.simulate(); });
 element('w1-view').addEventListener('click', () => waveController?.setContext(!waveController.enabled, mode === 'sequential' && !researchActive));
@@ -406,11 +406,11 @@ function numberField(parent: HTMLElement, path: string, label: string, scale = 1
 }
 
 const general = element('general-fields');
-numberField(general, 'wavelength_m', 'λ 波長 / nm', 1e-9);
-numberField(general, 'grid.nx', 'Nx 橫向樣本 / 1', 1, true);
-numberField(general, 'grid.ny', 'Ny 縱向樣本 / 1', 1, true);
-numberField(general, 'grid.dx', 'dx 像素間距 / µm', 1e-6);
-numberField(general, 'grid.dy', 'dy 像素間距 / µm', 1e-6);
+numberField(general, 'wavelength_m', 'λ Wavelength / nm', 1e-9);
+numberField(general, 'grid.nx', 'Nx Samples Along x / 1', 1, true);
+numberField(general, 'grid.ny', 'Ny Samples Along y / 1', 1, true);
+numberField(general, 'grid.dx', 'dx Pixel Pitch / µm', 1e-6);
+numberField(general, 'grid.dy', 'dy Pixel Pitch / µm', 1e-6);
 
 function renderInspector(state: BenchState): void {
   const spec = state.candidate;
@@ -425,10 +425,10 @@ function renderInspector(state: BenchState): void {
     parent.append(heading);
     if (state.selection === 'source') {
       const label = document.createElement('label');
-      label.textContent = '光源（Source）';
+      label.textContent = 'Source';
       const kind = document.createElement('select');
       kind.dataset.testid = 'source-kind';
-      for (const [value, text] of [['gaussian', 'Gaussian'], ['uniform', '均勻（Uniform）']]) {
+      for (const [value, text] of [['gaussian', 'Gaussian'], ['uniform', 'Uniform']]) {
         const option = document.createElement('option'); option.value = value; option.textContent = text; kind.append(option);
       }
       kind.value = spec.source.kind;
@@ -440,29 +440,29 @@ function renderInspector(state: BenchState): void {
         controller.replaceCandidate(edited);
       });
       label.append(kind); parent.append(label);
-      numberField(parent, 'source.amplitude', '振幅 / amplitude-unit');
-      numberField(parent, 'source.phase_rad', '相位 / rad');
+      numberField(parent, 'source.amplitude', 'Amplitude / amplitude-unit');
+      numberField(parent, 'source.phase_rad', 'Phase / rad');
       if (spec.source.kind === 'gaussian') {
-        numberField(parent, 'source.waist_radius_m', '腰半徑 w₀ / µm', 1e-6);
-        numberField(parent, 'source.waist_z_m', '腰位置 z₀ / mm', 1e-3);
-        numberField(parent, 'source.center_x_m', 'Gaussian 中心 x / µm', 1e-6);
-        numberField(parent, 'source.center_y_m', 'Gaussian 中心 y / µm', 1e-6);
+        numberField(parent, 'source.waist_radius_m', 'Waist Radius w₀ / µm', 1e-6);
+        numberField(parent, 'source.waist_z_m', 'Waist Position z₀ / mm', 1e-3);
+        numberField(parent, 'source.center_x_m', 'Gaussian Center x / µm', 1e-6);
+        numberField(parent, 'source.center_y_m', 'Gaussian Center y / µm', 1e-6);
       }
     } else if (index >= 0) {
       const component = spec.components[index];
-      numberField(parent, `components.${index}.z_m`, '位置 z / mm', 1e-3);
-      if (component.kind === 'thin_lens') numberField(parent, `components.${index}.focal_length_m`, '焦距 f（可正負）/ mm', 1e-3);
-      if (component.kind === 'circular_aperture') numberField(parent, `components.${index}.radius_m`, '半徑 / µm', 1e-6);
+      numberField(parent, `components.${index}.z_m`, 'Position z / mm', 1e-3);
+      if (component.kind === 'thin_lens') numberField(parent, `components.${index}.focal_length_m`, 'Focal Length f (Signed) / mm', 1e-3);
+      if (component.kind === 'circular_aperture') numberField(parent, `components.${index}.radius_m`, 'Radius / µm', 1e-6);
       if (component.kind === 'rectangular_aperture') {
-        numberField(parent, `components.${index}.width_m`, '完整寬度 / µm', 1e-6);
-        numberField(parent, `components.${index}.height_m`, '完整高度 / µm', 1e-6);
+        numberField(parent, `components.${index}.width_m`, 'Full Width / µm', 1e-6);
+        numberField(parent, `components.${index}.height_m`, 'Full Height / µm', 1e-6);
       }
       const note = document.createElement('p');
       note.className = 'muted';
-      note.textContent = '固定同軸；沒有旋轉或 x/y 平移。z 可共位，但不可重排。';
+      note.textContent = 'Elements remain aligned, with no rotation or x/y translation. Equal z positions are allowed; order must be preserved.';
       parent.append(note);
     } else if (state.selection === spec.observation.id) {
-      numberField(parent, 'observation.z_m', '觀察位置 z / mm', 1e-3);
+      numberField(parent, 'observation.z_m', 'Observation Position z / mm', 1e-3);
     }
   }
   for (const input of document.querySelectorAll<HTMLInputElement>('input[data-path]')) {
@@ -482,9 +482,9 @@ function renderComponents(state: BenchState): void {
   const list = element('components');
   list.replaceChildren();
   const records = [
-    { id: 'source', name: `光源 · ${state.candidate.source.kind}`, z_m: 0 },
-    ...state.candidate.components.map((item, index) => ({ id: item.id, name: `${index + 1}. ${item.kind === 'thin_lens' ? '薄透鏡' : item.kind === 'circular_aperture' ? '圓形孔徑' : '矩形孔徑'}`, z_m: item.z_m })),
-    { id: state.candidate.observation.id, name: '觀察面', z_m: state.candidate.observation.z_m },
+    { id: 'source', name: `Source · ${state.candidate.source.kind}`, z_m: 0 },
+    ...state.candidate.components.map((item, index) => ({ id: item.id, name: `${index + 1}. ${item.kind === 'thin_lens' ? 'Thin Lens' : item.kind === 'circular_aperture' ? 'Circular Aperture' : 'Rectangular Aperture'}`, z_m: item.z_m })),
+    { id: state.candidate.observation.id, name: 'Observation Plane', z_m: state.candidate.observation.z_m },
   ];
   for (const record of records) {
     const button = document.createElement('button');
@@ -531,7 +531,7 @@ function showPixel(result: DecodedResult | null, row: number, column: number): v
   const intensity = result.intensity[row * nx + column];
   selectedPixel = { row, column, ...coordinates, intensity, requestId: result.requestId };
   const output = element('pixel-readout');
-  output.textContent = `row=${row}, column=${column}；x=${coordinates.x_m.toPrecision(17)} m，y=${coordinates.y_m.toPrecision(17)} m；I=${intensity.toPrecision(17)} amplitude-unit²`;
+  output.textContent = `row=${row}, column=${column}; x=${coordinates.x_m.toPrecision(17)} m, y=${coordinates.y_m.toPrecision(17)} m; I=${intensity.toPrecision(17)} amplitude-unit²`;
   output.dataset.row = String(row); output.dataset.column = String(column);
   output.dataset.xM = String(coordinates.x_m); output.dataset.yM = String(coordinates.y_m);
   output.dataset.intensity = String(intensity); output.dataset.requestId = result.requestId;
@@ -569,16 +569,16 @@ element('auto-color').addEventListener('click', () => {
 element<HTMLSelectElement>('stage').addEventListener('change', () => {
   const selector = element<HTMLSelectElement>('stage').value;
   element('stage-note').textContent = selector === 'observation'
-    ? '觀察面的場已記錄；上圖為原始強度。' : '未記錄此階段場：僅顯示標量。選取不會重新模擬。';
+    ? 'The observation-plane field is recorded; the image above shows raw intensity.' : 'No field was recorded at this stage; only scalars are shown. Selection does not rerun the simulation.';
 });
 
 function renderResult(state: BenchState): void {
   const result = state.lastResult;
   const status = element('result-status');
-  if (!result) { status.textContent = '尚未完成模擬'; return; }
+  if (!result) { status.textContent = 'No Completed Simulation'; return; }
   status.textContent = state.currentResult
-    ? state.renderError ? '數值已完成；3D 顯示失敗，原始結果保留' : '目前草稿的完成結果'
-    : '上次完成結果 · 已過期，與目前草稿分開';
+    ? state.renderError ? 'Computation Complete; 3D Display Failed; Raw Result Retained' : 'Completed Result for Current Draft'
+    : 'Previous Completed Result · Stale Result, Separate from Current Draft';
   status.classList.toggle('warning', !state.currentResult);
   const key = `${result.requestId}:${limits.min}:${limits.max}`;
   if (key !== displayKey) {
@@ -591,8 +591,8 @@ function renderResult(state: BenchState): void {
     displayKey = key;
     element('result-identity').textContent = `request=${result.requestId}\nSHA-256=${result.experimentSha256}`;
     const spec = result.experiment;
-    element('result-spec').textContent = `原提交：λ=${(spec.wavelength_m * 1e9).toPrecision(7)} nm；${spec.grid.ny}×${spec.grid.nx}；觀察 z=${(spec.observation.z_m * 1000).toPrecision(7)} mm；${spec.components.length} 個元件。`;
-    element('raw-max').textContent = `原始最大強度：${result.intensityMax.toPrecision(17)} amplitude-unit²`;
+    element('result-spec').textContent = `Original Submission: λ=${(spec.wavelength_m * 1e9).toPrecision(7)} nm; ${spec.grid.ny}×${spec.grid.nx}; Observation z=${(spec.observation.z_m * 1000).toPrecision(7)} mm; ${spec.components.length} Elements.`;
+    element('raw-max').textContent = `Raw Maximum Intensity: ${result.intensityMax.toPrecision(17)} amplitude-unit²`;
     element('raw-max').dataset.value = String(result.intensityMax);
     const stageSelect = element<HTMLSelectElement>('stage');
     const selected = stageSelect.value;
@@ -612,15 +612,20 @@ function renderResult(state: BenchState): void {
     stageSelect.dispatchEvent(new Event('change'));
     showPixel(result, Math.floor(spec.grid.ny / 2), Math.floor(spec.grid.nx / 2));
   }
-  element('color-info').textContent = `共用色階 ${limits.min}–${limits.max} amplitude-unit²；只改變顏色，不改變數值。`;
+  element('color-info').textContent = `Shared Range ${limits.min}–${limits.max} amplitude-unit²; Changes display colors only, not numerical values.`;
   const saturation = element('saturation');
   saturation.hidden = result.intensityMax <= limits.max;
-  saturation.textContent = `顯示已飽和：原始最大值 ${result.intensityMax.toPrecision(8)} 超過上限 ${limits.max}；高值顯示白色，原始讀值保留。`;
+  saturation.textContent = `Display Saturation: Raw Maximum ${result.intensityMax.toPrecision(8)} exceeds maximum ${limits.max}; High values appear white; raw readouts are preserved.`;
 }
 
+function sequentialBenchLabel(state: BenchState): string {
+  return state.pendingValidation ? 'Validating Edits; Previous Result Detached'
+    : Object.keys(state.invalidEdits).length ? 'Invalid Input; Previous Result Detached'
+      : state.currentResult ? 'Intensity for Current Submission' : 'Draft Validated; No Current Result';
+}
 function render(state: BenchState): void {
   if (disposed || applyingDocument || researchActive || mode !== 'sequential') return;
-  const statusText: Record<string, string> = { idle: '尚未驗證', validating: '驗證草稿中', ready: '草稿已驗證', simulating: '計算中：不自動重試', error: '請檢查錯誤' };
+  const statusText: Record<string, string> = { idle: 'Not Yet Validated', validating: 'Validating Draft', ready: 'Draft Validated', simulating: 'Computing; No Automatic Retry', error: 'Check Error Details' };
   element('status').textContent = statusText[state.status] ?? state.status;
   element('status').dataset.status = state.status;
   element<HTMLButtonElement>('simulate').disabled = !state.validatedDraft || state.pendingValidation
@@ -629,9 +634,7 @@ function render(state: BenchState): void {
   element('render-error').hidden = !state.renderError; element('render-error').textContent = state.renderError ?? '';
   renderInspector(state);
   renderComponents(state);
-  element('bench-label').textContent = state.pendingValidation ? '編輯驗證中；不顯示舊結果'
-    : Object.keys(state.invalidEdits).length ? '有無效輸入；不顯示舊結果'
-      : state.currentResult ? '與目前提交一致的強度圖' : '已驗證草稿；尚無目前結果';
+  element('bench-label').textContent = sequentialBenchLabel(state);
   try {
     if (scene) {
       scene.setDraftValidated(!!state.validatedDraft && !state.pendingValidation
@@ -646,7 +649,7 @@ function render(state: BenchState): void {
   try { renderResult(state); } catch (error) { reportPresentation(error); }
 }
 
-function dualValue(value: number | null): string { return value === null ? 'null（未定義）' : value.toPrecision(17); }
+function dualValue(value: number | null): string { return value === null ? 'null (undefined)' : value.toPrecision(17); }
 
 function showDualPixel(result: DecodedTwoPathResult | null, port: 0 | 1, row: number, column: number): void {
   if (!result || !Number.isInteger(row) || !Number.isInteger(column) || row < 0 || column < 0
@@ -655,7 +658,7 @@ function showDualPixel(result: DecodedTwoPathResult | null, port: 0 | 1, row: nu
   dualSelectedPixel = { port, row, column, x_m: result.x[column], y_m: result.y[row], intensity, requestId: result.requestId };
   const output = document.getElementById('tp-pixel-readout');
   if (!output) return;
-  output.textContent = `port_${port} · row=${row}, column=${column}；x=${result.x[column].toPrecision(17)} m，y=${result.y[row].toPrecision(17)} m；I=${intensity.toPrecision(17)} amplitude-unit²`;
+  output.textContent = `port_${port} · row=${row}, column=${column}; x=${result.x[column].toPrecision(17)} m, y=${result.y[row].toPrecision(17)} m; I=${intensity.toPrecision(17)} amplitude-unit²`;
   output.dataset.port = String(port); output.dataset.row = String(row); output.dataset.column = String(column);
   output.dataset.intensity = String(intensity); output.dataset.requestId = result.requestId;
 }
@@ -670,8 +673,8 @@ function dualContent(result: DecodedTwoPathResult, canvases: readonly [HTMLCanva
     <pre id="tp-diagnostics" data-testid="tp-diagnostics"></pre></div></div>`;
   const local = <T extends HTMLElement>(id: string) => content.querySelector<T>(`#${id}`)!;
   local('tp-result-identity').textContent = `request=${result.requestId}\nSHA-256=${result.experimentSha256}`;
-  local('tp-result-spec').textContent = `完整原提交（SI / rad）\n${JSON.stringify(result.experiment, null, 2)}`;
-  local('tp-fractions').textContent = `原始輸入比例 η0=${dualValue(result.diagnostics.output_fractions[0])}；η1=${dualValue(result.diagnostics.output_fractions[1])}；total=${dualValue(result.diagnostics.total_output_ratio)}`;
+  local('tp-result-spec').textContent = `Complete Original Submission (SI / rad)\n${JSON.stringify(result.experiment, null, 2)}`;
+  local('tp-fractions').textContent = `Original-Input Ratio η0=${dualValue(result.diagnostics.output_fractions[0])}; η1=${dualValue(result.diagnostics.output_fractions[1])}; total=${dualValue(result.diagnostics.total_output_ratio)}`;
   for (const port of [0, 1] as const) {
     const holder = local('tp-holder-' + port), canvas = canvases[port];
     holder.style.aspectRatio = String(result.experiment.grid.nx * result.experiment.grid.dx / (result.experiment.grid.ny * result.experiment.grid.dy));
@@ -684,7 +687,7 @@ function dualContent(result: DecodedTwoPathResult, canvases: readonly [HTMLCanva
     });
     const maximum = local('tp-raw-max-' + port), max = result.ports[port].intensityMax;
     maximum.dataset.value = String(max);
-    maximum.textContent = `raw max=${max.toPrecision(17)} amplitude-unit²${max > dualLimits.max ? ' · 顯示飽和，原值保留' : ''}`;
+    maximum.textContent = `raw max=${max.toPrecision(17)} amplitude-unit²${max > dualLimits.max ? ' · Display Saturated; Raw Values Retained' : ''}`;
     maximum.classList.toggle('warning', max > dualLimits.max);
   }
   const normTable = local('tp-norms');
@@ -702,13 +705,13 @@ function dualContent(result: DecodedTwoPathResult, canvases: readonly [HTMLCanva
 
 function prepareDualPresentation(result: DecodedTwoPathResult): { commit(): void; dispose(): void; finalize(): void } {
   const generation = resultAttachmentGeneration;
-  if (!scene) throw new Error('數值已完成；WebGL2 兩埠顯示不可用，未重新計算。');
+  if (!scene) throw new Error('Computation is complete; the WebGL2 two-port display is unavailable. No recalculation was performed.');
   const numericalBytes = ownedSnapshot(result).retainedBytes;
   const imageBytes = 16 * result.experiment.grid.nx * result.experiment.grid.ny;
-  if (numericalBytes + imageBytes + 128 * 1024 > OWNED_PERSISTENT_BUDGET_BYTES) throw new Error('兩埠準備超過 app-owned 資料預算。');
+  if (numericalBytes + imageBytes + 128 * 1024 > OWNED_PERSISTENT_BUDGET_BYTES) throw new Error('Two-port preparation exceeds the app-owned persistent data budget.');
   const retained = ownedSnapshot().retainedBytes + 128 * 1024;
   if (estimateDualOperationBytes(result.experiment.grid, retained).peakOwnedBytes > OWNED_TRANSIENT_BUDGET_BYTES) {
-    throw new Error('兩埠準備超過 app-owned 暫存資料預算。');
+    throw new Error('Two-port preparation exceeds the app-owned transient data budget.');
   }
   const scenePrepared = scene.prepareTwoPathResult(result, dualLimits);
   let content: HTMLDivElement;
@@ -747,11 +750,11 @@ function renderDualFields(state: TwoPathState): void {
     const parent = element('tp-fields'); parent.replaceChildren();
     const fields: [string, string, number, boolean?][] = [
       ['wavelength_m', 'λ / nm', 1e-9], ['grid.nx', 'Nx', 1, true], ['grid.ny', 'Ny', 1, true],
-      ['grid.dx', 'dx / µm', 1e-6], ['grid.dy', 'dy / µm', 1e-6], ['source.amplitude', '振幅 / amplitude-unit', 1], ['source.phase_rad', '光源相位 / rad', 1],
+      ['grid.dx', 'dx / µm', 1e-6], ['grid.dy', 'dy / µm', 1e-6], ['source.amplitude', 'Amplitude / amplitude-unit', 1], ['source.phase_rad', 'Source Phase / rad', 1],
     ];
-    if (source.kind === 'gaussian') fields.push(['source.waist_radius_m', '腰半徑 w₀ / µm', 1e-6], ['source.waist_z_m', '腰位置 / mm', 1e-3],
-      ['source.center_x_m', '中心 x / µm', 1e-6], ['source.center_y_m', '中心 y / µm', 1e-6]);
-    fields.push(['two_arm_spec.arm_0_distance_m', 'L₀ 傳播 / mm', 1e-3], ['two_arm_spec.arm_1_distance_m', 'L₁ 傳播 / mm', 1e-3],
+    if (source.kind === 'gaussian') fields.push(['source.waist_radius_m', 'Waist Radius w₀ / µm', 1e-6], ['source.waist_z_m', 'Waist Position / mm', 1e-3],
+      ['source.center_x_m', 'Center x / µm', 1e-6], ['source.center_y_m', 'Center y / µm', 1e-6]);
+    fields.push(['two_arm_spec.arm_0_distance_m', 'L₀ Propagation / mm', 1e-3], ['two_arm_spec.arm_1_distance_m', 'L₁ Propagation / mm', 1e-3],
       ['two_arm_spec.relative_phase_rad', 'arm 1 extra phase / rad', 1]);
     for (const [path, label, scale, integer] of fields) {
       const wrapper = document.createElement('label'); wrapper.className = 'number-field'; wrapper.textContent = label;
@@ -774,16 +777,16 @@ function renderDualFields(state: TwoPathState): void {
     paintNumeric(input, 'two_path', path, state, invalid);
   }
   const phi = state.candidate.two_arm_spec.relative_phase_rad;
-  element('tp-phase-note').textContent = `extra phase=${phi.toPrecision(17)} rad；degrees=${(phi * 180 / Math.PI).toPrecision(8)}°（僅說明，不提交度數）`;
+  element('tp-phase-note').textContent = `extra phase=${phi.toPrecision(17)} rad; degrees=${(phi * 180 / Math.PI).toPrecision(8)}°(For reference only; degrees are not submitted)`;
 }
 
 function renderSweep(sweep: DecodedTwoPathSweep | null, fresh: boolean): void {
   const status = element('tp-sweep-status'), svg = element<SVGSVGElement & HTMLElement>('tp-sweep-chart');
-  status.textContent = !sweep ? '尚未完成掃描' : `${fresh ? '' : '先前掃描 · 已過期 · '}${sweep.status === 'failed' ? 'FAILED / PARTIAL' : '完成'} ${sweep.completedCount}/${sweep.requestedCount}${sweep.error ? ` · HTTP ${sweep.httpStatus} · ${sweep.error.message}` : ''}`;
+  status.textContent = !sweep ? 'No Completed Sweep' : `${fresh ? '' : 'Previous Sweep · Stale Result · '}${sweep.status === 'failed' ? 'FAILED / PARTIAL' : 'Complete'} ${sweep.completedCount}/${sweep.requestedCount}${sweep.error ? ` · HTTP ${sweep.httpStatus} · ${sweep.error.message}` : ''}`;
   status.classList.toggle('warning', !!sweep && (!fresh || sweep.status === 'failed'));
   svg.replaceChildren(); const body = element('tp-sweep-rows'); body.replaceChildren();
   if (!sweep) return;
-  element('tp-sweep-identity').textContent = `request=${sweep.requestId}\nSHA-256=${sweep.fixedExperimentSha256}\n原固定提交=${JSON.stringify(sweep.fixedExperiment)}`;
+  element('tp-sweep-identity').textContent = `request=${sweep.requestId}\nSHA-256=${sweep.fixedExperimentSha256}\nOriginal Fixed Submission=${JSON.stringify(sweep.fixedExperiment)}`;
   const add = (tag: string, attributes: Record<string, string>, text?: string) => {
     const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
     for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value);
@@ -793,7 +796,7 @@ function renderSweep(sweep: DecodedTwoPathSweep | null, fresh: boolean): void {
   add('path', { d: 'M55 20V190H725', fill: 'none', stroke: '#8ba2b1' });
   add('text', { x: '55', y: '218', fill: '#526e80' }, '0 rad');
   add('text', { x: '660', y: '218', fill: '#526e80' }, '2π rad');
-  add('text', { x: '65', y: '16', fill: '#526e80' }, `原始輸入比例 · 共用 ${chartRange.min}–${chartRange.max} · 連線僅插值`);
+  add('text', { x: '65', y: '16', fill: '#526e80' }, `Original-Input Ratio · Shared ${chartRange.min}–${chartRange.max} · Lines Are Interpolation Only`);
   for (const port of [0, 1] as const) {
     const points = sweepPlotPoints(sweep, port, chartRange), color = port === 0 ? '#087f89' : '#9665a8';
     let segment: string[] = [];
@@ -807,7 +810,7 @@ function renderSweep(sweep: DecodedTwoPathSweep | null, fresh: boolean): void {
       circle.addEventListener('click', select); circle.addEventListener('keydown', event => { if ((event as KeyboardEvent).key === 'Enter') select(); });
     }
     finish();
-    if (points.some(point => point.outOfRange)) add('text', { x: '60', y: String(35 + port * 16), fill: color }, `port ${port} 有值超出顯示範圍；原表值保留`);
+    if (points.some(point => point.outOfRange)) add('text', { x: '60', y: String(35 + port * 16), fill: color }, `port ${port} has values outside the display range; raw table values are retained`);
     add('text', { x: String(550 + port * 85), y: '40', fill: color }, `● port ${port}`);
   }
   for (const row of sweep.rows) {
@@ -829,7 +832,7 @@ function renderTwoPath(state: TwoPathState): void {
   element<HTMLButtonElement>('tp-sweep').disabled = !ready || state.candidate.grid.nx > 128 || state.candidate.grid.ny > 128;
   element<HTMLButtonElement>('tp-simulate-phase').disabled = operationGate.busy || state.selectedSweepIndex === null;
   renderDualFields(state);
-  element('bench-label').textContent = state.currentResult ? '兩埠立即輸出 · 與原提交一致' : '理想展開示意 · 尚無目前兩埠結果';
+  element('bench-label').textContent = state.currentResult ? 'Immediate Two-Port Outputs · Original Submission' : 'Ideal Unfolded Schematic · No Current Two-Port Result';
   try {
     if (!state.currentResult) {
       scene?.detachDualResult(); dualPublished = null; dualDisplayKey = ''; dualSelectedPixel = null;
@@ -842,11 +845,11 @@ function renderTwoPath(state: TwoPathState): void {
       try { prepared.commit(); prepared.finalize(); } catch (error) { prepared.dispose(); throw error; }
     }
   } catch (error) { reportPresentation(error); }
-  element('tp-color-info').textContent = `共同色階 ${dualLimits.min}–${dualLimits.max} amplitude-unit²；不自動隨結果或掃描改變。`;
-  element('tp-result-status').textContent = state.currentResult ? state.renderError ? '數值完成 · 顯示故障' : '目前提交的完整兩埠結果'
-    : state.completedNumerical && state.renderError ? '數值完成 · 顯示準備失敗，未發布半組結果' : state.lastResult ? '先前結果已過期 · 在原提交區保留' : '尚未完成模擬';
+  element('tp-color-info').textContent = `Shared Range ${dualLimits.min}–${dualLimits.max} amplitude-unit²; Does not change automatically with results or sweeps.`;
+  element('tp-result-status').textContent = state.currentResult ? state.renderError ? 'Computation Complete · Display Failure' : 'Complete Two-Port Result for Current Submission'
+    : state.completedNumerical && state.renderError ? 'Computation Complete · Display Preparation Failed; No Partial Display Published' : state.lastResult ? 'Stale Result · Retained Under Original Submission' : 'No Completed Simulation';
   const previous = element('tp-previous-result'); previous.hidden = !state.lastResult || state.currentResult === state.lastResult;
-  if (state.lastResult) element('tp-previous-spec').textContent = `原 request=${state.lastResult.requestId}\n${JSON.stringify(state.lastResult.experiment, null, 2)}\n原 maxima=${state.lastResult.ports.map(p => p.intensityMax)}\n原 diagnostics=${JSON.stringify(state.lastResult.diagnostics)}`;
+  if (state.lastResult) element('tp-previous-spec').textContent = `Original request=${state.lastResult.requestId}\n${JSON.stringify(state.lastResult.experiment, null, 2)}\nOriginal maxima=${state.lastResult.ports.map(p => p.intensityMax)}\nOriginal diagnostics=${JSON.stringify(state.lastResult.diagnostics)}`;
   const priorImages = element('tp-prior-images');
   if (previous.hidden) {
     for (const canvas of priorImages.querySelectorAll('canvas')) { canvas.width = 0; canvas.height = 0; }
@@ -864,7 +867,7 @@ function renderTwoPath(state: TwoPathState): void {
   }
   renderSweep(state.lastSweep, state.currentSweep === state.lastSweep);
   const selected = state.lastSweep?.rows.find(row => row.index === state.selectedSweepIndex);
-  element('tp-sweep-selected').textContent = selected ? `選取實際列（不重算）=${JSON.stringify(selected)}` : '';
+  element('tp-sweep-selected').textContent = selected ? `Selected Calculated Row (No Recalculation)=${JSON.stringify(selected)}` : '';
   const topology = element('tp-topology'); topology.replaceChildren();
   const spec = state.candidate.two_arm_spec;
   for (const [id, label] of [['source', 'input'], ['B', 'B'], ['arm_0', `arm 0 · L₀=${spec.arm_0_distance_m.toPrecision(7)} m`], ['arm_1', `arm 1 · L₁=${spec.arm_1_distance_m.toPrecision(7)} m`],
@@ -958,24 +961,24 @@ function showPolarizationPixel(result: DecodedPolarizationResult | null, view: 0
   const intensity = (view === 0 ? result.incidentIntensity : result.finalIntensity)[row * result.experiment.grid.nx + column];
   polarizationSelectedPixel = { view, row, column, intensity, x_m: result.x[column], y_m: result.y[row], requestId: result.requestId };
   const output = document.getElementById('pl-pixel-readout');
-  if (output) output.textContent = `${view === 0 ? 'incident' : 'final'} intensity pixel row=${row}, column=${column}; x=${result.x[column]}, y=${result.y[row]} m; I=${intensity} amplitude-unit². 固定複數樣本未改變。`;
+  if (output) output.textContent = `${view === 0 ? 'incident' : 'final'} intensity pixel row=${row}, column=${column}; x=${result.x[column]}, y=${result.y[row]} m; I=${intensity} amplitude-unit². The fixed complex sample is unchanged.`;
 }
 function polarizationContent(result: DecodedPolarizationResult, resources: PolarizationResources): HTMLDivElement {
   const content = document.createElement('div');
   content.innerHTML = `<p id="pl-identity" data-testid="pl-identity" class="monospace"></p><pre id="pl-result-spec"></pre>
-    <div class="dual-images"><div><h3>incident · 入射強度</h3><div class="intensity-holder" id="pl-holder-0"></div><p id="pl-max-0" data-testid="pl-max-0"></p></div>
-    <div><h3>final · 最終強度</h3><div class="intensity-holder" id="pl-holder-1"></div><p id="pl-max-1" data-testid="pl-max-1"></p></div></div>
+    <div class="dual-images"><div><h3>Incident Intensity</h3><div class="intensity-holder" id="pl-holder-0"></div><p id="pl-max-0" data-testid="pl-max-0"></p></div>
+    <div><h3>Final Intensity</h3><div class="intensity-holder" id="pl-holder-1"></div><p id="pl-max-1" data-testid="pl-max-1"></p></div></div>
     <p id="pl-pixel-readout" data-testid="pl-pixel-readout" class="monospace"></p>
-    <label>已提交階段 <select id="pl-stage" data-testid="pl-stage"></select></label><p id="pl-stage-note" data-testid="pl-stage-note"></p>
+    <label>Submitted Stage <select id="pl-stage" data-testid="pl-stage"></select></label><p id="pl-stage-note" data-testid="pl-stage-note"></p>
     <pre id="pl-sample" data-testid="pl-sample"></pre><div id="pl-trajectories" data-testid="pl-trajectories" class="polarization-trajectories"></div>
     <div class="table-scroll"><table><thead><tr><th>stage</th><th>actual norm</th><th>signed Δnorm</th><th>adjacent ratio</th><th>original-incident ratio</th></tr></thead><tbody id="pl-stages" data-testid="pl-stages"></tbody></table></div>`;
   const local = <T extends HTMLElement>(id: string) => content.querySelector<T>(`#${id}`)!;
   local('pl-identity').textContent = `request=${result.requestId}\nSHA-256=${result.experimentSha256}`;
-  local('pl-result-spec').textContent = `完整原提交 / SI / rad\n${JSON.stringify(result.experiment, null, 2)}`;
+  local('pl-result-spec').textContent = `Complete Original Submission / SI / rad\n${JSON.stringify(result.experiment, null, 2)}`;
   for (const view of [0, 1] as const) {
     const holder = local('pl-holder-' + view), canvas = resources.canvases[view];
     holder.style.aspectRatio = String(result.experiment.grid.nx * result.experiment.grid.dx / (result.experiment.grid.ny * result.experiment.grid.dy));
-    holder.append(canvas); local('pl-max-' + view).textContent = `raw max=${result.intensityMax[view]} amplitude-unit²${result.intensityMax[view] > polarizationLimits.max ? ' · 顯示飽和，原值保留' : ''}`;
+    holder.append(canvas); local('pl-max-' + view).textContent = `raw max=${result.intensityMax[view]} amplitude-unit²${result.intensityMax[view] > polarizationLimits.max ? ' · Display Saturated; Raw Values Retained' : ''}`;
     local('pl-max-' + view).dataset.value = String(result.intensityMax[view]);
     bindResultCanvas(canvas, event => {
       if (mode !== 'polarization' || polarizationPublished !== result || polarizationController.state.currentResult !== result) return;
@@ -989,7 +992,7 @@ function polarizationContent(result: DecodedPolarizationResult, resources: Polar
     const option = document.createElement('option'); option.value = stage.stage_id; option.textContent = stage.stage_id; select.append(option);
     const tr = document.createElement('tr');
     for (const value of [stage.stage_id, stage.norm, stage.delta_norm, stage.adjacent_transmission_ratio, stage.incident_transmission_ratio]) {
-      const cell = document.createElement('td'); cell.textContent = value === null ? 'null（未定義）' : String(value); tr.append(cell);
+      const cell = document.createElement('td'); cell.textContent = value === null ? 'null (undefined)' : String(value); tr.append(cell);
     }
     local('pl-stages').append(tr);
   }
@@ -1013,8 +1016,8 @@ function polarizationContent(result: DecodedPolarizationResult, resources: Polar
     zeroDot.setAttribute('cx', String(Number.isFinite(zx) ? zx : 0)); zeroDot.setAttribute('cy', String(Number.isFinite(zy) ? zy : 0));
     zeroDot.setAttribute('aria-label', 'tau=0 phase reference'); zeroDot.setAttribute('visibility', Number.isFinite(zx) && Number.isFinite(zy) ? 'visible' : 'hidden'); svg.append(zeroDot);
     const note = document.createElement('p'); note.className = 'muted';
-    note.textContent = trajectory.dark ? 'no defined polarization state at this sample（精確零）'
-      : trajectory.displayLimited ? '非零樣本 · display-scale/precision limitation；原始複數值保留。' : '非零樣本 · shared scale · τ=0 紫點；橘點沿增加 τ 移動。';
+    note.textContent = trajectory.dark ? 'no defined polarization state at this sample (exact zero)'
+      : trajectory.displayLimited ? 'Nonzero sample · Display-scale/precision limitation; raw complex values are retained.' : 'Nonzero sample · Shared scale · Purple marks τ=0; orange advances with increasing τ.';
     card.append(label, svg, note); local('pl-trajectories').append(card);
   }
   return content;
@@ -1034,7 +1037,7 @@ function updatePolarizationMarkers(tau: number): void {
 }
 function preparePolarizationPresentation(result: DecodedPolarizationResult): { commit(): void; dispose(): void; finalize(): void } {
   const generation = resultAttachmentGeneration;
-  if (!scene) throw new Error('數值完成；WebGL2 不可用，未重算。');
+  if (!scene) throw new Error('Computation is complete; WebGL2 is unavailable. No recalculation was performed.');
   const estimate = estimateOwnedOperation('polarization', result.experiment.grid, ownedSnapshot().retainedBytes);
   const persistent = ownedSnapshot(result).retainedBytes + 16 * result.experiment.grid.nx * result.experiment.grid.ny + result.stages.length * 257 * 16;
   assertOwnedBudgets(persistent, estimate.peakOwnedBytes);
@@ -1066,8 +1069,8 @@ function renderPolarizationSample(state: PolarizationState): void {
   const stage = result.stages.find(item => item.stage_id === state.selectedStage) ?? result.stages[0];
   const trajectory = polarizationResources?.trajectories.find(item => item.stageId === stage.stage_id);
   element<HTMLSelectElement>('pl-stage').value = stage.stage_id;
-  element('pl-sample').textContent = `固定複數樣本 request=${result.requestId}\nstage=${stage.stage_id}; row=${result.readout.row}, column=${result.readout.column}\nx=${result.readout.x_m} m; y=${result.readout.y_m} m\nUx={re:${stage.sample.x.re}, im:${stage.sample.x.im}}\nUy={re:${stage.sample.y.re}, im:${stage.sample.y.im}}`;
-  element('pl-stage-note').textContent = `${trajectory?.dark ? 'no defined polarization state at this sample（精確零）' : trajectory?.displayLimited ? '非零樣本 · display-scale/precision limitation；原值保留。' : '非零樣本 · 保留共同相位。'} actual norm=${stage.norm}; signed Δ=${stage.delta_norm}; adjacent ratio=${stage.adjacent_transmission_ratio}; original-incident ratio=${stage.incident_transmission_ratio}. null=未定義。比例不證明因果或硬體效率。`;
+  element('pl-sample').textContent = `Fixed Complex Sample request=${result.requestId}\nstage=${stage.stage_id}; row=${result.readout.row}, column=${result.readout.column}\nx=${result.readout.x_m} m; y=${result.readout.y_m} m\nUx={re:${stage.sample.x.re}, im:${stage.sample.x.im}}\nUy={re:${stage.sample.y.re}, im:${stage.sample.y.im}}`;
+  element('pl-stage-note').textContent = `${trajectory?.dark ? 'no defined polarization state at this sample (exact zero)' : trajectory?.displayLimited ? 'Nonzero sample · Display-scale/precision limitation; raw values are retained.' : 'Nonzero sample · Common phase is preserved.'} actual norm=${stage.norm}; signed Δ=${stage.delta_norm}; adjacent ratio=${stage.adjacent_transmission_ratio}; original-incident ratio=${stage.incident_transmission_ratio}. null=undefined. Ratios do not establish causation or hardware efficiency.`;
   for (const card of element('pl-trajectories').children) card.classList.toggle('selected', card.querySelector('svg')?.getAttribute('data-stage-id') === stage.stage_id);
 }
 function renderPolarizationFields(state: PolarizationState): void {
@@ -1092,7 +1095,7 @@ function renderPolarizationFields(state: PolarizationState): void {
   if (polarizationInspectorKey !== inspectorKey) {
     polarizationInspectorKey = inspectorKey; const parent = element('pl-inspector'); parent.replaceChildren();
     const heading = document.createElement('h3'); heading.textContent = selected?.id ?? 'source'; parent.append(heading);
-    if (selected) { make(parent, `elements.${index}.axis_angle_rad`, 'axis θ / rad（+x toward +y）');
+    if (selected) { make(parent, `elements.${index}.axis_angle_rad`, 'axis θ / rad(+x toward +y)');
       if (selected.kind === 'linear_retarder') make(parent, `elements.${index}.retardance_rad`, 'perpendicular phase δ / rad'); }
   }
   element<HTMLSelectElement>('pl-source-kind').value = state.candidate.source.kind;
@@ -1116,7 +1119,7 @@ function renderPolarizationFields(state: PolarizationState): void {
   element<HTMLButtonElement>('pl-qwp').disabled = selected?.kind !== 'linear_retarder'; element<HTMLButtonElement>('pl-hwp').disabled = selected?.kind !== 'linear_retarder';
 }
 function renderPolarizationSweep(sweep: DecodedPolarizationSweep | null, fresh: boolean): void {
-  element('pl-sweep-status').textContent = !sweep ? '尚未完成掃描' : `${fresh ? '' : '先前掃描 · 已過期 · '}${sweep.status === 'complete' ? '完成' : 'FAILED / PARTIAL'} ${sweep.completedCount}/13${sweep.error ? ` · HTTP ${sweep.httpStatus} · ${sweep.error.message}` : ''}`;
+  element('pl-sweep-status').textContent = !sweep ? 'No Completed Sweep' : `${fresh ? '' : 'Previous Sweep · Stale Result · '}${sweep.status === 'complete' ? 'Complete' : 'FAILED / PARTIAL'} ${sweep.completedCount}/13${sweep.error ? ` · HTTP ${sweep.httpStatus} · ${sweep.error.message}` : ''}`;
   const svg = element<SVGSVGElement & HTMLElement>('pl-sweep-chart'), body = element('pl-sweep-rows'); svg.replaceChildren(); body.replaceChildren();
   if (!sweep) return;
   element('pl-sweep-identity').textContent = `request=${sweep.requestId}\nSHA=${sweep.experimentSha256}\nsweep SHA=${sweep.sweepSha256}\nselected=${sweep.selectedElementId}\noriginal=${JSON.stringify(sweep.experiment)}`;
@@ -1138,7 +1141,7 @@ function renderPolarizationSweep(sweep: DecodedPolarizationSweep | null, fresh: 
       point.addEventListener('keydown', event => { if ((event as KeyboardEvent).key === 'Enter') polarizationController.selectSweepPoint(row.index); });
     } else finish();
     const tr = document.createElement('tr'); tr.dataset.index = String(row.index);
-    for (const item of [row.index, row.axis_angle_rad, row.final_norm, value, row.total_delta]) { const td = document.createElement('td'); td.textContent = item === null ? 'null（未定義）' : String(item); tr.append(td); }
+    for (const item of [row.index, row.axis_angle_rad, row.final_norm, value, row.total_delta]) { const td = document.createElement('td'); td.textContent = item === null ? 'null (undefined)' : String(item); tr.append(td); }
     tr.addEventListener('click', () => polarizationController.selectSweepPoint(row.index)); body.append(tr);
   }
   finish(); // No connection or invented marker beyond the genuine completed prefix.
@@ -1163,15 +1166,15 @@ function renderPolarization(state: PolarizationState): void {
     }
     if (polarizationPublished) renderPolarizationSample(state);
   } catch (error) { reportPresentation(error); }
-  element('bench-label').textContent = state.currentResult ? '同一參考平面 · 完整原提交結果' : '同一參考平面 · 尚無目前附加結果';
+  element('bench-label').textContent = state.currentResult ? 'Same Reference Plane · Complete Original Result' : 'Same Reference Plane · No Current Attached Result';
   const effective = polarizationResources;
-  element('pl-color-info').textContent = `目前顯示共同強度色階 ${effective?.limits.min ?? polarizationLimits.min}..${effective?.limits.max ?? polarizationLimits.max} amplitude-unit²；共同振幅刻度 ${effective?.commonAmplitudeScale ?? polarizationScale}，手動顯示 gain=${effective?.gain ?? polarizationGain}。${state.renderError ? '新顯示設定未發布；原顯示與刻度保留。' : ''}不修改光學結果。`;
-  element('pl-result-status').textContent = state.currentResult ? '目前提交 · 完整結果' : state.completedNumerical && state.renderError ? '數值完成 · 顯示失敗；原結果保留，未自動重算' : state.lastResult ? '先前結果已過期 · 原提交分開保留' : '尚未完成模擬';
+  element('pl-color-info').textContent = `Displayed Shared Intensity Range ${effective?.limits.min ?? polarizationLimits.min}..${effective?.limits.max ?? polarizationLimits.max} amplitude-unit²; Shared Amplitude Scale ${effective?.commonAmplitudeScale ?? polarizationScale}, Manual Display Gain=${effective?.gain ?? polarizationGain}.${state.renderError ? 'New display settings were not published; the previous display and scale are retained.' : ''}Optical results are unchanged.`;
+  element('pl-result-status').textContent = state.currentResult ? 'Current Submission · Complete Result' : state.completedNumerical && state.renderError ? 'Computation Complete · Display Failed; Original Result Retained; No Automatic Recalculation' : state.lastResult ? 'Stale Result · Original Submission Retained Separately' : 'No Completed Simulation';
   const previous = element('pl-previous-result'); previous.hidden = !state.lastResult || state.currentResult === state.lastResult;
-  if (state.lastResult) element('pl-previous-spec').textContent = `原 request=${state.lastResult.requestId}\n${JSON.stringify(state.lastResult.experiment, null, 2)}\n原 stages=${JSON.stringify(state.lastResult.stages)}`;
+  if (state.lastResult) element('pl-previous-spec').textContent = `Original request=${state.lastResult.requestId}\n${JSON.stringify(state.lastResult.experiment, null, 2)}\nOriginal stages=${JSON.stringify(state.lastResult.stages)}`;
   renderPolarizationSweep(state.lastSweep, state.currentSweep === state.lastSweep);
   const selected = state.lastSweep?.rows.find(row => row.index === state.selectedSweepIndex);
-  element('pl-sweep-selected').textContent = selected ? `選取真正計算列（未重算）=${JSON.stringify(selected)}` : '';
+  element('pl-sweep-selected').textContent = selected ? `Selected Calculated Row (No Recalculation)=${JSON.stringify(selected)}` : '';
 }
 function polarizationSnapshot(): object {
   const state = polarizationController.state;
@@ -1293,7 +1296,7 @@ element('tp-auto-color').addEventListener('click', () => {
 });
 element('tp-chart-range').addEventListener('click', () => {
   const next = { min: Number(element<HTMLInputElement>('tp-chart-min').value), max: Number(element<HTMLInputElement>('tp-chart-max').value) };
-  if (!Number.isFinite(next.min) || !Number.isFinite(next.max) || next.max <= next.min) { notice('圖表範圍必須有限且下限小於上限。'); return; }
+  if (!Number.isFinite(next.min) || !Number.isFinite(next.max) || next.max <= next.min) { notice('Chart limits must be finite, with minimum less than maximum.'); return; }
   chartRange = next; renderSweep(twoPathController.state.lastSweep, twoPathController.state.currentSweep === twoPathController.state.lastSweep);
 });
 
@@ -1309,7 +1312,7 @@ function showPolarizedTwoPathPixel(result: DecodedPolarizedTwoPathResult | null,
   const intensity = ports[port].intensity[row * result.experiment.grid.nx + column];
   polarizedTwoPathSelectedPixel = { view, port, row, column, intensity, x_m: result.x[column], y_m: result.y[row], requestId: result.requestId };
   const output = document.getElementById('pt-pixel-readout'); if (!output) return;
-  output.textContent = `${view} port_${port} · row=${row}, column=${column}；x=${result.x[column].toPrecision(17)} m；y=${result.y[row].toPrecision(17)} m；I=${intensity.toPrecision(17)} amplitude-unit²`;
+  output.textContent = `${view} port_${port} · row=${row}, column=${column}; x=${result.x[column].toPrecision(17)} m; y=${result.y[row].toPrecision(17)} m; I=${intensity.toPrecision(17)} amplitude-unit²`;
   Object.assign(output.dataset, { view, port: String(port), row: String(row), column: String(column), intensity: String(intensity), requestId: result.requestId });
 }
 function polarizedTwoPathContent(result: DecodedPolarizedTwoPathResult, resources: PolarizedTwoPathResources): HTMLDivElement {
@@ -1321,7 +1324,7 @@ function polarizedTwoPathContent(result: DecodedPolarizedTwoPathResult, resource
     <p id="pt-pixel-readout" data-testid="pt-pixel-readout" class="monospace"></p>`;
   const local = (id: string) => content.querySelector<HTMLElement>(`#${id}`)!;
   local('pt-result-identity').textContent = `request=${result.requestId}\nSHA-256=${result.experimentSha256}`;
-  local('pt-result-spec').textContent = `完整原提交（SI / rad）\n${JSON.stringify(result.experiment, null, 2)}`;
+  local('pt-result-spec').textContent = `Complete Original Submission (SI / rad)\n${JSON.stringify(result.experiment, null, 2)}`;
   const generation = resultAttachmentGeneration;
   for (const [index, canvas] of resources.canvases.entries()) {
     const view = index < 2 ? 'raw' : 'analyzed', port = (index % 2) as 0 | 1;
@@ -1336,11 +1339,11 @@ function polarizedTwoPathContent(result: DecodedPolarizedTwoPathResult, resource
       if (pixel) showPolarizedTwoPathPixel(result, view, port, pixel.row, pixel.column);
     });
     const maximum = document.createElement('p'), value = result.intensityMax[index]; maximum.dataset.testid = `pt-max-${view}-${port}`; maximum.dataset.value = String(value);
-    maximum.textContent = `原始 max=${value.toPrecision(17)} amplitude-unit²${value > resources.limits.max ? ' · 顯示飽和，原值保留' : ''}`;
+    maximum.textContent = `Raw max=${value.toPrecision(17)} amplitude-unit²${value > resources.limits.max ? ' · Display Saturated; Raw Values Retained' : ''}`;
     maximum.classList.toggle('warning', value > resources.limits.max); card.append(title, holder, maximum); local('pt-images').append(card);
   }
   if (!result.analyzedPorts) {
-    const absent = document.createElement('p'); absent.dataset.testid = 'pt-analysis-absent'; absent.textContent = `分析器停用：無分析後影像或測量；保存角度=${result.analysis.axis_angle_rad} rad。`;
+    const absent = document.createElement('p'); absent.dataset.testid = 'pt-analysis-absent'; absent.textContent = `Analyzer disabled: no analyzed images or measurements; retained angle=${result.analysis.axis_angle_rad} rad.`;
     local('pt-images').append(absent);
   }
   for (const checkpoint of ['inputs', 'split', 'propagated', 'elements', 'combiner', 'outputs'] as const) {
@@ -1349,12 +1352,12 @@ function polarizedTwoPathContent(result: DecodedPolarizedTwoPathResult, resource
       const cell = document.createElement('td'); cell.textContent = value; row.append(cell);
     } local('pt-norms').append(row);
   }
-  local('pt-diagnostics').textContent = `public diagnostics（保留有號值與 null）\n${JSON.stringify(result.diagnostics, null, 2)}\n有序 action norms=${JSON.stringify(result.norms.arm_action_norms)}`;
-  local('pt-analysis').textContent = `獨立下游測量（不改 raw）\noriginal_input_ratio 分母=原入射 norm；raw_output_ratio 分母=該 raw port norm\n${JSON.stringify(result.analysis, null, 2)}`;
+  local('pt-diagnostics').textContent = `Public Diagnostics (Signed Values and null Preserved)\n${JSON.stringify(result.diagnostics, null, 2)}\nOrdered Action Norms=${JSON.stringify(result.norms.arm_action_norms)}`;
+  local('pt-analysis').textContent = `Separate Downstream Measurement (Raw Data Unchanged)\noriginal_input_ratio denominator=original incident norm; raw_output_ratio denominator=that raw port norm\n${JSON.stringify(result.analysis, null, 2)}`;
   return content;
 }
 function preparePolarizedTwoPathPresentation(result: DecodedPolarizedTwoPathResult): { commit(): void; dispose(): void; finalize(): void } {
-  if (!scene) throw new Error('完整數值測量已完成；WebGL2 顯示不可用，未重算。');
+  if (!scene) throw new Error('Complete numerical measurements are available; WebGL2 display is unavailable. No recalculation was performed.');
   const generation = resultAttachmentGeneration, estimate = estimatePolarizedTwoPathOperation(result.experiment.grid, result.experiment.analyzer.enabled, ownedSnapshot().retainedBytes);
   const images = result.analyzedPorts ? 4 : 2;
   assertOwnedBudgets(ownedSnapshot(result).retainedBytes + 8 * images * result.experiment.grid.nx * result.experiment.grid.ny + 131072, estimate.peakOwnedBytes);
@@ -1397,7 +1400,7 @@ function renderPolarizedTwoPathFields(state: PolarizedTwoPathState): void {
       ['grid.dx', 'dx / m'], ['grid.dy', 'dy / m'], ['source.amplitude', 'scalar amplitude'], ['source.phase_rad', 'source phase / rad'],
       ['coefficients.x.re', 'coefficient x real'], ['coefficients.x.im', 'coefficient x imaginary'], ['coefficients.y.re', 'coefficient y real'], ['coefficients.y.im', 'coefficient y imaginary'],
       ['arm_0.distance_m', 'arm 0 propagation / m'], ['arm_1.distance_m', 'arm 1 propagation / m'], ['relative_phase_rad', 'arm 1 extra phase / rad'],
-      ['analyzer.axis_angle_rad', 'shared analyzer axis / rad（停用仍保存）']] as [string, string, boolean?][]) make(parent, path, label, integer);
+      ['analyzer.axis_angle_rad', 'shared analyzer axis / rad (Retained When Disabled)']] as [string, string, boolean?][]) make(parent, path, label, integer);
     if (state.candidate.source.kind === 'gaussian') for (const [path, label] of [['source.waist_radius_m', 'waist radius / m'],
       ['source.waist_z_m', 'signed waist position / m'], ['source.center_x_m', 'center x / m'], ['source.center_y_m', 'center y / m']]) make(parent, path, label);
   }
@@ -1406,12 +1409,12 @@ function renderPolarizedTwoPathFields(state: PolarizedTwoPathState): void {
     polarizedTwoPathArmsKey = armsKey; const host = element('pt-arms'); host.replaceChildren();
     for (const port of [0, 1] as const) {
       const key = port === 0 ? 'arm_0' : 'arm_1', arm = state.candidate[key], block = document.createElement('section');
-      const title = document.createElement('h3'); title.textContent = `arm ${port} · 有序終端作用`; block.append(title);
+      const title = document.createElement('h3'); title.textContent = `arm ${port} · Ordered Terminal Actions`; block.append(title);
       for (const [index, action] of arm.actions.entries()) {
         const card = document.createElement('div'); card.className = 'pt-action';
         const select = document.createElement('button'); select.dataset.testid = `pt-select-${action.id}`; select.textContent = `${index + 1}. ${action.id} · ${action.kind}`;
         select.addEventListener('click', () => polarizedTwoPathController.select(action.id)); card.append(select);
-        make(card, `${key}.actions.${index}.axis_angle_rad`, 'axis θ / rad（+x toward +y）');
+        make(card, `${key}.actions.${index}.axis_angle_rad`, 'axis θ / rad(+x toward +y)');
         if (action.kind === 'linear_retarder') {
           make(card, `${key}.actions.${index}.retardance_rad`, 'perpendicular phase δ / rad');
           for (const [kind, phase] of [['qwp', Math.PI / 2], ['hwp', Math.PI]] as const) {
@@ -1421,7 +1424,7 @@ function renderPolarizedTwoPathFields(state: PolarizedTwoPathState): void {
         }
         for (const direction of ['up', 'down', 'delete'] as const) {
           const button = document.createElement('button'); button.dataset.testid = `pt-${direction}-${action.id}`;
-          button.textContent = direction === 'up' ? '往前' : direction === 'down' ? '往後' : '刪除';
+          button.textContent = direction === 'up' ? 'Earlier' : direction === 'down' ? 'Later' : 'Delete';
           button.disabled = direction === 'up' && index === 0 || direction === 'down' && index === arm.actions.length - 1;
           button.addEventListener('click', () => {
             const spec = structuredClone(polarizedTwoPathController.state.candidate), actions = spec[key].actions, current = actions.findIndex(item => item.id === action.id);
@@ -1434,10 +1437,10 @@ function renderPolarizedTwoPathFields(state: PolarizedTwoPathState): void {
         } block.append(card);
       }
       const kinds = document.createElement('select'); kinds.dataset.testid = `pt-add-kind-${port}`;
-      for (const [value, text] of [['linear_polarizer', '線偏振片'], ['linear_retarder', '線性延遲器']]) {
+      for (const [value, text] of [['linear_polarizer', 'Linear Polarizer'], ['linear_retarder', 'Linear Retarder']]) {
         const option = document.createElement('option'); option.value = value; option.textContent = text; kinds.append(option);
       }
-      const add = document.createElement('button'); add.dataset.testid = `pt-add-${port}`; add.textContent = `新增 arm ${port} 作用`; add.disabled = arm.actions.length >= 2;
+      const add = document.createElement('button'); add.dataset.testid = `pt-add-${port}`; add.textContent = `Add Arm ${port} Action`; add.disabled = arm.actions.length >= 2;
       add.addEventListener('click', () => {
         const spec = structuredClone(polarizedTwoPathController.state.candidate); if (spec[key].actions.length >= 2) return;
         let id: string; do { id = `action${nextPolarizedTwoPathId++}`; } while ([...spec.arm_0.actions, ...spec.arm_1.actions].some(item => item.id === id));
@@ -1460,16 +1463,16 @@ function renderPolarizedTwoPathFields(state: PolarizedTwoPathState): void {
   }
 }
 function renderPolarizedTwoPathSweep(sweep: DecodedPolarizedTwoPathSweep | null, fresh: boolean): void {
-  element('pt-sweep-status').textContent = !sweep ? '尚未完成掃描' : `${fresh ? '' : '先前掃描 · 已過期 · '}${sweep.status === 'complete' ? '完成' : 'FAILED / PARTIAL'} ${sweep.completedCount}/17${sweep.error ? ` · HTTP ${sweep.httpStatus} · ${sweep.error.message}` : ''}`;
+  element('pt-sweep-status').textContent = !sweep ? 'No Completed Sweep' : `${fresh ? '' : 'Previous Sweep · Stale Result · '}${sweep.status === 'complete' ? 'Complete' : 'FAILED / PARTIAL'} ${sweep.completedCount}/17${sweep.error ? ` · HTTP ${sweep.httpStatus} · ${sweep.error.message}` : ''}`;
   const svg = element<SVGSVGElement & HTMLElement>('pt-sweep-chart'), body = element('pt-sweep-rows'); svg.replaceChildren(); body.replaceChildren();
   element('pt-sweep-identity').textContent = ''; element('pt-sweep-selected').textContent = ''; if (!sweep) return;
-  element('pt-sweep-identity').textContent = `request=${sweep.requestId}\nfixed SHA=${sweep.fixedExperimentSha256}\nsweep SHA=${sweep.sweepSha256}\n原固定提交=${JSON.stringify(sweep.fixedExperiment)}`;
+  element('pt-sweep-identity').textContent = `request=${sweep.requestId}\nfixed SHA=${sweep.fixedExperimentSha256}\nsweep SHA=${sweep.sweepSha256}\nOriginal Fixed Submission=${JSON.stringify(sweep.fixedExperiment)}`;
   const ns = 'http://www.w3.org/2000/svg', add = (tag: string, attrs: Record<string, string>, text?: string) => {
     const node = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([key, value]) => node.setAttribute(key, value));
     if (text !== undefined) node.textContent = text; svg.append(node); return node;
   };
   add('path', { d: 'M55 20V190H725', fill: 'none', stroke: '#8ba2b1' }); add('text', { x: '55', y: '218' }, '0 rad'); add('text', { x: '660', y: '218' }, '2π rad');
-  add('text', { x: '60', y: '16' }, '原入射比例 · 全部共用 0..1 顯示範圍；超界/null 保留於表格');
+  add('text', { x: '60', y: '16' }, 'Original-Incident Ratio · Shared 0..1 Display Range; Out-of-Range/null Values Remain in the Table');
   for (const [series, color] of [['raw0', '#087f89'], ['raw1', '#9665a8'], ['analyzed0', '#c08028'], ['analyzed1', '#405cbd']] as const) {
     const port = series.endsWith('0') ? 0 : 1; let segment: string[] = [];
     const finish = () => { if (segment.length > 1) add('polyline', { points: segment.join(' '), stroke: color, fill: 'none', 'pointer-events': 'none' }); segment = []; };
@@ -1512,16 +1515,16 @@ function renderPolarizedTwoPath(state: PolarizedTwoPathState): void {
   const view = element<HTMLSelectElement>('pt-view'); view.disabled = !state.currentResult;
   view.querySelector<HTMLOptionElement>('option[value="analyzed"]')!.disabled = !state.currentResult?.analyzedPorts;
   view.value = state.currentResult?.analyzedPorts ? state.viewSelection : 'raw';
-  element('bench-label').textContent = polarizedTwoPathPublished ? `偏振兩路 ${view.value} · request=${polarizedTwoPathPublished.requestId}` : '理想偏振兩路示意 · 尚無目前結果';
+  element('bench-label').textContent = polarizedTwoPathPublished ? `Polarized Interference ${view.value} · request=${polarizedTwoPathPublished.requestId}` : 'Ideal Polarized-Interference Schematic · No Current Result';
   const effective = polarizedTwoPathResources?.limits ?? polarizedTwoPathLimits;
-  element('pt-color-info').textContent = `全部 raw/analyzed 影像共同色階 ${effective.min}..${effective.max} amplitude-unit²；僅明確按下共同自動色階才重新選範圍。${state.renderError ? '新顯示未發布；原完整顯示保留。' : ''}`;
-  element('pt-result-status').textContent = state.currentResult ? state.renderError ? '完整數值測量完成 · 新顯示故障，原顯示保留' : '目前提交 · 完整 raw / optional analyzed 結果'
-    : state.completedNumerical && state.renderError ? '完整數值測量完成 · 顯示失敗；未發布半組結果' : state.lastResult ? '先前結果已過期 · 原提交分開保留' : '尚未完成模擬／結果已釋放';
+  element('pt-color-info').textContent = `Shared Range for All Raw/Analyzed Images ${effective.min}..${effective.max} amplitude-unit²; The range changes only when Shared Auto Range is explicitly requested.${state.renderError ? 'The new display was not published; the previous complete display is retained.' : ''}`;
+  element('pt-result-status').textContent = state.currentResult ? state.renderError ? 'Complete Numerical Measurements · New Display Failed; Previous Display Retained' : 'Current Submission · Complete Raw / Optional Analyzed Result'
+    : state.completedNumerical && state.renderError ? 'Complete Numerical Measurements · Display Failed; No Partial Display Published' : state.lastResult ? 'Stale Result · Original Submission Retained Separately' : 'No Completed Simulation / Results Released';
   const previous = element('pt-previous-result'); previous.hidden = !state.lastResult || state.currentResult === state.lastResult;
-  element('pt-previous-spec').textContent = state.lastResult ? `原 request=${state.lastResult.requestId}\n${JSON.stringify(state.lastResult.experiment, null, 2)}\n原 norms=${JSON.stringify(state.lastResult.norms)}\n原 analysis=${JSON.stringify(state.lastResult.analysis)}` : '';
+  element('pt-previous-spec').textContent = state.lastResult ? `Original request=${state.lastResult.requestId}\n${JSON.stringify(state.lastResult.experiment, null, 2)}\nOriginal norms=${JSON.stringify(state.lastResult.norms)}\nOriginal analysis=${JSON.stringify(state.lastResult.analysis)}` : '';
   renderPolarizedTwoPathSweep(state.lastSweep, state.currentSweep === state.lastSweep);
   const selected = state.lastSweep?.rows.find(row => row.index === state.selectedSweepIndex);
-  element('pt-sweep-selected').textContent = selected ? `實際列（選取未重算）=${JSON.stringify(selected)}` : '';
+  element('pt-sweep-selected').textContent = selected ? `Calculated Row (Selection Does Not Recalculate)=${JSON.stringify(selected)}` : '';
 }
 function polarizedTwoPathSnapshot(): object {
   const state = polarizedTwoPathController.state;
@@ -1568,7 +1571,7 @@ polarizedTwoPathController.setOperationAdmission((kind, experiment) => admitOper
 element('release-results').addEventListener('click', () => {
   // Recheck actual numerical ownership on execution, including programmatic clicks.
   if (operationGate.busy || [controller, twoPathController, polarizationController, polarizedTwoPathController, idealController].some(actor => !!actor.state.active)) {
-    element('release-status').textContent = '計算仍在進行，未釋放任何結果。'; return;
+    element('release-status').textContent = 'Computation is still active; no results were released.'; return;
   }
   ++resultAttachmentGeneration; applyingDocument = true;
   try {
@@ -1587,8 +1590,8 @@ element('release-results').addEventListener('click', () => {
     for (const id of ['tp-previous-result', 'pl-previous-result', 'pt-previous-result', 'intensity-holder', 'saturation']) element(id).hidden = true;
     ++releasedResultsCount;
   } finally { applyingDocument = false; }
-  element('release-status').textContent = '所有模式的保留計算結果已釋放；設定、無效編輯、相機與文件保留。尚未重新模擬。';
-  element('result-status').textContent = '結果已釋放 · 尚未重新模擬';
+  element('release-status').textContent = 'Retained results were released across all modes. Settings, invalid edits, camera views, and documents are preserved. No simulation has been rerun.';
+  element('result-status').textContent = 'Results Released · No New Simulation';
   if (mode === 'sequential') render(controller.state); else if (mode === 'two_path') renderTwoPath(twoPathController.state);
   else if (mode === 'polarization') renderPolarization(polarizationController.state); else renderPolarizedTwoPath(polarizedTwoPathController.state);
   renderDocuments();
@@ -1625,12 +1628,12 @@ function prepareDocumentApplication(validated: SupportedValidatedDocument): () =
 }
 function renderModeHelp(): void {
   document.querySelector<HTMLElement>('.bench-help')!.textContent = mode === 'polarized_two_path'
-    ? 'Orbit / Pan / Zoom 與選取只改顯示；理想展開示意，作用位置無額外傳播；raw/analyzed 選擇不重算。'
+    ? 'Orbit, pan, zoom, and selection affect presentation only. Positions in the ideal unfolded schematic add no propagation; switching raw/analyzed views does not recalculate.'
     : mode === 'polarization'
-    ? 'Orbit / Pan / Zoom 與選取只改顯示；同一參考平面，示意間距無光學作用，沒有 z 拖曳。'
+    ? 'Orbit, pan, zoom, and selection affect presentation only. All actions share one reference plane; schematic spacing has no optical effect. z dragging is unavailable.'
     : mode === 'two_path'
-      ? 'Orbit / Pan / Zoom 與選取只改顯示；固定展開光路不可拖曳。虛線僅為指引。'
-      : '左鍵旋轉（Orbit）・右鍵平移（Pan）・滾輪縮放（Zoom）・點擊選取；橘色控制球僅沿 z 軸拖曳。';
+      ? 'Orbit, pan, zoom, and selection affect presentation only. The fixed unfolded train cannot be dragged. Dashed lines are guides only.'
+      : 'Left-drag to orbit · Right-drag to pan · Scroll to zoom · Click to select; Orange handles drag along z only.';
 }
 function presentDocumentApplication(): void {
   // Presentation is subsequent to the coherent settings commit and fails separately.
@@ -1653,7 +1656,7 @@ function presentDocumentApplication(): void {
     else renderPolarizedTwoPath(polarizedTwoPathController.state);
   } catch (error) { reportPresentation(error); }
 }
-const modeLabel: Record<SupportedBenchMode, string> = { sequential: '順序光路', two_path: '兩路干涉', polarization: '理想偏振', polarized_two_path: '偏振兩路干涉' };
+const modeLabel: Record<SupportedBenchMode, string> = { sequential: 'Sequential Optics', two_path: 'Two-Path Interference', polarization: 'Jones Polarization', polarized_two_path: 'Polarized Interference' };
 function renderDocuments(): void {
   if (!documents || disposed) return;
   const state = documents.state, metadata = state.metadata[mode];
@@ -1662,20 +1665,20 @@ function renderDocuments(): void {
   if (document.activeElement !== notes) notes.value = metadata.notes;
   const errors = [state.error, state.metadataErrors[mode]].filter(Boolean);
   element('doc-error').textContent = errors.join(' · '); element('doc-error').hidden = errors.length === 0;
-  const labels = { idle: '設定檔只保存設定；模擬需要另行提交。', reading: '讀取設定檔中', validating: '驗證設定檔中',
-    preview: '設定已驗證；請檢查並確認取代。', download_prepared: '下載已準備', download_requested: '已要求下載',
-    restored: '設定已還原，尚未模擬', error: '設定檔未完成；請檢查錯誤。' };
+  const labels = { idle: 'Settings files contain settings only. Submit simulations separately.', reading: 'Reading Settings File', validating: 'Validating Settings File',
+    preview: 'Settings validated. Review and confirm replacement.', download_prepared: 'Download Prepared', download_requested: 'Download Requested',
+    restored: 'Settings Restored; Simulation Not Run', error: 'Settings operation incomplete. Check error details.' };
   const current = mode === 'sequential' ? controller.state.currentResult : mode === 'two_path' ? twoPathController.state.currentResult
     : mode === 'polarization' ? polarizationController.state.currentResult : polarizedTwoPathController.state.currentResult;
   element('doc-status').textContent = state.status === 'restored' && current
-    ? '設定已還原；已有另行提交的模擬結果。' : labels[state.status];
+    ? 'Settings restored; a separately submitted simulation result is available.' : labels[state.status];
   element('doc-status').dataset.status = state.status;
   element<HTMLButtonElement>('doc-export').disabled = !currentDocumentDraft() || !!state.metadataErrors[mode];
   const prepared = state.preparedDownload, link = element<HTMLAnchorElement>('doc-download');
   element('doc-download-area').hidden = !prepared;
   if (prepared) {
     link.href = prepared.url; link.download = prepared.filename;
-    element('doc-download-label').textContent = `${modeLabel[prepared.document.mode]} · 已擷取的有效草稿版本 ${prepared.revision}（設定檔不包含結果）`;
+    element('doc-download-label').textContent = `${modeLabel[prepared.document.mode]} · Captured Valid Draft Revision ${prepared.revision} (Settings File Excludes Results)`;
   } else { link.removeAttribute('href'); link.removeAttribute('download'); }
   const preview = state.preview;
   element('doc-preview').hidden = !preview;
@@ -1683,9 +1686,9 @@ function renderDocuments(): void {
   element<HTMLButtonElement>('doc-apply').disabled = !preview || !state.acknowledged || state.pending || operationGate.busy;
   if (preview) {
     const doc = preview.document, exp = doc.experiment;
-    element('doc-preview-text').textContent = `模式：${modeLabel[doc.mode]}\n標題：${doc.metadata.title}\n備註：${doc.metadata.notes}\n` +
-      `網格：${exp.grid.ny} × ${exp.grid.nx}；dx=${exp.grid.dx} m；dy=${exp.grid.dy} m\n波長：${exp.wavelength_m} m\n` +
-      `完整設定（SI / rad；尚未模擬）：\n${JSON.stringify(exp, null, 2)}`;
+    element('doc-preview-text').textContent = `Mode: ${modeLabel[doc.mode]}\nTitle: ${doc.metadata.title}\nNotes: ${doc.metadata.notes}\n` +
+      `Grid: ${exp.grid.ny} × ${exp.grid.nx}; dx=${exp.grid.dx} m; dy=${exp.grid.dy} m\nWavelength: ${exp.wavelength_m} m\n` +
+      `Complete Settings (SI / rad; Simulation Not Run): \n${JSON.stringify(exp, null, 2)}`;
   } else element('doc-preview-text').textContent = '';
 }
 documents = new ExperimentDocumentController<SupportedBenchMode>({ context: documentContext, currentValidDraft: currentDocumentDraft,
@@ -1759,14 +1762,17 @@ idealWorkspace = new R03Workspace(element('r03-workspace'), idealController, sce
   reserveOperation(persistent, transient) { admitIdeal(persistent, transient); scientificReservations = { persistent, transient }; } });
 waveController = new WaveFieldController(controller, { admit: admitIdeal,
   reserveOperation(persistent, transient) { admitIdeal(persistent, transient); scientificReservations = { persistent, transient }; } });
-waveWorkspace = new WaveFieldWorkspace(element('w1-workspace'), scene, waveController, { admit: admitIdeal,
-  cursorHost: element('w1-bench-controls'),
-  loadExample: () => { controller.select('source'); void controller.replaceCandidate(cloneExperiment(W1_EXAMPLE)); }, select: id => controller.select(id) });
+// The dock belongs to the existing three-column bench, not a second dashboard.
+app.querySelector<HTMLElement>('.workspace')!.append(element('w1-workspace'));
 waveController.subscribe(() => {
   const active = waveController!.enabled && mode === 'sequential' && !researchActive;
   app!.dataset.computedSections = String(active); element('w1-view').setAttribute('aria-pressed', String(active));
-  if (active) { element('bench-label').textContent = waveController!.state.currentResult ? '已計算截面 · 共用色階 · 稀疏物理平面' : '波場未附著 · 明確 Simulate 後顯示'; }
+  if (active) { element('bench-label').textContent = waveController!.state.currentResult ? 'Computed Sections · Shared Range · Sparse Physical Planes' : 'No Field Attached · Press Simulate Explicitly'; }
+  else if (!researchActive && mode === 'sequential') element('bench-label').textContent = sequentialBenchLabel(controller.state);
 });
+waveWorkspace = new WaveFieldWorkspace(element('w1-workspace'), scene, waveController, { admit: admitIdeal,
+  cursorHost: element('w1-bench-controls'), editorHost: element('inspector'),
+  loadExample: () => { controller.select('source'); void controller.replaceCandidate(cloneExperiment(W1_EXAMPLE)); }, select: id => controller.select(id) });
 waveWorkspace.setActive(true);
 function switchWorkspace(research: boolean): void {
   if (researchActive === research) return; researchActive = research; app!.dataset.workspace = research ? 'research' : 'ordinary';

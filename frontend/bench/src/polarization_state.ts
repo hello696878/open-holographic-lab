@@ -112,7 +112,7 @@ export class PolarizationController {
     if (!Number.isFinite(value) || integer && !Number.isSafeInteger(value)) {
       invalid[path] = text;
       this.publish({ invalidEdits: Object.freeze(invalid), validatedDraft: null, pendingValidation: false,
-        revision: this.snapshot.revision + 1, currentResult: null, currentSweep: null, error: '請輸入完整有限數值（Finite number）', renderError: null }); return;
+        revision: this.snapshot.revision + 1, currentResult: null, currentSweep: null, error: 'Enter a complete finite number.', renderError: null }); return;
     }
     const experiment = structuredClone(this.snapshot.candidate), segments = path.split('.'); let owner: unknown = experiment;
     for (const segment of segments.slice(0, -1)) {
@@ -188,7 +188,7 @@ export class PolarizationController {
   async runSweep(): Promise<boolean> {
     if (!this.available()) return false;
     const selected = this.snapshot.validatedDraft!.elements.find(item => item.id === this.snapshot.selection && item.kind === 'linear_polarizer');
-    if (!selected) { this.publish({ error: '請選取列表中的線偏振片（linear polarizer）；未送出掃描。' }); return false; }
+    if (!selected) { this.publish({ error: 'Select a linear polarizer from the list. No sweep was submitted.' }); return false; }
     const base = this.envelope('polarization_submission', this.validatedHash, this.snapshot.validatedDraft!);
     const envelope: PolarizationSweepEnvelope = Object.freeze({ ...base, message_type: 'polarization_sweep_submission',
       selected_element_id: selected.id, angles_rad: SWEEP_ANGLES_RAD });

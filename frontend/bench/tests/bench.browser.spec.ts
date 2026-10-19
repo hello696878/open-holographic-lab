@@ -130,7 +130,7 @@ test('real edits change V0 output; aperture uses shared limits and original norm
   await page.getByTestId('select-screen').click(); await page.getByTestId('edit-observation-z_m').fill('-');
   const stale = await snap(page); expect(stale.currentResult).toBeNull(); expect(stale.scene.textureRequestId).toBeNull();
   expect(stale.lastResult.experiment.observation.z_m).toBe(.020);
-  await expect(page.getByTestId('result-status')).toContainText('已過期');
+  await expect(page.getByTestId('result-status')).toContainText('Stale Result');
   await expect(page.getByTestId('result-spec')).toContainText('20.00000');
   await page.screenshot({ path: resolve(figures, 'fig03_stale_result.png'), fullPage: true });
 });

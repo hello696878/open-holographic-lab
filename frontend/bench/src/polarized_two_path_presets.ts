@@ -7,9 +7,9 @@ const base: PolarizedTwoPathExperiment = { schema_version: 1, model_contract: 'v
 const orthogonal: PolarizedTwoPathExperiment = { ...base, arm_1: { distance_m: .002,
   actions: [{ id: 'hwp1', kind: 'linear_retarder', axis_angle_rad: Math.PI / 4, retardance_rad: Math.PI }] } };
 export const POLARIZED_TWO_PATH_PRESETS = Object.freeze([
-  { id: 'identical', label: '等長同偏振双臂', experiment: freezePolarizedTwoPathExperiment(base) },
-  { id: 'orthogonal', label: '正交双臂・原始輸出', experiment: freezePolarizedTwoPathExperiment(orthogonal) },
-  { id: 'orthogonal_analyzed', label: '正交双臂＋共同45°分析器', experiment: freezePolarizedTwoPathExperiment({ ...orthogonal, analyzer: { enabled: true, axis_angle_rad: Math.PI / 4 } }) },
+  { id: 'identical', label: 'Equal-Length Arms · Identical Polarization', experiment: freezePolarizedTwoPathExperiment(base) },
+  { id: 'orthogonal', label: 'Orthogonal Arms · Raw Outputs', experiment: freezePolarizedTwoPathExperiment(orthogonal) },
+  { id: 'orthogonal_analyzed', label: 'Orthogonal Arms + Shared 45° Analyzer', experiment: freezePolarizedTwoPathExperiment({ ...orthogonal, analyzer: { enabled: true, axis_angle_rad: Math.PI / 4 } }) },
 ]);
 export function polarizedTwoPathPreset(id: string): PolarizedTwoPathExperiment {
   const preset = POLARIZED_TWO_PATH_PRESETS.find(item => item.id === id); if (!preset) throw new Error(`Unknown polarized two-path preset ${id}`); return structuredClone(preset.experiment);

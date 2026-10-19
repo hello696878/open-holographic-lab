@@ -10,7 +10,7 @@ export const INITIAL_COLOR_LIMITS: Readonly<ColorLimits> = Object.freeze({ min: 
 export function validateColorLimits(limits: ColorLimits): void {
   if (!Number.isFinite(limits.min) || !Number.isFinite(limits.max)
       || limits.min < 0 || limits.max <= limits.min) {
-    throw new RangeError('色階必須有限，且 0 ≤ 下限 < 上限。');
+    throw new RangeError('Color limits must be finite and satisfy 0 ≤ minimum < maximum.');
   }
 }
 
@@ -21,12 +21,12 @@ export function intensityRGBA(
 ): Uint8Array {
   validateColorLimits(limits);
   if (!Number.isInteger(ny) || !Number.isInteger(nx) || ny < 1 || nx < 1
-      || intensity.length !== ny * nx) throw new RangeError('強度陣列尺寸不一致。');
+      || intensity.length !== ny * nx) throw new RangeError('Intensity array dimensions do not match.');
   const bytes = new Uint8Array(ny * nx * 4);
   for (let row = 0; row < ny; row += 1) {
     for (let column = 0; column < nx; column += 1) {
       const value = intensity[row * nx + column];
-      if (!Number.isFinite(value) || value < 0) throw new RangeError('強度必須有限且非負。');
+      if (!Number.isFinite(value) || value < 0) throw new RangeError('Intensity must be finite and nonnegative.');
       const gray = Math.round(255 * Math.min(1, Math.max(0,
         (value - limits.min) / (limits.max - limits.min))));
       const outputRow = reverseRows ? ny - 1 - row : row;
@@ -64,7 +64,7 @@ export function createArrayDetectorTexture(intensity: Float64Array, grid: GridSp
 /** Ordinary result panel uses the same byte mapping, with original top row first. */
 export function drawDetector(canvas: HTMLCanvasElement, result: DecodedResult, limits: ColorLimits): void {
   const context = canvas.getContext('2d');
-  if (!context) throw new Error('無法建立強度圖的 2D 顯示。');
+  if (!context) throw new Error('Unable to create the 2D intensity display.');
   const { ny, nx } = result.experiment.grid;
   canvas.width = nx;
   canvas.height = ny;
@@ -114,10 +114,10 @@ export function prepareDualCanvases(result: DecodedTwoPathResult, limits: ColorL
     const canvas = document.createElement('canvas');
     canvases.push(canvas);
     canvas.dataset.testid = `tp-intensity-${index}`;
-    canvas.setAttribute('aria-label', `輸出埠 ${index} 的原始強度灰階`);
+    canvas.setAttribute('aria-label', `Output Port ${index}  Raw Intensity Grayscale`);
     canvas.width = nx; canvas.height = ny;
     const context = canvas.getContext('2d');
-    if (!context) throw new Error(`輸出埠 ${index} 無法準備 2D 顯示。`);
+    if (!context) throw new Error(`Output Port ${index} could not prepare a 2D display.`);
     const bytes = new Uint8ClampedArray(intensityRGBA(port.intensity, ny, nx, limits));
     context.putImageData(new ImageData(bytes, nx, ny), 0, 0);
   }); } catch (error) {

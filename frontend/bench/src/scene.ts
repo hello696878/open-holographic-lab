@@ -9,8 +9,19 @@ import type { DecodedTwoPathResult, TwoPathExperiment } from './two_path_contrac
 import type { DecodedPolarizationResult, PolarizationExperiment } from './polarization_contracts';
 import type { DecodedPolarizedTwoPathResult, PolarizedTwoPathExperiment } from './polarized_two_path_contracts';
 import { calculateResearchCameraFit, researchBoundsCorners, type ResearchCameraView } from './r03_fig2a_camera';
-/** W1 overview sees the linear z train from the side; unchanged R03 retains its own overview. */
-export const W1_OVERVIEW_DIRECTION = Object.freeze([-1.4, .9, .2] as const);
+/** W1 uses oblique/section views; unchanged R03 retains its own camera contract. */
+export const W1_OVERVIEW_DIRECTION = Object.freeze([-1.4, .9, .9] as const);
+export const W1_BEAM_DIRECTION = Object.freeze([-1.4, .6, .8] as const);
+export const W1_SECTION_DIRECTION = Object.freeze([0, .001, 1] as const);
+export type WaveFieldCameraView = ResearchCameraView | 'beam' | 'section';
+/** Raycaster also intersects hidden objects; W1 layer visibility must govern picking. */
+export function visibleWaveFieldHit(object: THREE.Object3D, root: THREE.Object3D): boolean {
+  for (let at: THREE.Object3D | null = object; at; at = at.parent) {
+    if (!at.visible) return false;
+    if (at === root) return true;
+  }
+  return false;
+}
 
 export interface SceneCallbacks {
   select: (ids: string[]) => void;
@@ -84,7 +95,7 @@ export class BenchScene {
   private waveFieldCamera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; near: number; far: number; minDistance: number; maxDistance: number } | null = null;
   private waveFieldOverviewBounds: THREE.Box3 | null = null;
   private waveFieldFitCount = 0;
-  private waveFieldFraming: { view: ResearchCameraView; bounds: THREE.Box3 } | null = null;
+  private waveFieldFraming: { view: WaveFieldCameraView; bounds: THREE.Box3 } | null = null;
   private waveFieldIntervals: number[] = [];
   private waveFieldSubmissions: number[] = [];
   private waveFieldLastFrame: number | null = null;
@@ -101,11 +112,11 @@ export class BenchScene {
     this.callbacks = callbacks;
     this.canvas = document.createElement('canvas');
     this.canvas.dataset.testid = 'bench-canvas';
-    this.canvas.setAttribute('aria-label', '互動式 3D 光學實驗台');
+    this.canvas.setAttribute('aria-label', 'Interactive 3D optical bench');
     const context = this.canvas.getContext('webgl2', {
       antialias: true, alpha: false, preserveDrawingBuffer: true,
     });
-    if (!context) throw new Error('此瀏覽器無法建立 WebGL2；3D 實驗台不可用。沒有產生替代模擬。');
+    if (!context) throw new Error('This browser could not create WebGL2; the 3D bench is unavailable. No substitute simulation was produced.');
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, context, antialias: true });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.NoToneMapping;
@@ -130,7 +141,7 @@ export class BenchScene {
       this.frameCallback = null;
       this.detachPolarizationResult();
       this.detachPolarizedTwoPathResult();
-      this.callbacks.presentationFailure('WebGL2 顯示內容已遺失；數值結果保留，不會自動重算。');
+      this.callbacks.presentationFailure('WebGL2 display context was lost. Numerical data are retained; computation will not restart automatically.');
     };
     this.onContextRestored = () => {
       this.lost = false;
@@ -256,10 +267,15 @@ export class BenchScene {
   assertWaveFieldReady(): void { if (!this.waveFieldGroup || this.disposed || this.lost) throw new Error('W1 renderer unavailable; calculation will not be replayed'); }
   setWaveFieldLabelUpdater(callback: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null): void { this.waveFieldLabelUpdater = callback; }
   setWaveFieldInteraction(callback: ((id: string, row: number, column: number) => void) | null): void { this.waveFieldInteraction = callback; }
-  fitWaveFieldApparatus(bounds: THREE.Box3, view: ResearchCameraView): void {
-    this.assertWaveFieldReady(); const fit = calculateResearchCameraFit(bounds, this.camera, view === 'overview' ? 'focus' : view,
-      view === 'overview' ? new THREE.Vector3(...W1_OVERVIEW_DIRECTION) : view === 'focus' ? this.camera.position.clone().sub(this.controls.target) : undefined);
-    if (view !== 'focus') this.waveFieldOverviewBounds = bounds.clone();
+  fitWaveFieldApparatus(bounds: THREE.Box3, view: WaveFieldCameraView): void {
+    this.assertWaveFieldReady(); this.resize();
+    if (!['overview', 'top', 'focus', 'beam', 'section'].includes(view)) throw new Error('Unknown W1 camera view');
+    const direction = view === 'overview' ? new THREE.Vector3(...W1_OVERVIEW_DIRECTION)
+      : view === 'beam' ? new THREE.Vector3(...W1_BEAM_DIRECTION)
+      : view === 'section' ? new THREE.Vector3(...W1_SECTION_DIRECTION)
+      : view === 'focus' ? this.camera.position.clone().sub(this.controls.target) : undefined;
+    const fit = calculateResearchCameraFit(bounds, this.camera, view === 'top' ? 'top' : 'focus', direction);
+    if (view === 'overview') this.waveFieldOverviewBounds = bounds.clone();
     const damping = this.controls.enableDamping; this.controls.enableDamping = false;
     try { this.controls.update(); this.camera.position.copy(fit.position); this.camera.up.copy(fit.up); this.controls.target.copy(fit.target);
       this.camera.near = fit.near; this.camera.far = fit.far; this.controls.minDistance = fit.minDistance; this.controls.maxDistance = fit.maxDistance;
@@ -288,7 +304,7 @@ export class BenchScene {
   private ensureDisplayFinite(values: number[]): void {
     if (values.some((value) => !Number.isFinite(value) || !Number.isFinite(Math.fround(value))
       || (value !== 0 && Math.fround(value) === 0))) {
-      throw new Error('此 SI 幾何超出 3D 顯示可用範圍；未修改或縮減實驗參數。');
+      throw new Error('This SI geometry exceeds the supported 3D display range. Experiment parameters were not changed or reduced.');
     }
   }
 
@@ -463,7 +479,7 @@ export class BenchScene {
   } {
     if (this.mode !== 'two_path' || !this.twoPathExperiment || !this.dualDetectors
         || !structuralEqual(result.experiment, this.twoPathExperiment)) {
-      throw new Error('兩埠結果不屬於目前草稿；未附加任何輸出。');
+      throw new Error('The two-port result does not belong to the current draft; no output was attached.');
     }
     const prepared = prepareDualTextures(result, limits);
     const meshes = this.dualDetectors, oldTextures = this.dualTextures, oldResult = this.dualResult;
@@ -471,7 +487,7 @@ export class BenchScene {
     let committed = false, closed = false;
     return {
       commit: () => {
-        if (closed || committed || this.dualDetectors !== meshes) throw new Error('兩埠顯示交易已失效。');
+        if (closed || committed || this.dualDetectors !== meshes) throw new Error('The two-port display transaction is no longer valid.');
         for (const port of [0, 1] as const) {
           meshes[port].material.map = prepared.textures[port];
           meshes[port].material.color.set('#ffffff'); meshes[port].material.needsUpdate = true;
@@ -770,9 +786,9 @@ export class BenchScene {
     const key = `${limits.min}:${limits.max}`;
     if (result === this.result && key === this.colorKey) return;
     if (result && (!this.experiment || !structuralEqual(result.experiment, this.experiment))) {
-      throw new Error('結果不屬於目前通過驗證的草稿；未貼上強度圖。');
+      throw new Error('The result does not belong to the current validated draft; no intensity texture was attached.');
     }
-    if (result && !this.detector) throw new Error('3D 觀察面未建立；數值結果未貼到任何替代幾何。');
+    if (result && !this.detector) throw new Error('The 3D observation plane has not been created; numerical data were not attached to substitute geometry.');
     const nextTexture = result ? createDetectorTexture(result, limits) : null;
     if (this.texture) { this.texture.dispose(); this.textures.delete(this.texture); }
     this.texture = nextTexture;
@@ -844,11 +860,11 @@ export class BenchScene {
     this.setRay(event);
     if (this.handle && this.raycaster.intersectObject(this.handle).length) {
       if (!this.draftValidated) {
-        this.callbacks.notice('草稿尚未通過驗證，z 拖曳暫停；請先修正輸入。');
+        this.callbacks.notice('The draft is not yet validated. z dragging is paused; correct the inputs first.');
         return;
       }
       if (this.railZ() === null) {
-        this.callbacks.notice('目前視角接近 z 軸，拖曳不可用；請轉動相機或輸入數值。');
+        this.callbacks.notice('This view is close to the z axis, so dragging is unavailable. Orbit the camera or enter a value.');
         return;
       }
       this.drag = { id: this.selection, z_m: this.handle.position.z / 100, valid: true };
@@ -871,7 +887,7 @@ export class BenchScene {
     this.drag.valid = this.validZ(this.drag.id, z_m);
     this.handle.position.z = z_m * 100;
     (this.handle.material as THREE.MeshBasicMaterial).color.set(this.drag.valid ? '#d99b34' : '#d8453a');
-    this.callbacks.notice(`z 拖曳預覽：${(z_m * 1000).toFixed(4)} mm${this.drag.valid ? '；放開提交' : '；位置無效，放開將拒絕'}`);
+    this.callbacks.notice(`z drag preview: ${(z_m * 1000).toFixed(4)} mm${this.drag.valid ? '; release to submit' : '; invalid position; release will reject it'}`);
   }
 
   private pointerUp(event: PointerEvent): void {
@@ -884,8 +900,8 @@ export class BenchScene {
       this.updateRail();
       if (completed.valid) {
         this.callbacks.commitZ(completed.id, completed.z_m);
-        this.callbacks.notice('已提交 z 位置以進行驗證；尚未重新模擬。');
-      } else this.callbacks.notice('已拒絕拖曳：位置必須非負並保留現有光路順序。草稿未改動。');
+        this.callbacks.notice('The z position was submitted for validation; simulation has not been rerun.');
+      } else this.callbacks.notice('Drag rejected: position must be nonnegative and preserve the existing optical order. The draft is unchanged.');
       return;
     }
     if (!this.down || Math.hypot(event.clientX - this.down.x, event.clientY - this.down.y) > 4) {
@@ -894,7 +910,8 @@ export class BenchScene {
     }
     this.down = null;
     this.setRay(event);
-    const hits = this.raycaster.intersectObjects(this.researchGroup?.children ?? this.waveFieldGroup?.children ?? this.bench.children, true);
+    const hits = this.raycaster.intersectObjects(this.researchGroup?.children ?? this.waveFieldGroup?.children ?? this.bench.children, true)
+      .filter(hit => !this.waveFieldGroup || visibleWaveFieldHit(hit.object, this.waveFieldGroup));
     const ids = [...new Set(hits.map((hit) => hit.object.userData.identity as string | undefined).filter((id): id is string => !!id))];
     if (ids.length) this.callbacks.select(ids);
     const sectionHit = hits.find(hit => hit.object.userData.waveFieldSection && hit.uv);
@@ -1005,7 +1022,7 @@ export class BenchScene {
           if (this.waveFieldLastFrame !== null) this.waveFieldIntervals.push(time - this.waveFieldLastFrame); this.waveFieldLastFrame = time;
           if (this.waveFieldSubmissions.length > 600) this.waveFieldSubmissions.shift(); if (this.waveFieldIntervals.length > 600) this.waveFieldIntervals.shift(); }
       }
-      catch (error) { this.lost = true; this.callbacks.presentationFailure(`3D 顯示失敗：${String(error)}`); }
+      catch (error) { this.lost = true; this.callbacks.presentationFailure(`3D display failed: ${String(error)}`); }
     }
   };
 

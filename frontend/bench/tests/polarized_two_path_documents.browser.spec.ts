@@ -32,17 +32,45 @@ function fixture(enabled: boolean): any {
         { id: 'p1', kind: 'linear_polarizer', axis_angle_rad: -.29 }] }, relative_phase_rad: -7.123456789012344,
       analyzer: { enabled, axis_angle_rad: .6100000000000001 } } };
 }
+// Test-owned clone cap: 16-byte frame prefix, maximum padded 16 KiB header,
+// and at most four float64 16×17 intensity planes plus the two coordinate axes.
+const portabilityCaptureCap = 16 + 16_384 + 8 * (4 * 16 * 17 + 16 + 17);
 async function open(browser: Browser): Promise<{ context: Awaited<ReturnType<Browser['newContext']>>; page: Page }> {
   const context = await browser.newContext({ baseURL: 'http://127.0.0.1:8510', viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   const page = await context.newPage(); await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:8510' ? route.continue() : route.abort('blockedbyclient'));
+  // Capture the genuine response before returning the original response to the app.
+  // This bounded test-owned copy does not replay HTTP or alter the application stream.
+  await page.addInitScript(cap => {
+    const original = window.fetch.bind(window), captured: Record<string, Promise<string>> = {};
+    (window as any).__ptDocumentCaptured = captured;
+    window.fetch = async (input, init) => {
+      const response = await original(input, init);
+      if (input === '/api/v2g/simulate' && init?.method === 'POST' && response.ok) {
+        const id = JSON.parse(String(init.body)).request_id;
+        captured[id] = response.clone().arrayBuffer().then(buffer => {
+          if (buffer.byteLength > cap) throw new Error('Test document response capture exceeded its fixture frame cap');
+          const bytes = new Uint8Array(buffer), chunks: string[] = [];
+          for (let i = 0; i < bytes.length; i += 16384) chunks.push(String.fromCharCode(...bytes.subarray(i, i + 16384)));
+          return btoa(chunks.join(''));
+        });
+      }
+      return response;
+    };
+  }, portabilityCaptureCap);
   await page.goto('/'); await expect(page.getByTestId('simulate')).toBeEnabled(); await page.getByTestId('doc-toggle').click(); return { context, page };
 }
 async function upload(page: Page, path: string): Promise<void> { await page.getByTestId('doc-file').setInputFiles(path); await expect(page.getByTestId('doc-preview')).toBeVisible(); await expect(page.getByTestId('doc-status')).toHaveAttribute('data-status', 'preview'); }
-async function apply(page: Page): Promise<void> { await page.getByTestId('doc-ack').check(); await page.getByTestId('doc-apply').click(); await expect(page.getByTestId('mode')).toHaveValue('polarized_two_path'); await expect(page.getByTestId('doc-status')).toHaveText('設定已還原，尚未模擬'); }
+async function apply(page: Page): Promise<void> { await page.getByTestId('doc-ack').check(); await page.getByTestId('doc-apply').click(); await expect(page.getByTestId('mode')).toHaveValue('polarized_two_path'); await expect(page.getByTestId('doc-status')).toHaveText('Settings Restored; Simulation Not Run'); }
 async function solve(page: Page, dir: string, label: string): Promise<{ request: any; bytes: Buffer }> {
   const waiting = page.waitForResponse(r => new URL(r.url()).pathname === '/api/v2g/simulate' && r.request().method() === 'POST');
   await page.getByTestId('pt-simulate').click(); const response = await waiting; expect(response.status()).toBe(200);
-  const request = JSON.parse(response.request().postData()!), bytes = await response.body(); saveJSON(resolve(dir, `${label}_request.json`), request); save(resolve(dir, `${label}_response.bin`), bytes);
+  const request = JSON.parse(response.request().postData()!); saveJSON(resolve(dir, `${label}_request.json`), request);
+  const bytes = Buffer.from(await page.evaluate(async id => {
+    const captured = (window as any).__ptDocumentCaptured as Record<string, Promise<string>>;
+    if (!Object.hasOwn(captured, id)) throw new Error('The genuine browser response was not captured for this request');
+    try { return await captured[id]; } finally { delete captured[id]; }
+  }, request.request_id), 'base64');
+  expect(bytes.byteLength).toBeLessThanOrEqual(portabilityCaptureCap); save(resolve(dir, `${label}_response.bin`), bytes);
   await expect.poll(async () => (await snap(page)).polarizedTwoPath.currentResult?.requestId).toBe(request.request_id); return { request, bytes };
 }
 async function download(page: Page, path: string, prepare = true): Promise<Buffer> {

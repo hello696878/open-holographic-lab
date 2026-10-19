@@ -2,9 +2,16 @@
 import { test, expect, chromium, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 
 const root = resolve('../..');
-const evidence = resolve(root, process.env.R03_UX_EVIDENCE_DIR ?? 'runs/research_workspace_ux_v1_01/browser/ux');
+const evidenceRoot = resolve(root, process.env.R03_UX_EVIDENCE_DIR ?? 'runs/research_workspace_ux_v1_01/browser/ux');
+let evidence = evidenceRoot;
+test.beforeEach(async ({}, info) => {
+  mkdirSync(evidenceRoot, { recursive: true });
+  evidence = resolve(evidenceRoot, createHash('sha256').update(info.testId).digest('hex'));
+  mkdirSync(evidence); // Exclusive case destination; preserve any earlier invocation.
+});
 const actual = (page: Page): Promise<any> => page.evaluate(() => window.__benchDebug.snapshot());
 const ideal = async (page: Page): Promise<any> => (await actual(page)).idealPolarization;
 const keys = ['source_amplitude', 'mean_phase_rad', 'phase_std_rad', 'seed', 'qwp_angle_rad', 'hwp_angle_rad'] as const;
@@ -18,11 +25,48 @@ async function load(page: Page): Promise<string[]> {
   const calls: string[] = [];
   await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:8510' ? route.continue() : route.abort('blockedbyclient'));
   page.on('request', request => { const path = new URL(request.url()).pathname; if (request.method() === 'POST' && path.startsWith('/api/')) calls.push(path); });
+  // Test-owned raw clone, capped by the unchanged R03 response contract (128 KiB).
+  // Return the original fetch promise; never replay the request or consume the app's stream.
+  await page.addInitScript(() => {
+    const original = window.fetch.bind(window), captured: Record<string, Promise<string>> = {};
+    (window as any).__r03UxCaptured = captured;
+    window.fetch = (input, init) => {
+      const response = original(input, init);
+      if (input === '/api/research/r03-fig2a/simulate' && init?.method === 'POST') {
+        const id = JSON.parse(String(init.body)).request_id;
+        captured[id] = response.then(reply => {
+          if (!reply.ok) throw new Error(`R03 test capture received HTTP ${reply.status}`);
+          return reply.clone().arrayBuffer();
+        }).then(buffer => {
+          if (buffer.byteLength > 131_072) throw new Error('R03 test capture exceeded the response contract cap');
+          const bytes = new Uint8Array(buffer), chunks: string[] = [];
+          for (let i = 0; i < bytes.length; i += 16384) chunks.push(String.fromCharCode(...bytes.subarray(i, i + 16384)));
+          return btoa(chunks.join(''));
+        });
+      }
+      return response;
+    };
+  });
   await page.goto('/'); await page.getByTestId('research-workspace').click(); await ready(page); return calls;
 }
 async function compute(page: Page): Promise<any> {
   const pending = page.waitForResponse(response => new URL(response.url()).pathname === '/api/research/r03-fig2a/simulate' && response.request().method() === 'POST').then(async response => {
-    expect(response.status()).toBe(200); return { raw: await response.json(), request: JSON.parse(response.request().postData()!) };
+    expect(response.status()).toBe(200); const requestBytes = response.request().postDataBuffer()!, request = JSON.parse(requestBytes.toString('utf8'));
+    const base64 = await page.evaluate(async id => {
+      const captured = (window as any).__r03UxCaptured as Record<string, Promise<string>>;
+      if (!Object.hasOwn(captured, id)) throw new Error('The genuine R03 response was not captured for this request');
+      try { return await captured[id]; } finally { delete captured[id]; }
+    }, request.request_id);
+    const bytes = Buffer.from(base64, 'base64'); expect(bytes.byteLength).toBeLessThanOrEqual(131_072);
+    const raw = JSON.parse(bytes.toString('utf8')), requestSha256 = createHash('sha256').update(requestBytes).digest('hex'), stem = `capture_${requestSha256}`;
+    mkdirSync(evidence, { recursive: true }); writeFileSync(resolve(evidence, `${stem}_request.json`), requestBytes, { flag: 'wx' });
+    writeFileSync(resolve(evidence, `${stem}_response.bin`), bytes, { flag: 'wx' });
+    save(stem, { method: 'Test-owned clone of the genuine browser fetch response; original fetch once; no replay or extra HTTP',
+      path: new URL(response.url()).pathname, status: response.status(), contentType: response.headers()['content-type'],
+      requestFile: `${stem}_request.json`, requestByteLength: requestBytes.byteLength, requestSha256,
+      responseFile: `${stem}_response.bin`, responseByteLength: bytes.byteLength, responseSha256: createHash('sha256').update(bytes).digest('hex'),
+      requestId: request.request_id, decodedReplyRequestId: raw.request_id, responseCapBytes: 131_072 });
+    expect(raw.request_id).toBe(request.request_id); return { raw, request };
   });
   const [{ raw, request }] = await Promise.all([pending, page.getByTestId('r03-compute').click()]);
   await expect.poll(async () => (await ideal(page)).currentResult?.requestId).toBe(request.request_id);
@@ -66,7 +110,7 @@ for (const [width, height] of [[1366, 768], [1440, 900], [1920, 1080]]) {
     expect(metrics.dpr).toBe(1); expect(metrics.scale).toBe(1); expect(metrics.scrollWidth).toBeLessThanOrEqual(width + 1);
     expect(metrics.scrollHeight).toBeLessThanOrEqual(height + 1); expect(metrics.scrollY).toBe(0);
     const bounds = await page.getByTestId('r03-viewport').boundingBox(); expect(bounds!.width).toBeGreaterThan(500); expect(bounds!.height).toBeGreaterThan(420);
-    mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: resolve(evidence, `workspace_${width}x${height}.png`), fullPage: false });
+    mkdirSync(evidence, { recursive: true }); writeFileSync(resolve(evidence, `workspace_${width}x${height}.png`), await page.screenshot({ fullPage: false }), { flag: 'wx' });
     const beforeVisual = calls.slice(), immutable = (await ideal(page)).currentResult;
     const contextual: [string, readonly string[], string | null][] = [
       ['source', ['source_amplitude'], 'source'], ['input_hwp', [], 'source'], ['router', [], null],
@@ -175,7 +219,7 @@ test('actual Chrome 200 percent browser zoom uses accessible stacked and keyboar
 });
 
 // A scalar is one visual token; these checks use actual server results, not substituted readout fixtures.
-const nowrapRegion = (page: Page) => page.getByRole('region', { name: '四階段數值比較，可水平捲動', exact: true });
+const nowrapRegion = (page: Page) => page.getByRole('region', { name: 'Four-stage numerical comparison, horizontally scrollable', exact: true });
 const exactScalar = (value: number | null): string => value === null ? 'undefined (null)' : Object.is(value, -0) ? '−0' : value.toPrecision(17);
 async function readoutLines(page: Page): Promise<any[]> {
   return nowrapRegion(page).locator('table').evaluate((table: HTMLTableElement) => Array.from(table.rows).slice(1).flatMap(row => Array.from(row.cells).slice(1).map(cell => {
@@ -189,12 +233,12 @@ async function inspectNowrap(page: Page, calls: string[], capture: any, name: st
   await page.getByTestId('r03-full-precision').uncheck(); await page.getByTestId('r03-full-precision').check();
   const region = nowrapRegion(page), table = region.locator('table'); await expect(region).toHaveAttribute('tabindex', '0');
   const expectedRows = capture.raw.stages.map((stage: any, index: number) => [['Source', 'SLM', 'QWP', 'Output'][index], exactScalar(stage.stokes[0]), exactScalar(stage.degree_of_polarization)]);
-  await expect(table.locator('th')).toHaveText(['階段', 'S₀', 'DoP']);
+  await expect(table.locator('th')).toHaveText(['Stage', 'S₀', 'DoP']);
   expect(await table.evaluate((element: HTMLTableElement) => Array.from(element.rows).slice(1).map(row => Array.from(row.cells).map(cell => cell.textContent)))).toEqual(expectedRows);
   const lines = await readoutLines(page); expect(lines).toHaveLength(8);
   for (const cell of lines) { expect(cell.lineTops, cell.text).toHaveLength(1); expect(cell.fontSize, cell.text).toBeGreaterThanOrEqual(13); }
   await region.scrollIntoViewIfNeeded();
-  if (screenshot) { mkdirSync(evidence, { recursive: true }); await page.screenshot({ path: resolve(evidence, screenshot), fullPage: false }); }
+  if (screenshot) { mkdirSync(evidence, { recursive: true }); writeFileSync(resolve(evidence, screenshot), await page.screenshot({ fullPage: false }), { flag: 'wx' }); }
   const viewportBefore = await page.getByTestId('r03-viewport').boundingBox(), cameraBefore = cameraState(await actual(page));
   const scrollBefore = await page.evaluate(() => ({ x: scrollX, y: scrollY }));
   const maximum = await region.evaluate(element => element.scrollWidth - element.clientWidth); expect(maximum).toBeGreaterThanOrEqual(0); if (requireOverflow) expect(maximum).toBeGreaterThan(0);

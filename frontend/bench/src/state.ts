@@ -148,7 +148,7 @@ export class BenchController {
     if (!Number.isFinite(value) || (integer && !Number.isSafeInteger(value))) {
       invalid[path] = text;
       this.publish({ invalidEdits: Object.freeze(invalid), validatedDraft: null, pendingValidation: false,
-        revision: this.snapshot.revision + 1, currentResult: null, error: '請輸入完整有限數值（Finite number）', renderError: null });
+        revision: this.snapshot.revision + 1, currentResult: null, error: 'Enter a complete finite number.', renderError: null });
       return;
     }
     const candidate = cloneExperiment(this.snapshot.candidate);

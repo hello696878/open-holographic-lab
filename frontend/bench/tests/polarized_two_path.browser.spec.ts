@@ -2,11 +2,15 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { SWEEP_PHASES_RAD } from '../src/two_path_contracts';
 import { SWEEP_ANGLES_RAD } from '../src/polarization_contracts';
+import { MAX_POLARIZED_TWO_PATH_DISABLED_RESPONSE_BYTES, MAX_POLARIZED_TWO_PATH_RESPONSE_BYTES,
+  MAX_POLARIZED_TWO_PATH_HEADER_BYTES } from '../src/polarized_two_path_contracts';
 
-const root = resolve('../..'), evidence = resolve(root, process.env.V2G_EVIDENCE_DIR ?? 'runs/v2g_acceptance/browser');
-const figures = resolve(root, process.env.V2G_FIGURE_DIR ?? 'docs/handoffs/v2g/figures');
+const root = resolve('../..'), evidenceBase = resolve(root, process.env.V2G_EVIDENCE_DIR ?? 'runs/v2g_acceptance/browser');
+const figuresBase = resolve(root, process.env.V2G_FIGURE_DIR ?? 'docs/handoffs/v2g/figures');
+let evidence = evidenceBase, figures = figuresBase;
 const smoke = process.env.V2G_SMOKE === '1';
 const controlledOnly = process.env.V2G_CONTROLLED_ONLY === '1';
 const snap = (page: Page): Promise<any> => page.evaluate(() => window.__benchDebug.snapshot());
@@ -22,10 +26,125 @@ async function ready(page: Page): Promise<void> { await expect.poll(async () => 
 async function load(page: Page): Promise<void> { await page.goto('/'); expect((await snap(page)).mode).toBe('sequential'); await page.getByTestId('mode').selectOption('polarized_two_path'); await ready(page); }
 async function preset(page: Page, id: string): Promise<void> { await page.getByTestId('pt-preset').selectOption(id); await ready(page); }
 async function edit(page: Page, path: string, value: string): Promise<void> { const field = page.getByTestId(`pt-edit-${path.replaceAll('.', '-')}`); await field.fill(value); await field.blur(); await expect.poll(async () => (await pt(page)).pendingValidation).toBe(false); }
+// Test-owned instrumentation only. One armed success response is copied; the app receives
+// the original fetch promise immediately. A clone is not a native/browser-memory ceiling.
+function installSuccessCapture(options: { contextId: string; disabledCap: number; enabledCap: number; headerCap: number }): void {
+  const target = '/api/v2g/simulate', original = window.fetch, pageId = crypto.randomUUID();
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+  type Captured = { bytes: Uint8Array; status: number; requestId: string; endpoint: string } | { error: string };
+  type Slot = { token: string; claimed: boolean; requestId: string | null; endpoint: string | null;
+    done: Promise<Captured> | null; reader: ReadableStreamDefaultReader<Uint8Array> | null; conflict: string | null;
+    allocatedCapacityBytes: number; frameBytes: number };
+  let slot: Slot | null = null, sequence = 0, consumed = 0, peakCaptureBufferBytes = 0, disposed = false;
+  const inventory = () => ({ pendingOrRetained: slot ? 1 : 0, lifetimeSubmissions: sequence, consumedCaptures: consumed,
+    retainedCaptureBufferBytes: slot?.allocatedCapacityBytes ?? 0, retainedFrameBytes: slot?.frameBytes ?? 0, peakCaptureBufferBytes,
+    maximumCaptureCount: 1, maximumCaptureBufferBytes: options.enabledCap,
+    serialization: 'Additional bounded base64/string and transferred Node copies; native clone buffering is not bounded by this inventory', disposed });
+  const message = (error: unknown) => error instanceof Error ? error.message : String(error);
+  async function capture(response: Response, request: any, entry: Slot): Promise<Captured> {
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    try {
+      if (disposed || entry !== slot) throw new Error('Genuine capture disposed before response arrival');
+      if (response.status !== 200) throw new Error(`Expected genuine capture HTTP 200, got ${response.status}`);
+      const enabled = request.experiment?.analyzer?.enabled, grid = request.experiment?.grid;
+      if (typeof enabled !== 'boolean' || ![grid?.nx, grid?.ny].every(n => Number.isInteger(n) && n >= 1 && n <= 128)) throw new Error('Capture submission grid/analyzer mismatch');
+      const cap = enabled ? options.enabledCap : options.disabledCap, clone = response.clone();
+      if (!clone.body) throw new Error('Genuine success response has no body');
+      reader = clone.body.getReader(); entry.reader = reader;
+      const declared = clone.headers.get('content-length');
+      if (declared !== null && (!/^\d+$/.test(declared) || Number(declared) > cap)) throw new Error('Genuine capture Content-Length exceeds route cap or is invalid');
+      const storage = new Uint8Array(cap); let used = 0;
+      entry.allocatedCapacityBytes = cap; peakCaptureBufferBytes = Math.max(peakCaptureBufferBytes, cap);
+      while (true) {
+        const part = await reader.read(); if (part.done) break;
+        if (disposed || entry !== slot) throw new Error('Genuine capture disposed before consumption');
+        if (part.value.byteLength > cap - used) throw new Error(`Genuine capture exceeds ${cap}-byte route cap while streaming`);
+        storage.set(part.value, used); used += part.value.byteLength; entry.frameBytes = used;
+      }
+      if (declared !== null && used !== Number(declared)) throw new Error('Genuine capture truncated Content-Length');
+      if (used < 16) throw new Error('Genuine capture truncated frame prefix');
+      const view = new DataView(storage.buffer), length = view.getUint32(8, true), padded = Math.ceil(length / 8) * 8;
+      if ([79, 72, 76, 65, 66, 80, 84, 0].some((byte, index) => storage[index] !== byte) || view.getUint32(12, true) !== 0) throw new Error('Genuine capture frame prefix mismatch');
+      if (length < 2 || padded > options.headerCap || 16 + padded > used) throw new Error('Genuine capture truncated/oversized header');
+      const header = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(storage.subarray(16, 16 + length)));
+      if (header.request_id !== request.request_id) throw new Error('Genuine capture response request-ID mismatch');
+      const expected = 16 + padded + 8 * ((enabled ? 4 : 2) * grid.nx * grid.ny + grid.nx + grid.ny);
+      if (used !== expected) throw new Error('Genuine capture truncated/trailing payload');
+      return { bytes: storage.subarray(0, used), status: response.status, requestId: request.request_id, endpoint: entry.endpoint! };
+    } catch (error) {
+      // A failed clone is never substituted or retried; expose its failure to the test.
+      if (reader) void reader.cancel(message(error)).catch(() => undefined);
+      return { error: message(error) };
+    } finally { if (reader) reader.releaseLock(); entry.reader = null; }
+  }
+  const wrapped: typeof fetch = (input, init) => {
+    const pending = original.call(window, input, init); // Exactly one original HTTP call; return this same promise.
+    const endpoint = new URL(input instanceof Request ? input.url : String(input), location.href);
+    const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+    if (!disposed && slot && endpoint.origin === location.origin && endpoint.pathname === target && method.toUpperCase() === 'POST') {
+      const entry = slot;
+      if (entry.claimed) entry.conflict = 'More than one success-path request claimed one armed capture';
+      else {
+        entry.claimed = true; entry.endpoint = endpoint.href;
+        try {
+          if (typeof init?.body !== 'string') throw new Error('Capture expected the original string JSON submission');
+          const request = JSON.parse(init.body);
+          if (!uuid.test(request.request_id)) throw new Error('Capture submission request ID is not canonical UUIDv4');
+          entry.requestId = request.request_id;
+          entry.done = pending.then(response => capture(response, request, entry), error => ({ error: message(error) }));
+        } catch (error) { entry.done = Promise.resolve({ error: message(error) }); }
+      }
+    }
+    return pending;
+  };
+  window.fetch = wrapped;
+  (window as any).__ptSuccessCapture = {
+    arm(): string {
+      if (disposed || slot) throw new Error('Capture must be live with no retained or pending capture');
+      if (++sequence > 32) throw new Error('Test capture lifetime count exceeds 32 submissions');
+      const token = `${options.contextId}:${pageId}:${sequence}`;
+      slot = { token, claimed: false, requestId: null, endpoint: null, done: null, reader: null, conflict: null, allocatedCapacityBytes: 0, frameBytes: 0 }; return token;
+    },
+    async take(token: string, requestId: string): Promise<{ base64: string; metadata: object }> {
+      const entry = slot;
+      if (!entry || entry.token !== token || !entry.claimed || !entry.done) throw new Error('Missing or mismatched genuine success capture');
+      try {
+        if (entry.requestId !== requestId || entry.endpoint !== new URL(target, location.href).href) throw new Error('Capture context/endpoint/submitted request-ID mismatch');
+        const result = await entry.done;
+        if (entry.conflict) throw new Error(entry.conflict);
+        if ('error' in result) throw new Error(result.error);
+        if (result.requestId !== requestId || result.endpoint !== entry.endpoint || result.status !== 200) throw new Error('Capture result correlation/status mismatch');
+        const beforeConsumption = inventory();
+        const chunks: string[] = [];
+        for (let i = 0; i < result.bytes.length; i += 16384) chunks.push(String.fromCharCode(...result.bytes.subarray(i, i + 16384)));
+        const base64 = btoa(chunks.join('')); entry.done = null; entry.allocatedCapacityBytes = 0; entry.frameBytes = 0; slot = null; consumed++;
+        return { base64, metadata: { contextId: options.contextId, pageId, token, endpoint: result.endpoint, requestId, status: result.status,
+          rawByteLength: result.bytes.byteLength, beforeConsumption, afterConsumption: inventory(),
+          ownership: 'Logical browser test slot released; transfer/base64 and returned Node Buffer remain separately test-owned, never product-owned budgets' } };
+      } finally { entry.done = null; entry.allocatedCapacityBytes = 0; entry.frameBytes = 0; slot = null; }
+    },
+    dispose(): void {
+      disposed = true;
+      if (slot?.reader) void slot.reader.cancel('Test capture cleanup').catch(() => undefined);
+      if (slot) { slot.done = null; slot.allocatedCapacityBytes = 0; slot.frameBytes = 0; } slot = null;
+      if (window.fetch === wrapped) window.fetch = original;
+    },
+    inventory,
+  };
+}
+async function armSuccess(page: Page): Promise<string> { return page.evaluate(() => (window as any).__ptSuccessCapture.arm()); }
+async function successBytes(page: Page, token: string, requestId: string): Promise<Buffer> {
+  const captured = await page.evaluate(({ token, requestId }) => (window as any).__ptSuccessCapture.take(token, requestId), { token, requestId });
+  const bytes = Buffer.from(captured.base64, 'base64');
+  save(`${requestId}_transport_capture`, { ...captured.metadata, returnedNodeBufferBytes: bytes.byteLength,
+    timing: 'Test clone/stream/serialization instrumentation may affect timing; this is not a browser/native-memory ceiling' });
+  return bytes;
+}
 async function single(page: Page, label: string): Promise<{ state: any; bytes: Buffer; request: any }> {
+  const token = await armSuccess(page);
   const waiting = page.waitForResponse(r => new URL(r.url()).pathname === '/api/v2g/simulate' && r.request().method() === 'POST');
   await page.getByTestId('pt-simulate').click(); const response = await waiting; expect(response.status()).toBe(200);
-  const bytes = await response.body(), request = JSON.parse(response.request().postData()!); saveFrame(label, bytes); save(`${label}_request`, request);
+  const request = JSON.parse(response.request().postData()!), bytes = await successBytes(page, token, request.request_id); saveFrame(label, bytes); save(`${label}_request`, request);
   await expect.poll(async () => (await pt(page)).currentResult?.requestId).toBe(request.request_id);
   return { state: await pt(page), bytes, request };
 }
@@ -33,8 +152,20 @@ function frame(bytes: Buffer): { header: any; payload: Buffer } {
   expect(bytes.subarray(0, 8).toString('binary')).toBe('OHLABPT\0'); const size = bytes.readUInt32LE(8);
   return { header: JSON.parse(bytes.subarray(16, 16 + size).toString('utf8')), payload: bytes.subarray(16 + Math.ceil(size / 8) * 8) };
 }
-async function screenshot(page: Page, name: string): Promise<void> { mkdirSync(figures, { recursive: true }); await page.screenshot({ path: resolve(figures, name), fullPage: true }); }
-test.beforeEach(async ({ page }) => { await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:8510' ? route.continue() : route.abort('blockedbyclient')); });
+async function screenshot(page: Page, name: string): Promise<void> { mkdirSync(figures, { recursive: true }); writeFileSync(resolve(figures, name), await page.screenshot({ fullPage: true }), { flag: 'wx' }); }
+test.beforeEach(async ({ page, context }, testInfo) => {
+  if (!/^[A-Za-z0-9_-]+$/.test(testInfo.testId)) throw new Error('Unsafe test ID for exclusive case evidence');
+  mkdirSync(evidenceBase, { recursive: true }); mkdirSync(figuresBase, { recursive: true });
+  evidence = resolve(evidenceBase, testInfo.testId); figures = resolve(figuresBase, testInfo.testId);
+  mkdirSync(evidence); mkdirSync(figures);
+  await context.addInitScript(installSuccessCapture, { contextId: randomUUID(), disabledCap: MAX_POLARIZED_TWO_PATH_DISABLED_RESPONSE_BYTES,
+    enabledCap: MAX_POLARIZED_TWO_PATH_RESPONSE_BYTES, headerCap: MAX_POLARIZED_TWO_PATH_HEADER_BYTES });
+  await page.route('**/*', route => new URL(route.request().url()).origin === 'http://127.0.0.1:8510' ? route.continue() : route.abort('blockedbyclient'));
+});
+test.afterEach(async ({ context }) => {
+  for (const page of context.pages()) if (!page.isClosed()) await page.evaluate(() => (window as any).__ptSuccessCapture?.dispose());
+  evidence = evidenceBase; figures = figuresBase;
+});
 
 test('genuine raw/analyzed ports, joint scale, original readouts and 17 independent phase rows', async ({ page, browser }) => {
   test.skip(controlledOnly); await load(page); await preset(page, 'orthogonal_analyzed');
@@ -76,9 +207,10 @@ test('genuine raw/analyzed ports, joint scale, original readouts and 17 independ
     claims: ['actual production public compositions', 'full frames preserved for independent direct-public checker', 'view/scale/pick and marker selection do no optics'] });
 });
 async function singleSelected(page: Page, label: string): Promise<any> {
+  const token = await armSuccess(page);
   const waiting = page.waitForResponse(r => new URL(r.url()).pathname === '/api/v2g/simulate'); await page.getByTestId('pt-simulate-phase').click();
   const response = await waiting; expect(response.status()).toBe(200); const request = JSON.parse(response.request().postData()!);
-  saveFrame(label, await response.body()); save(`${label}_request`, request); await expect.poll(async () => (await pt(page)).currentResult?.requestId).toBe(request.request_id); return pt(page);
+  saveFrame(label, await successBytes(page, token, request.request_id)); save(`${label}_request`, request); await expect.poll(async () => (await pt(page)).currentResult?.requestId).toBe(request.request_id); return pt(page);
 }
 
 test('real full Gaussian, complex coefficients and stable ordered actions remain effective', async ({ page }) => {
@@ -317,7 +449,7 @@ test('actual all-mode ownership reaches fixed admission budget, then explicit re
   const before = await snap(page); for (const s of [before, before.twoPath, before.polarization, before.polarizedTwoPath]) expect(s.lastResult).not.toBeNull();
   for (const s of [before.twoPath, before.polarization, before.polarizedTwoPath]) expect(s.lastSweep).not.toBeNull();
   expect(before.ownedMemory.retainedBytes).toBeLessThanOrEqual(16 * 1024 * 1024); const requests = posts(page);
-  await page.getByTestId('tp-simulate').click(); await expect.poll(async () => (await snap(page)).twoPath.error).toMatch(/預算|budget/i);
+  await page.getByTestId('tp-simulate').click(); await expect.poll(async () => (await snap(page)).twoPath.error).toMatch(/budget/i);
   await expect.poll(async () => (await snap(page)).twoPath.active).toBeNull(); const failed = await snap(page);
   expect(failed.twoPath.completedNumerical).toEqual(before.twoPath.completedNumerical);
   expect(failed.twoPath.lastResult).toEqual(before.twoPath.lastResult); expect(failed.ownedMemory.scientificBytes).toBe(before.ownedMemory.scientificBytes);

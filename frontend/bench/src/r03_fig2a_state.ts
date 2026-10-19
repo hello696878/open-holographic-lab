@@ -55,7 +55,7 @@ export class R03Controller {
     const erased = number === 0 && /[1-9]/.test(input.split(/[eE]/, 1)[0]);
     if (!Number.isFinite(number) || erased || key === 'seed' && !Number.isSafeInteger(number)) {
       invalid[key] = value; this.publish({ invalidEdits: Object.freeze(invalid), revision: this.snapshot.revision + 1, validatedDraft: null,
-        pendingValidation: false, currentResult: null, error: '請輸入完整、有限且可表示的數值；seed 必須是整數。', renderError: null }); return;
+        pendingValidation: false, currentResult: null, error: 'Enter complete, finite, representable numbers; seed must be an integer.', renderError: null }); return;
     }
     const candidate = freezeR03Experiment({ ...this.snapshot.candidate, [key]: number }); delete invalid[key];
     this.publish({ candidate, invalidEdits: Object.freeze(invalid), revision: this.snapshot.revision + 1, validatedDraft: null,

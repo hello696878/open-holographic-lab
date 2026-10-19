@@ -67,7 +67,7 @@ export function preparePolarizationResources(result: DecodedPolarizationResult, 
     }
     for (const [index, intensity] of [result.incidentIntensity, result.finalIntensity].entries()) {
       const canvas = (factories.canvas ?? (() => document.createElement('canvas')))(); canvases.push(canvas);
-      canvas.dataset.testid = `pl-intensity-${index}`; canvas.setAttribute('aria-label', index === 0 ? '入射原始強度' : '最終原始強度');
+      canvas.dataset.testid = `pl-intensity-${index}`; canvas.setAttribute('aria-label', index === 0 ? 'Raw Incident Intensity' : 'Raw Final Intensity');
       const { nx, ny } = result.experiment.grid; canvas.width = nx; canvas.height = ny;
       const context = canvas.getContext('2d'); if (!context) throw new Error(`Polarization image ${index} 2D display preparation failed`);
       context.putImageData(new ImageData(new Uint8ClampedArray(intensityRGBA(intensity, ny, nx, limits)), nx, ny), 0, 0);

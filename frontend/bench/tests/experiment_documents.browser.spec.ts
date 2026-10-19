@@ -58,7 +58,7 @@ async function upload(page: Page, path: string): Promise<void> {
 async function apply(page: Page, mode: Mode): Promise<void> {
   await page.getByTestId('doc-ack').check(); await page.getByTestId('doc-apply').click();
   await expect(page.getByTestId('mode')).toHaveValue(mode);
-  await expect(page.getByTestId('doc-status')).toHaveText('設定已還原，尚未模擬');
+  await expect(page.getByTestId('doc-status')).toHaveText('Settings Restored; Simulation Not Run');
   await expect(page.getByTestId('doc-preview')).toBeHidden();
 }
 async function solve(page: Page, mode: Mode, dir: string, label: string) {
@@ -73,10 +73,10 @@ async function solve(page: Page, mode: Mode, dir: string, label: string) {
 }
 async function download(page: Page, path: string): Promise<Buffer> {
   await page.getByTestId('doc-export').click(); await expect(page.getByTestId('doc-download-area')).toBeVisible();
-  await expect(page.getByTestId('doc-status')).toHaveText('下載已準備');
+  await expect(page.getByTestId('doc-status')).toHaveText('Download Prepared');
   const waiting = page.waitForEvent('download'); await page.getByTestId('doc-download').click();
   const actual = await waiting; expect(await actual.failure()).toBeNull(); await actual.saveAs(path);
-  await expect(page.getByTestId('doc-status')).toHaveText('已要求下載');
+  await expect(page.getByTestId('doc-status')).toHaveText('Download Requested');
   return readFileSync(path);
 }
 

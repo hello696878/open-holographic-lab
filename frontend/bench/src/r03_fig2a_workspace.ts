@@ -5,26 +5,26 @@ import { R03_IDENTITY, R03_MODEL, type R03Result, type R03StageId } from './r03_
 import { createR03Apparatus, R03_COMPONENT_LABELS, type R03Apparatus } from './r03_fig2a_apparatus';
 import { R03_APPARATUS_CAP, R03_PHASE_DISPLAY_BYTES, R03_RESULT_METADATA_RESERVATION, R03_TRANSPORT_RESERVATION,
   R03_PHASE_GRADIENT, prepareR03Display, r03OwnedResults, r03ResultSnapshot, formatR03Readout, type R03Display } from './r03_fig2a_display';
-const stageNames: Record<R03StageId, string> = { source: 'Source · 入射 D 態', after_slm: 'SLM · 相位調制後', after_qwp: 'QWP · 四分之一波片後', output: 'Output · 最終讀值' };
+const stageNames: Record<R03StageId, string> = { source: 'Source · Incident D State', after_slm: 'SLM · After Phase Modulation', after_qwp: 'QWP · After Quarter-Wave Plate', output: 'Output · Final Readout' };
 const componentStage: Record<string, R03StageId | null> = { source: 'source', input_hwp: 'source', router: null, slm: 'after_slm', qwp: 'after_qwp', hwp: 'output', measurement: 'output' };
 const explanations: Record<string, string> = {
-  source: 'D source = A·(1,1)/√2。A 為 amplitude unit；S₀ 是機率平均強度，並非校準瓦特。',
-  input_hwp: '唯讀輸入準備示意。本模型直接指定 D 態；圖示不是可調波片，也不是恢復的歷史實驗設定。',
-  router: 'UNKNOWN · 中性功能連接。器件型式、分光比、距離與歷史角度未知；沒有 transfer matrix 或獨立計算階段。',
-  slm: '對 x 分量乘 exp(iφ)。256 個局部 coherent Jones samples；以等機率 second moment 觀察。',
-  qwp: '理想 QWP · 固定延遲 δ=π/2。角度作用於同一代數基底，無額外空間傳播。',
-  hwp: '理想 HWP · 固定延遲 δ=π。與 QWP 依序作用；不引入損耗或空間傳播。',
-  measurement: 'C = Σ(1/256) EₘEₘ†。Uncentered probability mean；不是 coherent field sum 或 M−1 covariance。',
+  source: 'D source = A·(1,1)/√2. A is in amplitude units; S₀ is probability-mean intensity, not calibrated watts.',
+  input_hwp: 'Read-only input-preparation schematic. This model specifies the D state directly; the icon is neither an adjustable wave plate nor a recovered historical setting.',
+  router: 'UNKNOWN · neutral functional connection. Device type, splitting ratio, distances and historical angles are unknown. No transfer matrix or independent calculation stage is assigned.',
+  slm: 'Multiplies the x component by exp(iφ). The 256 locally coherent Jones samples are observed through their equal-probability second moment.',
+  qwp: 'Ideal QWP · fixed retardance δ=π/2. The angle acts in the same algebraic basis; no additional spatial propagation is included.',
+  hwp: 'Ideal HWP · fixed retardance δ=π. It acts after the QWP, without loss or spatial propagation.',
+  measurement: 'C = Σ(1/256) EₘEₘ†. Uncentered probability mean; neither a coherent field sum nor M−1 covariance.',
 };
 const fields = [
-  ['source_amplitude', '振幅 A · Source', 'amplitude unit · 0…10⁶', 'source'],
-  ['mean_phase_rad', '平均相位 μ', 'rad · −2π…2π', 'slm'],
-  ['phase_std_rad', '相位標準差 σ', 'rad · 0…π；不是 variance', 'slm'],
-  ['seed', '實現種子 · Seed', 'PCG64 · integer 0…2³²−1', 'slm'],
-  ['qwp_angle_rad', 'QWP 光軸角度', 'rad · −2π…2π', 'qwp'],
-  ['hwp_angle_rad', 'HWP 光軸角度', 'rad · −2π…2π', 'hwp'],
+  ['source_amplitude', 'Source Amplitude A', 'amplitude unit · 0…10⁶', 'source'],
+  ['mean_phase_rad', 'Mean Phase μ', 'rad · −2π…2π', 'slm'],
+  ['phase_std_rad', 'Phase Standard Deviation σ', 'rad · 0…π; not variance', 'slm'],
+  ['seed', 'Realization Seed', 'PCG64 · integer 0…2³²−1', 'slm'],
+  ['qwp_angle_rad', 'QWP Optical-Axis Angle', 'rad · −2π…2π', 'qwp'],
+  ['hwp_angle_rad', 'HWP Optical-Axis Angle', 'rad · −2π…2π', 'hwp'],
 ] as const;
-const tabs = [['summary', '摘要'], ['phase', '相位遮罩'], ['measurements', '量測'], ['evidence', '依據']] as const;
+const tabs = [['summary', 'Summary'], ['phase', 'Phase Mask'], ['measurements', 'Measurements'], ['evidence', 'Evidence']] as const;
 type Tab = typeof tabs[number][0];
 export interface R03WorkspaceOptions {
   admit(extraPersistent: number, extraTransient: number): void;
@@ -44,28 +44,28 @@ export class R03Workspace {
     for (const node of [options.chrome.navigation, options.chrome.releaseButton, options.chrome.releaseStatus]) {
       const anchor = document.createComment('research chrome return point'); node.before(anchor); this.chromeAnchors.push({ node, anchor });
     }
-    host.innerHTML = `<header class="r03-toolbar" aria-label="理想統計偏振工作區控制">
-      <div data-r03="navigation"></div><div class="r03-title"><strong>統計偏振實驗台</strong><span>A · 獨立理想模型</span></div>
+    host.innerHTML = `<header class="r03-toolbar" aria-label="Ideal Statistical Polarization workspace controls">
+      <div data-r03="navigation"></div><div class="r03-title"><strong>Ideal Statistical Polarization</strong><span>A · Independent Ideal Model</span></div>
       <div class="r03-actions"><output data-r03="status" data-testid="r03-status" aria-live="polite"></output>
-        <button class="primary" data-r03="compute" data-testid="r03-compute">計算 · Compute</button>
-        <button data-r03="retry" data-testid="r03-retry-display" hidden>恢復顯示</button><span data-r03="release"></span></div>
-      <div class="r03-feedback" tabindex="0" aria-label="操作訊息"><p data-r03="error" data-testid="r03-error" role="alert" hidden></p>
+        <button class="primary" data-r03="compute" data-testid="r03-compute">Compute</button>
+        <button data-r03="retry" data-testid="r03-retry-display" hidden>Restore Display</button><span data-r03="release"></span></div>
+      <div class="r03-feedback" tabindex="0" aria-label="Operation messages"><p data-r03="error" data-testid="r03-error" role="alert" hidden></p>
         <p data-r03="display-error" data-testid="r03-display-error" role="alert" hidden></p><span data-r03="release-status"></span></div></header>
-      <div class="r03-grid"><aside class="r03-inspector r03-card" aria-label="元件與屬性">
-        <div class="r03-card-heading"><h2>元件</h2><button data-r03="all" data-testid="r03-all-parameters" aria-pressed="false">全部參數</button></div>
-        <nav data-r03="components" aria-label="理想裝置元件"></nav>
+      <div class="r03-grid"><aside class="r03-inspector r03-card" aria-label="Components and properties">
+        <div class="r03-card-heading"><h2>Components</h2><button data-r03="all" data-testid="r03-all-parameters" aria-pressed="false">All Parameters</button></div>
+        <nav data-r03="components" aria-label="Ideal apparatus components"></nav>
         <section class="r03-context"><h3 data-r03="selected-label"></h3><p data-r03="selected-explanation"></p></section>
-        <div data-r03="fields"></div><button data-r03="inspect-mask">檢視實際相位遮罩</button>
-        <p class="r03-note">M=256 · 16×16 · pₘ=1/256。編輯只驗證；只有 Compute 產生一個 realization。</p></aside>
-      <section class="r03-center" aria-label="裝置視窗"><div class="r03-camera" role="toolbar" aria-label="裝置視角">
-        <button data-r03="overview" data-testid="r03-overview-view">實驗總覽</button><button data-r03="top" data-testid="r03-top-view">俯視</button>
-        <button data-r03="focus" data-testid="r03-focus-selected">聚焦選取</button><button data-r03="reset" data-testid="r03-reset-view">重設</button></div>
+        <div data-r03="fields"></div><button data-r03="inspect-mask">Inspect the Calculated Phase Mask</button>
+        <p class="r03-note">M=256 · 16×16 · pₘ=1/256. Editing validates only; Compute creates one realization.</p></aside>
+      <section class="r03-center" aria-label="Apparatus viewport"><div class="r03-camera" role="toolbar" aria-label="Apparatus views">
+        <button data-r03="overview" data-testid="r03-overview-view">Overview</button><button data-r03="top" data-testid="r03-top-view">Top</button>
+        <button data-r03="focus" data-testid="r03-focus-selected">Focus Selection</button><button data-r03="reset" data-testid="r03-reset-view">Reset</button></div>
         <div class="r03-viewport" data-r03="viewport" data-testid="r03-viewport"></div>
-        <footer class="r03-viewport-caption"><strong>功能光路示意 · 非光線追跡</strong><span>拖曳旋轉 · 右鍵平移 · 滾輪縮放 · 點擊選取</span></footer></section>
-      <aside class="r03-results r03-card" aria-label="統計結果與依據"><div class="r03-tabs" role="tablist" aria-label="結果檢視">
+        <footer class="r03-viewport-caption"><strong>Functional optical schematic · not ray tracing</strong><span>Drag to orbit · right-drag to pan · scroll to zoom · click to select</span></footer></section>
+      <aside class="r03-results r03-card" aria-label="Statistical results and evidence"><div class="r03-tabs" role="tablist" aria-label="Result views">
         ${tabs.map(([id, title]) => `<button id="r03-tab-${id}" data-testid="r03-tab-${id}" role="tab" aria-controls="r03-panel-${id}" data-tab="${id}">${title}</button>`).join('')}</div>
-        <label class="r03-stage">觀察階段<select data-r03="stage" data-testid="r03-selected-stage" aria-label="觀察階段">
-          <option value="">UNKNOWN · 無獨立階段</option>${Object.entries(stageNames).map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}</select></label>
+        <label class="r03-stage">Observation Stage<select data-r03="stage" data-testid="r03-selected-stage" aria-label="Observation Stage">
+          <option value="">UNKNOWN · no independent stage</option>${Object.entries(stageNames).map(([id, name]) => `<option value="${id}">${name}</option>`).join('')}</select></label>
         <div data-r03="readout" class="r03-readout"></div></aside></div>`;
     this.viewport = this.node('viewport'); this.node('readout').append(this.readout(null));
     for (const id of R03_COMPONENTS) {
@@ -107,16 +107,16 @@ export class R03Workspace {
   enter(): void {
     if (this.disposed) return; this.active = true; this.host.hidden = false;
     this.node('navigation').append(this.options.chrome.navigation); this.node('release').append(this.options.chrome.releaseButton);
-    this.options.chrome.releaseButton.textContent = '釋放結果'; this.options.chrome.releaseButton.title = this.releaseText;
+    this.options.chrome.releaseButton.textContent = 'Release Results'; this.options.chrome.releaseButton.title = this.releaseText;
     this.node('release-status').append(this.options.chrome.releaseStatus);
     try {
-      if (!this.scene) throw new Error('既有 WebGL2 renderer 不可用；未產生替代裝置。');
+      if (!this.scene) throw new Error('The existing WebGL2 renderer is unavailable; no substitute apparatus was created.');
       if (!this.apparatus) { this.options.admit(R03_APPARATUS_CAP, R03_APPARATUS_CAP); this.apparatus = createR03Apparatus(); }
       this.scene.showResearchApparatus(this.viewport, this.apparatus.group);
       this.scene.setResearchLabelUpdater((camera, width, height) => this.apparatus?.updateLabels(camera, width, height));
       if (!this.hasFramed) { this.scene.fitResearchApparatus(this.apparatus.framingBounds(), 'overview'); this.hasFramed = true; }
       this.render(this.controller.state);
-    } catch (error) { this.controller.reportRenderFailure(String(error)); this.viewport.textContent = '3D 裝置不可用；請查看顯示錯誤。沒有替代光學結果。'; }
+    } catch (error) { this.controller.reportRenderFailure(String(error)); this.viewport.textContent = 'The 3D apparatus is unavailable. Check the display error; no substitute optical result was produced.'; }
     void this.controller.activate();
   }
   leave(): void {
@@ -124,7 +124,7 @@ export class R03Workspace {
     for (const { node, anchor } of this.chromeAnchors) anchor.after(node); this.options.chrome.releaseButton.textContent = this.releaseText;
   }
   private prepare(result: R03Result): R03Prepared {
-    if (!this.active || !this.apparatus || !this.scene) throw new Error('理想裝置未掛載；數值結果保留，尚未顯示。');
+    if (!this.active || !this.apparatus || !this.scene) throw new Error('The ideal apparatus is not mounted. Numerical data are retained but not displayed.');
     this.scene.assertResearchReady(); const before = this.ownedNumericalBytes(), after = r03OwnedResults([...this.numericalOwners(), result]);
     this.options.admit(after - before + R03_PHASE_DISPLAY_BYTES, after - before + R03_PHASE_DISPLAY_BYTES + 1024);
     const next = prepareR03Display(result); this.displays.add(next); let content: HTMLElement;
@@ -150,8 +150,8 @@ export class R03Workspace {
   };
   private modelEvidence(host: HTMLElement): void {
     const title = document.createElement('h2'); title.textContent = R03_IDENTITY; host.append(title);
-    const p = document.createElement('p'); p.className = 'r03-note'; p.textContent = `${R03_MODEL}\nC=ΣpₘEₘEₘ† · pₘ=1/256 · exp(−iωt) · (+x,+y) · S₃=−2 Im Cxy。Gaussian unwrapped φ=μ+σz → φ mod 2π；Local PCG64，沒有 browser RNG、centering、variance correction、clipping 或 quantization。Random phases 本身不建立 incoherent collection；此處明定 ideal statistical measurement。`; host.append(p);
-    const limits = document.createElement('p'); limits.className = 'r03-note'; limits.textContent = '支架、距離、路由與方向箭頭僅為功能示意；無 computed rays、propagated field sections 或收集孔徑。光軸標記使用代數 (+x,+y) → 裝置示意 (+z,−y)，不代表反射座標轉換。B / Figure 2a 實驗比較仍另行門控；不是 PAX 校準讀值，不宣稱實驗重現。'; host.append(limits);
+    const p = document.createElement('p'); p.className = 'r03-note'; p.textContent = `${R03_MODEL}\nC=ΣpₘEₘEₘ† · pₘ=1/256 · exp(−iωt) · (+x,+y) · S₃=−2 Im Cxy. Gaussian unwrapped φ=μ+σz → φ mod 2π; local PCG64 with no browser RNG, centering, variance correction, clipping or quantization. Random phases alone do not establish incoherent collection; an ideal statistical measurement is explicitly assumed here.`; host.append(p);
+    const limits = document.createElement('p'); limits.className = 'r03-note'; limits.textContent = 'Mounts, distances, routing and arrows are functional schematics only; no computed rays, propagated field sections or collection aperture are included. Optical-axis markers map algebraic (+x,+y) to schematic (+z,−y); this is not a reflected-coordinate transform. B / Figure 2a experimental comparison requires separate approval. These are not PAX-calibrated readings or a claim of experimental reproduction.'; host.append(limits);
   }
   private readout(result: R03Result | null, canvas?: HTMLCanvasElement): HTMLElement {
     const host = document.createElement('div'); host.className = 'r03-panels';
@@ -163,24 +163,24 @@ export class R03Workspace {
         const phaseHost = document.createElement('div'); phaseHost.className = 'r03-phase-host'; phaseHost.append(canvas); panel.append(phaseHost);
         const bar = document.createElement('div'); bar.className = 'r03-colorbar'; bar.style.background = R03_PHASE_GRADIENT; panel.append(bar);
         const scale = document.createElement('div'); scale.className = 'r03-phase-scale'; scale.innerHTML = '<span>0</span><span>π</span><span>2π rad</span>'; panel.append(scale);
-        const hint = document.createElement('p'); hint.className = 'r03-note'; hint.textContent = '實際提交的 16×16 遮罩 · row 0 在上，column 0 在左 · C-order。點擊選取原始相位。'; panel.append(hint);
+        const hint = document.createElement('p'); hint.className = 'r03-note'; hint.textContent = 'Submitted 16×16 mask · row 0 at top, column 0 at left · C-order. Click to inspect the raw phase.'; panel.append(hint);
         const sample = document.createElement('output'); sample.className = 'r03-sample'; sample.dataset.r03 = 'sample'; sample.dataset.testid = 'r03-sample'; panel.append(sample);
       }
       if (id === 'measurements') {
         const label = document.createElement('label'); label.className = 'r03-precision'; const input = document.createElement('input'); input.type = 'checkbox'; input.checked = this.fullPrecision; input.dataset.testid = 'r03-full-precision';
-        input.addEventListener('change', () => { this.fullPrecision = input.checked; this.refreshNumbers(); }); label.append(input, '完整精度 · 17 位有效數字'); panel.append(label);
+        input.addEventListener('change', () => { this.fullPrecision = input.checked; this.refreshNumbers(); }); label.append(input, 'Full Precision · 17 Significant Digits'); panel.append(label);
         const measurements = document.createElement('div'); measurements.dataset.r03 = 'measurements'; panel.append(measurements);
       }
       if (id === 'evidence') {
         this.modelEvidence(panel); const identity = document.createElement('p'); identity.className = 'r03-identity'; identity.dataset.testid = 'r03-result-identity'; identity.dataset.r03 = 'identity'; panel.append(identity);
         if (result) {
           identity.textContent = `SUBMITTED RESULT\n${result.requestId}\nseed ${result.experiment.seed}\nSHA-256 ${result.experimentSha256}`;
-          const population = document.createElement('p'); population.className = 'r03-population'; population.textContent = `Infinite Gaussian ensemble expectation · ${formatR03Readout(result.population.infinite_gaussian_degree_of_polarization, true)}\n${result.population.assumption}\n獨立標示的無限母體預測，不取代實際 finite realization，不是實驗誤差或 accuracy percent。`; panel.append(population);
-          const details = document.createElement('details'); details.open = true; const summary = document.createElement('summary'); summary.textContent = '完整設定、讀值與 provenance（可選取複製）';
+          const population = document.createElement('p'); population.className = 'r03-population'; population.textContent = `Infinite Gaussian ensemble expectation · ${formatR03Readout(result.population.infinite_gaussian_degree_of_polarization, true)}\n${result.population.assumption}\nSeparately labelled infinite-population prediction. It does not replace the finite realization and is not an experimental error or accuracy percentage.`; panel.append(population);
+          const details = document.createElement('details'); details.open = true; const summary = document.createElement('summary'); summary.textContent = 'Full Settings, Readouts and Provenance (Selectable Text)';
           const pre = document.createElement('pre'); pre.textContent = JSON.stringify(r03ResultSnapshot(result), null, 2); details.append(summary, pre); panel.append(details);
         }
       }
-      if (!result && id !== 'evidence') { const empty = document.createElement('p'); empty.className = 'r03-empty'; empty.textContent = '尚無目前結果。設定後按 Compute；不使用預覽 RNG 或替代遮罩。'; panel.append(empty); }
+      if (!result && id !== 'evidence') { const empty = document.createElement('p'); empty.className = 'r03-empty'; empty.textContent = 'No current result. Set parameters, then press Compute. No preview RNG or substitute mask is used.'; panel.append(empty); }
       host.append(panel);
     }
     if (result) this.fillNumbers(host, result); return host;
@@ -192,14 +192,14 @@ export class R03Workspace {
       const headline = document.createElement('div'); headline.className = 'r03-dop'; headline.innerHTML = '<span>Finite ensemble DoP</span><strong data-testid="r03-dop"></strong>';
       headline.querySelector('strong')!.textContent = formatR03Readout(stage.degree_of_polarization, stage.roundoff_limited); summary.append(headline);
       const intensity = document.createElement('p'); intensity.className = 'r03-intensity'; intensity.dataset.testid = 'r03-intensity'; intensity.textContent = `S₀ = ${formatR03Readout(stage.stokes[0])} amplitude-unit²\nprobability mean`; summary.append(intensity);
-      const note = document.createElement('p'); note.className = 'r03-note'; note.textContent = stage.stokes[0] === 0 ? 'Dark source：DoP、normalized Stokes、direction 為 undefined (null)，不以 0 或 epsilon 代替。' : stage.roundoff_limited ? 'Roundoff limited · 顯示原始值，未 clamp。請於量測檢視完整精度。' : '同一次有限樣本計算 · 可在量測檢視 C、Stokes 與 eigenvalues。'; summary.append(note);
-    } else { const p = document.createElement('p'); p.className = 'r03-note'; p.textContent = 'UNKNOWN 路由沒有獨立計算階段。請選取已記錄的觀察階段；不推造中間讀值。'; summary.append(p); }
+      const note = document.createElement('p'); note.className = 'r03-note'; note.textContent = stage.stokes[0] === 0 ? 'Dark source: DoP, normalized Stokes and direction are undefined (null); zero or epsilon is not substituted.' : stage.roundoff_limited ? 'Roundoff limited · raw values are shown without clamping. Inspect full precision in Measurements.' : 'Same finite-sample calculation · inspect C, Stokes and eigenvalues in Measurements.'; summary.append(note);
+    } else { const p = document.createElement('p'); p.className = 'r03-note'; p.textContent = 'UNKNOWN routing has no independent calculation stage. Select a recorded observation stage; intermediate readings are not invented.'; summary.append(p); }
     const measurements = host.querySelector<HTMLElement>('[data-r03="measurements"]')!; measurements.replaceChildren(); const format = (value: number | null) => formatR03Readout(value, this.fullPrecision);
-    const table = document.createElement('table'); table.createCaption().textContent = '同一有限樣本 · 四階段比較';
-    const header = table.createTHead().insertRow(); for (const text of ['階段', 'S₀', 'DoP']) { const th = document.createElement('th'); th.textContent = text; header.append(th); }
+    const table = document.createElement('table'); table.createCaption().textContent = 'Same Finite Sample · Four-Stage Comparison';
+    const header = table.createTHead().insertRow(); for (const text of ['Stage', 'S₀', 'DoP']) { const th = document.createElement('th'); th.textContent = text; header.append(th); }
     for (const item of result.stages) { const row = table.insertRow(); row.insertCell().textContent = stageNames[item.id].split(' · ')[0]; row.insertCell().textContent = format(item.stokes[0]); row.insertCell().textContent = format(item.degree_of_polarization); }
     const tableScroll = document.createElement('div'); tableScroll.className = 'r03-measurement-table'; tableScroll.tabIndex = 0;
-    tableScroll.setAttribute('role', 'region'); tableScroll.setAttribute('aria-label', '四階段數值比較，可水平捲動'); tableScroll.append(table); measurements.append(tableScroll);
+    tableScroll.setAttribute('role', 'region'); tableScroll.setAttribute('aria-label', 'Four-stage numerical comparison, horizontally scrollable'); tableScroll.append(table); measurements.append(tableScroll);
     for (const item of result.stages) {
       const details = document.createElement('details'); details.open = item.id === this.selectedStage; const title = document.createElement('summary'); title.textContent = stageNames[item.id]; details.append(title);
       const pre = document.createElement('pre'); pre.textContent = 'C / amplitude-unit²\n' + item.coherency.map(row => row.map(c => `${format(c.re)} ${c.im < 0 ? '−' : '+'} ${format(Math.abs(c.im))}i`).join('   ')).join('\n') +
@@ -216,7 +216,7 @@ export class R03Workspace {
       input.classList.toggle('invalid', Object.hasOwn(state.invalidEdits, key)); input.setAttribute('aria-invalid', String(Object.hasOwn(state.invalidEdits, key)));
       input.closest<HTMLElement>('label')!.hidden = !this.allParameters && input.closest('label')!.getAttribute('data-component') !== state.selection;
     }
-    this.node('all').setAttribute('aria-pressed', String(this.allParameters)); this.node('selected-label').textContent = this.allParameters ? '全部參數 · 同一份草稿' : R03_COMPONENT_LABELS[state.selection];
+    this.node('all').setAttribute('aria-pressed', String(this.allParameters)); this.node('selected-label').textContent = this.allParameters ? 'All Parameters · Same Draft' : R03_COMPONENT_LABELS[state.selection];
     this.node('selected-explanation').textContent = explanations[state.selection]; this.node('inspect-mask').hidden = state.selection !== 'slm' && !this.allParameters;
     this.host.querySelectorAll<HTMLButtonElement>('button[data-component]').forEach(button => { const selected = button.dataset.component === state.selection; button.classList.toggle('selected', selected); button.setAttribute('aria-pressed', String(selected)); });
     this.node<HTMLSelectElement>('stage').value = this.selectedStage ?? ''; this.apparatus?.select(state.selection);
@@ -225,11 +225,11 @@ export class R03Workspace {
     const showing = !!state.currentResult && this.resource?.result === state.currentResult;
     if (!showing && this.node('readout').dataset.requestId) { this.node('readout').replaceChildren(this.readout(null)); delete this.node('readout').dataset.requestId; }
     if (showing) { this.node('readout').dataset.requestId = state.currentResult!.requestId; this.updateSample(state.currentResult!); if (this.active) this.apparatus?.setPhase(this.resource!.texture); } else this.apparatus?.setPhase(null);
-    const status = state.active ? 'COMPUTING · 計算中' : state.pendingValidation ? 'VALIDATING · 驗證中' : state.error ? 'INVALID / FAILED · 請檢查輸入'
-      : state.renderError ? 'DISPLAY FAILURE · 數值保留' : showing ? 'SUCCESS · 同一次實現' : state.lastResult || state.completedNumerical ? 'STALE / DETACHED · 需重新提交' : ready ? 'READY · 尚未計算' : '尚未驗證';
+    const status = state.active ? 'COMPUTING · In Progress' : state.pendingValidation ? 'VALIDATING · Checking Draft' : state.error ? 'INVALID / FAILED · Check Inputs'
+      : state.renderError ? 'DISPLAY FAILURE · Numerical Data Retained' : showing ? 'SUCCESS · Same Realization' : state.lastResult || state.completedNumerical ? 'Stale Result / Detached · Submit Again' : ready ? 'READY · Not Yet Calculated' : 'Not Yet Validated';
     this.node('status').textContent = status; this.node('status').dataset.state = state.active ? 'computing' : showing ? 'success' : state.error ? 'error' : state.lastResult ? 'stale' : 'ready';
     this.node('error').hidden = !state.error; this.node('error').textContent = state.error;
-    this.node('display-error').hidden = !state.renderError; this.node('display-error').textContent = state.renderError ? `DISPLAY FAILURE · ${state.renderError} · 數值保留，不重送計算。` : '';
+    this.node('display-error').hidden = !state.renderError; this.node('display-error').textContent = state.renderError ? `DISPLAY FAILURE · ${state.renderError} · Numerical data retained; computation is not resubmitted.` : '';
     this.node('retry').hidden = !state.renderError || !this.controller.canRetryPresentation; this.node<HTMLButtonElement>('retry').disabled = !ready || !this.controller.canRetryPresentation; this.showTab();
   }
   numericalOwners(): (R03Result | null)[] { return [this.controller.state.lastResult, this.controller.state.completedNumerical, this.controller.state.currentResult, ...[...this.displays].map(display => display.result)]; }

@@ -115,7 +115,7 @@ export class ExperimentDocumentController<M extends SupportedBenchMode = BenchMo
   }
   exportCurrent(): Promise<boolean> {
     const draft = this.options.currentValidDraft();
-    if (!draft || this.snapshot.metadataErrors[draft.mode]) { this.publish({ error: '目前草稿尚未通過驗證，無法匯出。' }); return Promise.resolve(false); }
+    if (!draft || this.snapshot.metadataErrors[draft.mode]) { this.publish({ error: 'The current draft has not passed validation and cannot be exported.' }); return Promise.resolve(false); }
     let document: DocumentByMode<M>;
     try { document = makeExperimentDocument(draft.mode, draft.experiment, this.snapshot.metadata[draft.mode]); }
     catch (error) { this.publish({ error: textOf(error) }); return Promise.resolve(false); }

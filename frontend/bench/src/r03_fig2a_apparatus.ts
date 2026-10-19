@@ -1,8 +1,8 @@
 /** Original mounted apparatus. All distances/routes are functional design, never computed rays. */
 import * as THREE from 'three';
 import { R03_APPARATUS_CAP } from './r03_fig2a_display';
-export const R03_COMPONENT_LABELS: Readonly<Record<string, string>> = Object.freeze({ source: '光源 · Source', input_hwp: '輸入準備',
-  router: '路由 · UNKNOWN', slm: '相位調制器 · SLM', qwp: '四分之一波片 · QWP', hwp: '半波片 · HWP', measurement: '統計讀值 · Readout' });
+export const R03_COMPONENT_LABELS: Readonly<Record<string, string>> = Object.freeze({ source: 'Source', input_hwp: 'Input Preparation',
+  router: 'Router · UNKNOWN', slm: 'Phase Modulator · SLM', qwp: 'Quarter-Wave Plate · QWP', hwp: 'Half-Wave Plate · HWP', measurement: 'Statistical Readout' });
 const SHORT_LABELS: Readonly<Record<string, string>> = Object.freeze({ source: 'D SOURCE', input_hwp: 'PREP', router: 'UNKNOWN',
   slm: 'SLM', qwp: 'QWP', hwp: 'HWP', measurement: 'READOUT' });
 export interface R03Apparatus { readonly group: THREE.Group; readonly ownedBytes: number; readonly geometryBytes: number;

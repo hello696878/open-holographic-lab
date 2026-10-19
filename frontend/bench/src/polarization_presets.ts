@@ -13,18 +13,18 @@ const base: PolarizationExperiment = { schema_version: 1, model_contract: 'v2d_i
   grid: { ny: 64, nx: 64, dy: 4e-6, dx: 4e-6 }, source: { kind: 'uniform', amplitude: 1, phase_rad: 0 },
   coefficients: structuredClone(COEFFICIENT_PRESETS[0].coefficients), elements: [], readout: { row: 32, column: 32 } };
 export const POLARIZATION_PRESETS = Object.freeze([
-  { id: 'analyzer', label: 'x 輸入＋分析器', experiment: freezePolarizationExperiment({ ...base,
+  { id: 'analyzer', label: 'x Input + Analyzer', experiment: freezePolarizationExperiment({ ...base,
     elements: [{ id: 'p1', kind: 'linear_polarizer', axis_angle_rad: 0 }] }) },
-  { id: 'crossed', label: 'x 輸入＋交叉偏振片', experiment: freezePolarizationExperiment({ ...base,
+  { id: 'crossed', label: 'x Input + Crossed Polarizers', experiment: freezePolarizationExperiment({ ...base,
     elements: [{ id: 'p1', kind: 'linear_polarizer', axis_angle_rad: 0 }, { id: 'p2', kind: 'linear_polarizer', axis_angle_rad: Math.PI / 2 }] }) },
-  { id: 'middle', label: 'x 輸入＋45° 中間偏振片', experiment: freezePolarizationExperiment({ ...base,
+  { id: 'middle', label: 'x Input + Intermediate 45° Polarizer', experiment: freezePolarizationExperiment({ ...base,
     elements: [{ id: 'p1', kind: 'linear_polarizer', axis_angle_rad: 0 }, { id: 'pm', kind: 'linear_polarizer', axis_angle_rad: Math.PI / 4 },
       { id: 'p2', kind: 'linear_polarizer', axis_angle_rad: Math.PI / 2 }] }) },
-  { id: 'qwp', label: '對角輸入＋QWP (δ=π/2)', experiment: freezePolarizationExperiment({ ...base,
+  { id: 'qwp', label: 'Diagonal Input + QWP (δ=π/2)', experiment: freezePolarizationExperiment({ ...base,
     coefficients: structuredClone(COEFFICIENT_PRESETS[2].coefficients), elements: [{ id: 'w1', kind: 'linear_retarder', axis_angle_rad: 0, retardance_rad: Math.PI / 2 }] }) },
-  { id: 'hwp', label: 'x 輸入＋HWP (θ=π/8, δ=π)', experiment: freezePolarizationExperiment({ ...base,
+  { id: 'hwp', label: 'x Input + HWP (θ=π/8, δ=π)', experiment: freezePolarizationExperiment({ ...base,
     elements: [{ id: 'w1', kind: 'linear_retarder', axis_angle_rad: Math.PI / 8, retardance_rad: Math.PI }] }) },
-  { id: 'identity', label: '空列表 · identity', experiment: freezePolarizationExperiment(base) },
+  { id: 'identity', label: 'Empty Train · Identity', experiment: freezePolarizationExperiment(base) },
 ]);
 export function polarizationPreset(id: string): PolarizationExperiment {
   const preset = POLARIZATION_PRESETS.find(item => item.id === id);

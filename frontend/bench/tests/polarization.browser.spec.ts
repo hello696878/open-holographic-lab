@@ -139,7 +139,7 @@ test('real order coefficients source and element editing preserve loss and expli
   expect(requests).toEqual([]); expect((await pl(page)).currentResult.requestId).toBe(before.currentResult.requestId);
   await edit(page, 'elements.1.axis_angle_rad', '.42'); await ready(page);
   const stale = await pl(page); expect(stale.currentResult).toBeNull(); expect(stale.lastResult.experiment).toEqual(api.cases.middle.experiment);
-  await expect(page.getByTestId('pl-result-status')).toContainText(/原|先前|previous|original|stale/i);
+  await expect(page.getByTestId('pl-result-status')).toContainText(/previous|original|stale/i);
   await page.getByTestId('pl-previous-result').locator('summary').click();
   await expect(page.getByTestId('pl-previous-result').locator('pre')).toContainText(stale.lastResult.requestId);
   await expect(page.getByTestId('pl-previous-result').locator('pre')).toContainText('incident_transmission_ratio');
@@ -210,7 +210,7 @@ test('dark and selected weak public samples remain distinct and display actions 
     const sample = state.currentResult.stages.at(-1).sample;
     const dark = [sample.x.re, sample.x.im, sample.y.re, sample.y.im].every(value => value === 0);
     expect(dark).toBe(label !== 'weak_pi2');
-    if (dark) await expect(page.getByTestId('pl-stage-note')).toContainText(/未定義|no defined/i);
+    if (dark) await expect(page.getByTestId('pl-stage-note')).toContainText(/no defined/i);
     else { expect(sample.y.re).not.toBe(0); await expect(page.getByTestId('pl-stage-note')).not.toContainText(/no defined polarization state/i); }
   }
   const requests = scientificRequests(page), original = (await pl(page)).currentResult;
@@ -351,10 +351,25 @@ test('later presentation failure keeps numerical completion and original result 
 
 test('repeated play pause replacement mode switches and actual context loss preserve bounded owners', async ({ page }) => {
   test.skip(!ordinary() || smokeOnly); await load(page); const observations = [];
+  const cdp = await page.context().newCDPSession(page);
+  const actualOwners = async () => {
+    const object = await cdp.send('Runtime.evaluate', { expression: 'document.querySelector("[data-testid=bench-canvas]")' });
+    if (!object.result.objectId) throw new Error('Actual bench canvas is missing');
+    const listeners = await cdp.send('DOMDebugger.getEventListeners', { objectId: object.result.objectId });
+    await cdp.send('Runtime.releaseObject', { objectId: object.result.objectId });
+    return { listeners: listeners.listeners.map(({ type, useCapture, passive, once }) => ({ type, useCapture, passive, once })),
+      dom: await page.evaluate(() => ({ benchCanvases: document.querySelectorAll('[data-testid="bench-canvas"]').length,
+        resultCanvases: document.querySelectorAll('#pl-current-content canvas').length,
+        resultCanvasBytes: [...document.querySelectorAll<HTMLCanvasElement>('#pl-current-content canvas')]
+          .reduce((bytes, canvas) => bytes + canvas.width * canvas.height * 4, 0), inspectors: document.querySelectorAll('#inspector').length })) };
+  };
   for (let cycle = 0; cycle < 3; cycle++) {
     await configure(page, 'qwp'); await simulate(page, 'qwp'); const requests = scientificRequests(page);
     for (let repeat = 0; repeat < 3; repeat++) { await page.getByTestId('pl-play').click(); await frames(page); await page.getByTestId('pl-play').click(); }
-    await page.getByTestId('pl-reset').click(); const active = await pl(page), activeScene = (await snap(page)).scene;
+    await page.getByTestId('pl-reset').click(); const active = await pl(page), activeScene = (await snap(page)).scene, activeOwners = await actualOwners();
+    expect(activeScene.mode).toBe('polarization');
+    // QWP topology: two source objects, two retarder objects, an axis, a guide, and two detectors.
+    expect(activeScene.owned).toMatchObject({ geometries: 8, materials: 8, geometrySourceBytes: 6864 });
     expect(active.animation.activeOwners).toBeLessThanOrEqual(1);
     expect(activeScene.polarization.frameCallbacks).toBe(1); expect(activeScene.owned.textures).toBe(2);
     expect(active.budget.retainedBytes).toBe(active.budget.scientificBytes + active.budget.canvasBytes + active.budget.textureBytes + active.budget.trajectoryBytes + active.budget.geometryBytes);
@@ -362,15 +377,32 @@ test('repeated play pause replacement mode switches and actual context loss pres
     expect(active.budget.persistent).toBe(16 * 1024 * 1024); expect(active.budget.transient).toBe(32 * 1024 * 1024);
     if (active.budget.transientEstimate) expect(active.budget.transientEstimate.peakOwnedBytes).toBeLessThanOrEqual(active.budget.transient);
     await page.getByTestId('mode').selectOption('sequential'); await frames(page, 12);
-    const detached = await pl(page), detachedScene = (await snap(page)).scene;
+    const transition = await snap(page);
+    await record(`browser_resource_mode_transition_${cycle}`, { active, activeScene, activeOwners, transition });
+    // A frame count does not await HTTP validation. Compare owners only after the destination scene exists.
+    await expect.poll(async () => {
+      const state = await snap(page);
+      return state.mode === 'sequential' && !state.pendingValidation && !!state.validatedDraft && state.scene.mode === 'sequential';
+    }).toBe(true);
+    const detached = await pl(page), detachedScene = (await snap(page)).scene, detachedOwners = await actualOwners();
+    await record(`browser_resource_settled_cycle_${cycle}`, { active, activeScene, activeOwners, transition, detached, detachedScene, detachedOwners });
+    // Empty Sequential topology: two source objects, a guide, a grid, and a detector face/border.
+    expect(detachedScene.owned).toMatchObject({ geometries: 6, materials: 6, geometrySourceBytes: 5164, textures: 0, textureSourceBytes: 0 });
+    expect(detachedOwners.listeners).toEqual(activeOwners.listeners);
+    expect(activeOwners.dom).toMatchObject({ benchCanvases: 1, resultCanvases: 2, resultCanvasBytes: 32768, inspectors: 1 });
+    expect(detachedOwners.dom).toMatchObject({ benchCanvases: 1, resultCanvases: 0, resultCanvasBytes: 0, inspectors: 1 });
+    expect(detached.budget.scientificBytes).toBe(active.budget.scientificBytes);
     expect(detached.animation.activeOwners).toBe(0); expect(detachedScene.polarization.frameCallbacks).toBe(0); const ticks = detached.animation.ticks;
     await frames(page, 12); expect((await pl(page)).animation.ticks).toBe(ticks);
     await page.getByTestId('mode').selectOption('two_path'); await page.getByTestId('mode').selectOption('polarization'); await ready(page);
     expect(requests.filter(path => /\/(simulate|sweep)$/.test(path))).toEqual([]);
-    observations.push({ active, activeScene, detached, detachedScene });
+    observations.push({ active, activeScene, activeOwners, transition, detached, detachedScene, detachedOwners });
   }
   expect(observations.map(row => row.activeScene.owned)).toEqual(Array(3).fill(observations[0].activeScene.owned));
   expect(observations.map(row => row.detachedScene.owned)).toEqual(Array(3).fill(observations[0].detachedScene.owned));
+  expect(observations.map(row => row.activeOwners)).toEqual(Array(3).fill(observations[0].activeOwners));
+  expect(observations.map(row => row.detachedOwners)).toEqual(Array(3).fill(observations[0].detachedOwners));
+  expect(observations.map(row => row.detached.budget.scientificBytes)).toEqual(Array(3).fill(observations[0].detached.budget.scientificBytes));
   await configure(page, 'qwp'); await simulate(page, 'qwp'); const requests = scientificRequests(page);
   await page.getByTestId('bench-canvas').evaluate((canvas: HTMLCanvasElement) => {
     const extension = canvas.getContext('webgl2')!.getExtension('WEBGL_lose_context');
@@ -391,7 +423,7 @@ test('controlled actual failed sweep keeps only genuine contiguous rows', async 
   expect(actual.status).toBe('failed'); expect(actual.rows).toEqual(expected.rows); expect(actual.completedCount).toBe(expected.completed_count);
   expect(actual.failedIndex).toBe(expected.failed_index); expect(actual.error).toEqual(expected.error);
   expect(actual.rows.map((row: any) => row.index)).toEqual(Array.from({ length: expected.completed_count }, (_, index) => index));
-  await expect(page.getByTestId('pl-sweep-status')).toContainText(/失敗|部分|failed|partial/i);
+  await expect(page.getByTestId('pl-sweep-status')).toContainText(/failed|partial/i);
   expect(requests.filter(path => path.endsWith('/sweep'))).toHaveLength(1);
   await record(`browser_controlled_partial_${expected.failed_index}_${expected.error.code}`, { expected, actual, requests,
     claim: 'Controlled child failure after actual public V2c prefix computations; separate from unmodified production acceptance.' });

@@ -8,10 +8,10 @@ const base: Experiment = {
   components: [], observation: { id: 'screen', z_m: 20e-3 },
 };
 export const PRESETS: readonly { id: string; label: string; experiment: Experiment }[] = Object.freeze([
-  { id: 'free', label: '高斯光自由傳播（Gaussian free propagation）', experiment: freezeExperiment(base) },
-  { id: 'lens', label: '高斯光＋薄透鏡（Thin lens）', experiment: freezeExperiment({ ...base,
+  { id: 'free', label: 'Gaussian Free Propagation', experiment: freezeExperiment(base) },
+  { id: 'lens', label: 'Gaussian and Thin Lens', experiment: freezeExperiment({ ...base,
     components: [{ id: 'lens', kind: 'thin_lens', z_m: 0, focal_length_m: 20e-3 }] }) },
-  { id: 'aperture', label: '高斯光＋圓孔＋薄透鏡（Aperture and lens）', experiment: freezeExperiment({ ...base,
+  { id: 'aperture', label: 'Gaussian, Circular Aperture, and Thin Lens', experiment: freezeExperiment({ ...base,
     components: [{ id: 'aperture', kind: 'circular_aperture', z_m: 0, radius_m: 80e-6 },
       { id: 'lens', kind: 'thin_lens', z_m: 0, focal_length_m: 20e-3 }] }) },
 ]);

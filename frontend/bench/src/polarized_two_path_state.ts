@@ -96,7 +96,7 @@ export class PolarizedTwoPathController {
     const erased = Number.isFinite(raw) && raw !== 0 && value === 0 || raw === 0 && /[1-9]/.test(input.split(/[eE]/, 1)[0]);
     if (!Number.isFinite(value) || erased || integer && !Number.isSafeInteger(value)) {
       invalid[path] = text; this.publish({ invalidEdits: Object.freeze(invalid), validatedDraft: null, pendingValidation: false, pendingSweepValidation: false,
-        revision: this.snapshot.revision + 1, currentResult: null, currentSweep: null, error: '請輸入完整有限且可表示的數值（Finite representable number）', renderError: null }); return;
+        revision: this.snapshot.revision + 1, currentResult: null, currentSweep: null, error: 'Enter a complete, finite, representable number.', renderError: null }); return;
     }
     const experiment = structuredClone(this.snapshot.candidate), segments = path.split('.'); let owner: unknown = experiment;
     for (const segment of segments.slice(0, -1)) { if (!owner || typeof owner !== 'object' || !Object.hasOwn(owner, segment)) throw new Error(`Unknown numeric editor path ${path}`); owner = (owner as Record<string, unknown>)[segment]; }

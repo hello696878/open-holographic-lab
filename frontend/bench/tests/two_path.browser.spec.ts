@@ -244,7 +244,7 @@ test('presentation controls never calculate and scientific edits detach both tex
   await page.getByTestId('tp-edit-two_arm_spec-relative_phase_rad').fill('-');
   const stale = await snap(page); expect(stale.twoPath.currentResult).toBeNull(); expect(textureIds(stale.scene)).toEqual([null, null]);
   expect(stale.twoPath.lastResult.experiment).toEqual(api.cases.phase_halfpi.experiment);
-  await expect(page.getByTestId('tp-result-status')).toContainText(/過期|stale/i);
+  await expect(page.getByTestId('tp-result-status')).toContainText(/stale/i);
   await page.getByTestId('tp-previous-result').locator('summary').click();
   await expect(page.getByTestId('tp-previous-result').locator('pre')).toContainText(stale.twoPath.lastResult.requestId);
   mkdirSync(figures, { recursive: true });
@@ -323,7 +323,7 @@ test('controlled partial failure retains only genuine prefix and never labels sw
   expect(actual.completedCount ?? actual.completed_count).toBe(expected.completed_count);
   expect(actual.failedIndex ?? actual.failed_index).toBe(expected.failed_index);
   expect(state.twoPath.error).toBeTruthy();
-  await expect(page.getByTestId('tp-sweep-status')).toContainText(/失敗|部分|failed|partial/i);
+  await expect(page.getByTestId('tp-sweep-status')).toContainText(/failed|partial/i);
   await record('browser_controlled_partial_failure', { expected, actual, state,
     claim: 'Failure was deliberately controlled after genuine V2a prefix rows; this does not replace ordinary production numerical acceptance.' });
 });
