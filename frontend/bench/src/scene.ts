@@ -99,6 +99,13 @@ export class BenchScene {
   private waveFieldIntervals: number[] = [];
   private waveFieldSubmissions: number[] = [];
   private waveFieldLastFrame: number | null = null;
+  private geometricRoutingGroup: THREE.Group | null = null;
+  private geometricRoutingLabels: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null = null;
+  private geometricRoutingCamera: { position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; near: number; far: number; minDistance: number; maxDistance: number } | null = null;
+  private geometricRoutingBounds: THREE.Box3 | null = null;
+  private geometricRoutingFrameIntervals: number[] = [];
+  private geometricRoutingSubmissions: number[] = [];
+  private geometricRoutingLastFrame: number | null = null;
   private initializedCamera = false;
   private draftValidated = false;
   private readonly onPointerDown: (event: PointerEvent) => void;
@@ -179,7 +186,7 @@ export class BenchScene {
   /** Reuse the one renderer; research geometry/resources remain owned by its workspace. */
   showResearchApparatus(host: HTMLElement, group: THREE.Group): void {
     if (this.disposed || this.lost) throw new Error('Shared WebGL2 renderer unavailable');
-    if (this.waveFieldGroup) throw new Error('Leave Computed Sections before entering the research apparatus');
+    if (this.waveFieldGroup || this.geometricRoutingGroup) throw new Error('Leave the active optical apparatus before entering the research workspace');
     if (!this.researchGroup) {
       this.cancelDrag(); this.frameCallback = null; this.settleResearchCameraMotion();
       this.oldCamera = { position: this.camera.position.clone(), target: this.controls.target.clone(), up: this.camera.up.clone(), near: this.camera.near,
@@ -242,7 +249,7 @@ export class BenchScene {
 
   /** W1 borrows the existing renderer/canvas/controls/observer and owns its own external resources. */
   showWaveFieldApparatus(group: THREE.Group): void {
-    if (this.disposed || this.lost || this.researchGroup) throw new Error('Shared W1 renderer unavailable; numerical data retained');
+    if (this.disposed || this.lost || this.researchGroup || this.geometricRoutingGroup) throw new Error('Shared W1 renderer unavailable; numerical data retained');
     if (this.waveFieldGroup === group) return;
     if (this.waveFieldGroup) throw new Error('Detach the previous W1 apparatus before replacement');
     this.cancelDrag(); this.settleResearchCameraMotion();
@@ -281,6 +288,56 @@ export class BenchScene {
       this.camera.near = fit.near; this.camera.far = fit.far; this.controls.minDistance = fit.minDistance; this.controls.maxDistance = fit.maxDistance;
       this.camera.updateProjectionMatrix(); this.controls.update(); this.camera.updateMatrixWorld(true); ++this.waveFieldFitCount;
       this.waveFieldFraming = { view, bounds: bounds.clone() }; }
+    finally { this.controls.enableDamping = damping; }
+  }
+
+  /** Independent uniformly scaled apparatus; picking remains interaction only. */
+  showGeometricRoutingApparatus(group: THREE.Group): void {
+    if (this.disposed || this.lost || this.researchGroup || this.waveFieldGroup) throw new Error('Shared routing renderer is unavailable; numerical data retained');
+    if (this.geometricRoutingGroup === group) return;
+    if (this.geometricRoutingGroup) throw new Error('Detach the previous routing apparatus before replacement');
+    this.cancelDrag(); this.settleResearchCameraMotion(); this.frameCallback = null;
+    this.geometricRoutingCamera = { position: this.camera.position.clone(), target: this.controls.target.clone(), up: this.camera.up.clone(),
+      near: this.camera.near, far: this.camera.far, minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance };
+    this.geometricRoutingGroup = group; this.scene.add(group);
+    this.bench.visible = this.rail.visible = false; this.scene.background = new THREE.Color('#10232d');
+    this.geometricRoutingLastFrame = null;
+  }
+
+  hideGeometricRoutingApparatus(): void {
+    if (!this.geometricRoutingGroup) return;
+    this.settleResearchCameraMotion(); this.geometricRoutingGroup.removeFromParent(); this.geometricRoutingGroup = null;
+    this.geometricRoutingLabels = null; this.geometricRoutingLastFrame = null;
+    this.bench.visible = this.rail.visible = true; this.scene.background = new THREE.Color('#f1f6fa');
+    const old = this.geometricRoutingCamera;
+    if (old) { this.camera.position.copy(old.position); this.controls.target.copy(old.target); this.camera.up.copy(old.up);
+      this.camera.near = old.near; this.camera.far = old.far; this.controls.minDistance = old.minDistance; this.controls.maxDistance = old.maxDistance;
+      this.camera.updateProjectionMatrix(); this.settleResearchCameraMotion(); }
+    this.geometricRoutingCamera = null;
+  }
+
+  replaceGeometricRoutingApparatus(group: THREE.Group): void {
+    this.assertGeometricRoutingReady(); this.geometricRoutingGroup!.removeFromParent(); this.geometricRoutingGroup = group; this.scene.add(group);
+  }
+
+  assertGeometricRoutingReady(): void {
+    if (!this.geometricRoutingGroup || this.disposed || this.lost) throw new Error('Routing display unavailable; no trace will be replayed');
+  }
+
+  setGeometricRoutingLabelUpdater(callback: ((camera: THREE.PerspectiveCamera, width: number, height: number) => void) | null): void {
+    this.geometricRoutingLabels = callback;
+  }
+
+  fitGeometricRoutingApparatus(bounds: THREE.Box3, view: 'overview' | 'top' | 'focus'): void {
+    this.assertGeometricRoutingReady(); this.resize();
+    const direction = view === 'overview' ? new THREE.Vector3(1.5, 1.1, -1.8)
+      : view === 'focus' ? this.camera.position.clone().sub(this.controls.target) : undefined;
+    const fit = calculateResearchCameraFit(bounds, this.camera, view === 'top' ? 'top' : 'focus', direction);
+    if (view === 'overview') this.geometricRoutingBounds = bounds.clone();
+    const damping = this.controls.enableDamping; this.controls.enableDamping = false;
+    try { this.controls.update(); this.camera.position.copy(fit.position); this.camera.up.copy(fit.up); this.controls.target.copy(fit.target);
+      this.camera.near = fit.near; this.camera.far = fit.far; this.controls.minDistance = fit.minDistance; this.controls.maxDistance = fit.maxDistance;
+      this.camera.updateProjectionMatrix(); this.controls.update(); this.camera.updateMatrixWorld(true); }
     finally { this.controls.enableDamping = damping; }
   }
 
@@ -855,7 +912,7 @@ export class BenchScene {
   }
 
   private pointerDown(event: PointerEvent): void {
-    if (this.researchGroup || this.waveFieldGroup) { this.down = { x: event.clientX, y: event.clientY }; return; }
+    if (this.researchGroup || this.waveFieldGroup || this.geometricRoutingGroup) { this.down = { x: event.clientX, y: event.clientY }; return; }
     if (event.button !== 0 || this.lost || (!this.experiment && !this.twoPathExperiment && !this.polarizationExperiment && !this.polarizedTwoPathExperiment)) return;
     this.setRay(event);
     if (this.handle && this.raycaster.intersectObject(this.handle).length) {
@@ -910,10 +967,11 @@ export class BenchScene {
     }
     this.down = null;
     this.setRay(event);
-    const hits = this.raycaster.intersectObjects(this.researchGroup?.children ?? this.waveFieldGroup?.children ?? this.bench.children, true)
+    const hits = this.raycaster.intersectObjects(this.geometricRoutingGroup?.children ?? this.researchGroup?.children ?? this.waveFieldGroup?.children ?? this.bench.children, true)
       .filter(hit => !this.waveFieldGroup || visibleWaveFieldHit(hit.object, this.waveFieldGroup));
     const ids = [...new Set(hits.map((hit) => hit.object.userData.identity as string | undefined).filter((id): id is string => !!id))];
     if (ids.length) this.callbacks.select(ids);
+    if (this.geometricRoutingGroup) return;
     const sectionHit = hits.find(hit => hit.object.userData.waveFieldSection && hit.uv);
     if (sectionHit?.uv) {
       const grid = sectionHit.object.userData.waveFieldGrid;
@@ -950,6 +1008,7 @@ export class BenchScene {
   }
 
   resetCamera(): void {
+    if (this.geometricRoutingGroup) { if (this.geometricRoutingBounds) this.fitGeometricRoutingApparatus(this.geometricRoutingBounds, 'overview'); return; }
     if (this.waveFieldGroup) { if (this.waveFieldOverviewBounds) this.fitWaveFieldApparatus(this.waveFieldOverviewBounds, 'overview'); return; }
     if (this.researchGroup) {
       if (this.researchOverviewBounds) this.fitResearchApparatus(this.researchOverviewBounds, 'overview');
@@ -1016,8 +1075,15 @@ export class BenchScene {
           this.researchLabelUpdater?.(this.camera, Math.max(1, this.researchHost.clientWidth), Math.max(1, this.researchHost.clientHeight));
         }
         if (this.waveFieldGroup) { this.camera.updateMatrixWorld(true); this.waveFieldLabelUpdater?.(this.camera, Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight)); }
+        if (this.geometricRoutingGroup) { this.camera.updateMatrixWorld(true); this.geometricRoutingLabels?.(this.camera, Math.max(1, this.host.clientWidth), Math.max(1, this.host.clientHeight)); }
+        const routingStart = this.geometricRoutingGroup ? performance.now() : 0;
         const renderStart = this.waveFieldGroup ? performance.now() : 0;
         this.renderer.render(this.scene, this.camera);
+        if (this.geometricRoutingGroup) { this.geometricRoutingSubmissions.push(performance.now() - routingStart);
+          if (this.geometricRoutingLastFrame !== null) this.geometricRoutingFrameIntervals.push(time - this.geometricRoutingLastFrame);
+          this.geometricRoutingLastFrame = time;
+          if (this.geometricRoutingSubmissions.length > 600) this.geometricRoutingSubmissions.shift();
+          if (this.geometricRoutingFrameIntervals.length > 600) this.geometricRoutingFrameIntervals.shift(); }
         if (this.waveFieldGroup) { this.waveFieldSubmissions.push(performance.now() - renderStart);
           if (this.waveFieldLastFrame !== null) this.waveFieldIntervals.push(time - this.waveFieldLastFrame); this.waveFieldLastFrame = time;
           if (this.waveFieldSubmissions.length > 600) this.waveFieldSubmissions.shift(); if (this.waveFieldIntervals.length > 600) this.waveFieldIntervals.shift(); }
@@ -1064,6 +1130,9 @@ export class BenchScene {
     return {
       available: true, contextLost: this.lost, textureRequestId: this.result?.requestId ?? null,
       researchActive: this.researchGroup !== null,
+      geometricRouting: { active: this.geometricRoutingGroup !== null, frameIntervalsMs: [...this.geometricRoutingFrameIntervals],
+        rendererSubmissionMs: [...this.geometricRoutingSubmissions], renderCalls: this.renderer.info.render.calls,
+        rendererCount: this.disposed ? 0 : 1, controlsCount: this.disposed ? 0 : 1, rafCount: this.disposed ? 0 : 1 },
       waveField: { active: this.waveFieldGroup !== null, fitCount: this.waveFieldFitCount, frameIntervalsMs: [...this.waveFieldIntervals],
         framing: this.waveFieldFraming ? { view: this.waveFieldFraming.view, projectedCorners: researchBoundsCorners(this.waveFieldFraming.bounds).map(point => point.project(this.camera).toArray()) } : null,
         rendererSubmissionMs: [...this.waveFieldSubmissions], renderCalls: this.renderer.info.render.calls,
@@ -1128,7 +1197,7 @@ export class BenchScene {
     this.canvas.removeEventListener('webglcontextrestored', this.onContextRestored);
     this.controls.dispose();
     this.researchLabelUpdater = null;
-    this.hideWaveFieldApparatus(); this.waveFieldInteraction = null;
+    this.hideGeometricRoutingApparatus(); this.hideWaveFieldApparatus(); this.waveFieldInteraction = null;
     this.frameCallback = null;
     this.updateResult(null, { min: 0, max: 10 });
     this.detachDualResult();

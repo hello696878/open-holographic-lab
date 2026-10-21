@@ -33,6 +33,24 @@ and [A handoff](docs/handoffs/r03_fig2a/implementation_summary.md).
 **Figure 2a experimental reproduction, PAX calibration and experimental
 agreement remain unestablished.**
 
+## Computed geometric routing workspace
+
+The separately bounded **Geometric Routing** workspace adds finite ideal
+mirrors, deterministic ideal 50:50 splitters, beam stops and receivers to the
+existing 3D bench. Load A/B/C, select a component, edit its SI position or
+X/Y/Z rotation, and press **Trace** deliberately. Actual intersections govern
+the displayed paths and receiver hit/relative-weight readouts. Edits detach
+old paths; camera and inspection actions do not compute.
+
+This is a single-ray ideal geometry model, not a wave calculation, real
+beam-splitter cube, calibrated-power measurement or physical beam-width model.
+Mounts and path thickness are labelled display aids. Routing scene import/
+export is unsupported; the four existing modes and their v1/v2 documents stay
+unchanged. See the [W2 contract and current validation status](docs/handoffs/w2/implementation_summary.md)
+and [limitations](docs/handoffs/w2/known_limitations.md). W2 remains an
+uncommitted implementation candidate awaiting visual review; publication is
+not authorized by this implementation pass.
+
 ## Current goal
 
 A CGH simulator that can:

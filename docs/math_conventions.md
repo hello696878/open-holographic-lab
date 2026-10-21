@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.14 — 2026-10-17
+**Version:** 0.16 — 2026-10-21
 
 ---
 
@@ -2000,6 +2000,103 @@ plausibility do not establish general continuous-solution accuracy.
 
 ---
 
+### 3.23 W2 finite ideal geometric routing
+
+This is a separate single-ray geometric model,
+`w2_ideal_geometric_routing_v1`, not an extension of the scalar/Jones wave
+solvers, Fourier conventions, settings documents or SequentialExperiment.
+Its SI world is right-handed XYZ with +Y up. A uniform display factor of ten
+preserves angles; the older anisotropic, y-down field displays are unchanged.
+
+One nominal-unit source ray has relative weight one. At most sixteen finite
+disk/rectangle optical faces support double-sided perfect mirrors,
+deterministic ideal zero-thickness 50:50 splitters, absorbing stops and
+terminating receivers. No refraction, polarization, phase, interference,
+scattering, calibrated radiometry or beam-width physics is included. Mounts,
+line thickness, labels and glow never participate in optical intersections.
+
+Each pose stores a position in metres and X/Y/Z rotations in radians within
+[-pi, pi]. The active column-vector convention is `R=Rz(z) Ry(y) Rx(x)`, X
+first. Local u/v/n start at X/Y/Z and are the corresponding columns of R.
+Receiver coordinates are dot(hit-position,u/v), in metres. The UI converts
+only changed degree fields; untouched stored SI components remain unchanged.
+
+Incoming propagation is `p=o+t*d`, t>0. A mirror returns
+`d_out=d-2*dot(d,n)*n`, from either side, without repeated normalization. A
+splitter creates both T (unchanged d) and R, each with half the incoming
+relative weight. Stops and receivers act only at actual finite hits. Display
+picking, insertion order and mesh tessellation are not optical authorities.
+
+The nearest forward finite intersection must be certified. Conservative
+finite-face reachability culling precedes infinite-plane ambiguity checks;
+an irrelevant coplanar extension cannot reject a scene. Closed disk/rectangle
+boundaries are not inflated or snapped. Unresolved edge inclusion, forward
+root or nearest-hit overlap raises numerical ambiguity. A provably farther
+uncertain face cannot veto a certified nearer hit. Only the immediately
+previous zero-thickness plane is excluded for one outgoing straight leg;
+legitimate later visits are permitted. No fixed epsilon shifts origins.
+
+Binary64 arithmetic assumes round-to-nearest operations, gradual underflow
+and correctly rounded square root on the supported existing Windows runtime.
+Interval add/subtract/multiply/divide/sqrt round bounds outward using
+nextafter. Mathematical nonnegative constraints on sums of squares intersect
+intervals with [0,+infinity); this changes no physical scalar or aperture.
+Exact rational 32-term alternating Taylor polynomials and their first omitted
+terms enclose sine/cosine at each exact stored binary64 angle. Outward matrix
+composition, hulled with the actually stored binary64 frame, certifies pose
+construction without assuming a one-ULP libm sine/cosine error bound.
+
+Origin, direction, hit parameter/point, local coordinates, reflection,
+distance and cumulative distance enclosures are propagated through every
+supported stage. The interval Householder matrix encloses the same reflection
+law; exact plane-constraint interval intersection limits dependency wrapping
+without snapping the nominal hit. Conservative finite-face culling accounts
+for stored-frame nonorthogonality. Stored binary64 frame/ray comparisons are
+distinct from ideal real rotations at the stored angles; both have independent
+reference checks. Unsupported or ambiguous decisions fail rather than discard
+uncertainty. This is a bounded floating-point contract, not exact arithmetic
+or a promise of grazing-incidence accuracy for every valid-looking scene.
+
+Nominal-unit input tolerance is 32*epsilon; frame orthogonality 64*epsilon;
+outgoing norm residual 128*epsilon, epsilon=2^-52. No failed check is repaired
+by normalization. Conditioned independent scalar/vector references use
+rtol=2e-13 and atol=2e-13 times max(1 metre, coordinate norms, cumulative
+distance) for positions/lengths; direction atol=2e-13 and angle atol=2e-13 rad.
+These comparison tolerances are separate from conservative runtime intervals.
+
+The source-centered trace sphere has radius one metre. Full optical apertures
+must be conservatively certified strictly inside it. Source coordinates have
+absolute component limit ten metres; disk radius and rectangle full sizes
+are bounded to [1e-6,0.25] metres. Finite escape endpoints are actual domain
+crossings, not convenient decorative receivers. Distances use geometric
+hypot(end-start), not the ray parameter under assumed exact unit length.
+
+Caps are 32 inherited interactions per path, 63 ever-created branches
+(including root and split parents), and 256 combined segment/hit records
+(at most128 hits/256 segments). Breadth-first T-then-R scheduling is fixed.
+Mirrors keep their branch. A physical event consumes two records; a domain or
+distance endpoint one. Terminals at known points consume neither. Child pairs
+are atomic. Exact capacity is allowed. The 32nd physical hit is processed;
+receiver/stop termination wins, while mirror continuation or inherited split
+children truncate. The path distance cap is ten metres; hit/cap interval
+overlap, including nominal equality, is ambiguity. Complete detailed priority
+rules are in the [W2 contract](handoffs/w2/implementation_summary.md).
+
+Only terminal leaves contribute to detected, absorbed, escaped and
+resource-truncated weight. Root weight minus math.fsum(all terminal weights)
+is retained as a signed residual, rtol=0 and atol=64*epsilon. A split parent is
+not counted twice. Global branch/record exhaustion accounts for every queued
+unresolved leaf. Truncation means incomplete, never absorption or a completed
+physical experiment. There is no weight pruning or surviving-weight rescale.
+
+W2 uses separate strict version-one JSON endpoints, with 32 KiB requests and
+512 KiB replies. One explicit Trace owns the existing actual-worker-lifetime
+gate through encoding; validation and viewing do not trace. Full result
+identity and graph validation precede atomic display publication. Global
+app-owned budgets remain 16 MiB persistent/32 MiB transient; W2's additional
+2/4 MiB reservations require measured representation and preparation checks.
+These reservations do not claim total browser heap or GPU memory ownership.
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -2047,6 +2144,7 @@ historical scope. It adds no polarized propagation or general 3D scene.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.16 | 2026-10-21 | **§3.23 added** — separate finite ideal geometric routing, Y-up active poses, conservative propagated intervals, nearest finite faces, deterministic branching and explicit termination/weight budgets. | Approved W2 implementation/validation only; scalar/Jones/wave implementations, old settings/bundles and historical evidence remain unchanged. Publication requires separate approval. |
 | 0.15 | 2026-10-18 | **§3.22 added** — bounded event-aware wave-field section observation, original V0 terminal ownership, explicit anchor propagation, raw shared-scale intensity and app-owned resource limits. | Approved W1 integrated visualization; existing optical implementations, conventions, old wire/settings/bundle contracts and historical evidence preserved. |
 | 0.14 | 2026-10-17 | **§3.21 added** — declared probability-weighted uncentered second moment, signed Stokes/dark-state/domain policy and one bounded seeded Gaussian finite ensemble. | Approved A-only independent theoretical workspace. Existing scalar/Jones/interference implementations, conventions and historical evidence are preserved; Figure 2a comparison remains separately gated. |
 | 0.13 | 2026-10-13 | **§3.20 added** — fixed ideal polarized two-path composition, exact typed records/checkpoints/action histories, supported scalar/Jones domain, public pad1 propagation and Jones reuse, raw outputs and input-normalized budgets. | Approved V2f numerical integration. Existing scalar/Jones implementations, signs, initializers/tests, wire/document/bundle contracts and historical evidence remain unchanged; V2g requires separate approval. |

@@ -27,6 +27,9 @@ import { R03Workspace } from './r03_fig2a_workspace';
 import { WaveFieldController } from './wave_field_state';
 import { WaveFieldWorkspace } from './wave_field_workspace';
 import { W1_EXAMPLE } from './wave_field_contracts';
+import { GeometricRoutingController } from './geometric_routing_state';
+import { GeometricRoutingWorkspace } from './geometric_routing_workspace';
+import { W2_PRESETS } from './geometric_routing_contracts';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Application container is missing.');
@@ -35,7 +38,8 @@ app.innerHTML = `
     <div class="header-detail">Monochromatic · Scalar · Aligned Forward Optics<br><span>Local Operation / Explicit Submission</span></div></header>
   <main>
     <nav class="workspace-navigation" aria-label="Workspaces"><button id="ordinary-workspace" data-testid="ordinary-workspace" class="selected">Optical Experiments</button>
-      <button id="research-workspace" data-testid="research-workspace">Ideal Statistical Polarization</button></nav>
+      <button id="research-workspace" data-testid="research-workspace">Ideal Statistical Polarization</button>
+      <button id="geometric-routing-workspace" data-testid="geometric-routing-workspace">Geometric Routing</button></nav>
     <section class="toolbar" aria-label="Experiment Controls">
       <label>Mode <select id="mode" data-testid="mode"><option value="sequential">Sequential Optics</option><option value="two_path">Two-Path Interference</option><option value="polarization">Jones Polarization</option><option value="polarized_two_path">Polarized Interference</option></select></label>
       <label class="sequential-only">Load Preset <select id="preset" data-testid="preset"></select></label>
@@ -83,7 +87,9 @@ app.innerHTML = `
         <button id="doc-apply" data-testid="doc-apply" class="primary" disabled>Replace Settings and Apply</button>
       </div>
     </details>
+    <section id="w2-controls" data-testid="w2-controls" hidden></section>
     <section class="workspace">
+      <section id="w2-workspace" data-testid="w2-workspace" hidden></section>
       <aside class="panel components"><h2>Optical Train</h2><p class="muted">Elements act in the listed order. Distinct IDs are preserved at shared positions.</p>
         <div id="components" data-testid="components"></div>
         <div class="add-controls"><select id="add-kind" data-testid="add-kind" aria-label="Element Type to Add">
@@ -128,6 +134,7 @@ app.innerHTML = `
         <output id="notice" data-testid="notice" aria-live="polite"></output>
         <div id="pick-choices" aria-label="Overlapping Element Selection"></div>
         <p class="scale-note">Schematic scale: 1 transverse unit = 1 mm; 1 longitudinal unit = 10 mm. Lens housings do not define a physical aperture.</p>
+        <p class="w2-bench-caption">Uniform SI geometry · +Y up · Paths end at calculated terminal points<br>Line thickness is a visibility aid; housings do not obstruct rays.</p>
       </section>
       <aside class="panel inspector"><h2>Element Properties</h2><div id="inspector" data-testid="inspector"></div>
         <p class="muted">Edits validate the draft only. Press Simulate for a new result. Camera views and color limits do not change the experiment.</p></aside>
@@ -231,6 +238,9 @@ let researchActive = false;
 let idealWorkspace: R03Workspace | null = null;
 let waveController: WaveFieldController | null = null;
 let waveWorkspace: WaveFieldWorkspace | null = null;
+let routingActive = false;
+let routingController: GeometricRoutingController | null = null;
+let routingWorkspace: GeometricRoutingWorkspace | null = null;
 let mode: SupportedBenchMode = 'sequential';
 app.dataset.mode = mode;
 let scene: BenchScene | null = null;
@@ -280,6 +290,7 @@ function dropResultCanvases(host: ParentNode): void {
 
 function reportPresentation(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
+  if (routingActive) { routingController?.reportPresentationFailure(message); return; }
   if (researchActive) { if (idealController.state.renderError !== message) idealController.reportRenderFailure(message); return; }
   if (mode === 'sequential' && waveController?.enabled) { waveController.reportPresentationFailure(message); return; }
   if (mode === 'polarized_two_path') { if (polarizedTwoPathController.state.renderError !== message) polarizedTwoPathController.reportRenderFailure(message); }
@@ -292,6 +303,7 @@ function reportPresentation(error: unknown): void {
 try {
   scene = new BenchScene(element('bench'), {
     select(ids) {
+      if (routingActive) { routingController?.select(ids[0]); return; }
       if (researchActive) { idealController.select(ids[0]); return; }
       if (mode === 'polarized_two_path') { polarizedTwoPathController.select(ids[0]); return; }
       if (mode === 'polarization') { polarizationController.select(ids[0]); return; }
@@ -322,6 +334,8 @@ try {
     },
     notice,
     presentationFailure(message) {
+      if (routingActive) { if (message) routingController?.invalidatePresentation(message);
+        else routingController?.reportPresentationFailure('WebGL2 has recovered. Restore the calculated display explicitly; tracing will not be repeated.'); return; }
       if (researchActive) { if (message) idealController.invalidatePresentation(message);
         else idealController.reportRenderFailure(idealController.canRetryPresentation ? 'WebGL2 has recovered. Explicitly restore the calculated display; no computation will be repeated.' : null); return; }
       if (mode === 'sequential' && waveController?.enabled) {
@@ -357,7 +371,7 @@ preset.addEventListener('change', () => {
   notice('Preset loaded and submitted for validation. Press Simulate explicitly to calculate.');
 });
 element('simulate').addEventListener('click', () => { if (waveController?.enabled) void waveController.simulate(); else void controller.simulate(); });
-element('w1-view').addEventListener('click', () => waveController?.setContext(!waveController.enabled, mode === 'sequential' && !researchActive));
+element('w1-view').addEventListener('click', () => waveController?.setContext(!waveController.enabled, mode === 'sequential' && !researchActive && !routingActive));
 element('reset-view').addEventListener('click', () => scene?.resetCamera());
 element('zoom-in').addEventListener('click', () => scene?.zoom(0.8));
 element('zoom-out').addEventListener('click', () => scene?.zoom(1.25));
@@ -624,7 +638,7 @@ function sequentialBenchLabel(state: BenchState): string {
       : state.currentResult ? 'Intensity for Current Submission' : 'Draft Validated; No Current Result';
 }
 function render(state: BenchState): void {
-  if (disposed || applyingDocument || researchActive || mode !== 'sequential') return;
+  if (disposed || applyingDocument || researchActive || routingActive || mode !== 'sequential') return;
   const statusText: Record<string, string> = { idle: 'Not Yet Validated', validating: 'Validating Draft', ready: 'Draft Validated', simulating: 'Computing; No Automatic Retry', error: 'Check Error Details' };
   element('status').textContent = statusText[state.status] ?? state.status;
   element('status').dataset.status = state.status;
@@ -823,7 +837,7 @@ function renderSweep(sweep: DecodedTwoPathSweep | null, fresh: boolean): void {
 }
 
 function renderTwoPath(state: TwoPathState): void {
-  if (disposed || applyingDocument || researchActive || mode !== 'two_path') return;
+  if (disposed || applyingDocument || researchActive || routingActive || mode !== 'two_path') return;
   element('tp-status').textContent = state.status; element('tp-status').dataset.status = state.status;
   element('tp-error').hidden = !state.error; element('tp-error').textContent = state.error ?? '';
   element('tp-render-error').hidden = !state.renderError; element('tp-render-error').textContent = state.renderError ?? '';
@@ -904,7 +918,7 @@ function twoPathSnapshot(): object {
 
 /** All modes share these ownership calculations. Aliased arrays are counted once. */
 function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathResult | DecodedPolarizedTwoPathResult | null = null): {
-  scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; documentBytes: number; idealWorkspaceBytes: number; waveFieldBytes: number; sharedGeometryAliasBytes: number; retainedBytes: number;
+  scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; documentBytes: number; idealWorkspaceBytes: number; waveFieldBytes: number; geometricRoutingBytes: number; sharedGeometryAliasBytes: number; retainedBytes: number;
 } {
   const sceneResults = scene?.ownedNumericalResults();
   const scientificBytes = ownedScientificBytes4({ sequential: [controller.state.lastResult, displayedResult, sceneResults?.sequential ?? null],
@@ -932,8 +946,9 @@ function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathRes
   const sharedGeometryAliasBytes = (idealApparatus?.borrowedGeometryCount ?? 0) > 0
     ? waveWorkspace?.borrowedGeometryBytes() ?? 0 : 0;
   const waveFieldBytes = (waveWorkspace?.ownedBytes() ?? 0) - sharedGeometryAliasBytes;
-  return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes, idealWorkspaceBytes, waveFieldBytes, sharedGeometryAliasBytes,
-    retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes + documentBytes + idealWorkspaceBytes + waveFieldBytes };
+  const geometricRoutingBytes = (routingController?.ownedNumericalBytes() ?? 0) + (routingController?.ownedStateBytes() ?? 0) + (routingWorkspace?.ownedRenderingBytes() ?? 0);
+  return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes, idealWorkspaceBytes, waveFieldBytes, geometricRoutingBytes, sharedGeometryAliasBytes,
+    retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes + documentBytes + idealWorkspaceBytes + waveFieldBytes + geometricRoutingBytes };
 }
 function admitOperation(kind: SupportedBenchMode, grid: Experiment['grid'], operation: 'single' | 'sweep' = 'single', analyzerEnabled = false): void {
   const bytes = ownedSnapshot().retainedBytes, estimate = kind === 'polarized_two_path'
@@ -1147,7 +1162,7 @@ function renderPolarizationSweep(sweep: DecodedPolarizationSweep | null, fresh: 
   finish(); // No connection or invented marker beyond the genuine completed prefix.
 }
 function renderPolarization(state: PolarizationState): void {
-  if (disposed || applyingDocument || researchActive || mode !== 'polarization') return;
+  if (disposed || applyingDocument || researchActive || routingActive || mode !== 'polarization') return;
   element('pl-status').textContent = state.status; element('pl-status').dataset.status = state.status;
   element('pl-error').textContent = state.error ?? ''; element('pl-error').hidden = !state.error;
   element('pl-render-error').textContent = state.renderError ?? ''; element('pl-render-error').hidden = !state.renderError;
@@ -1494,7 +1509,7 @@ function renderPolarizedTwoPathSweep(sweep: DecodedPolarizedTwoPathSweep | null,
   }
 }
 function renderPolarizedTwoPath(state: PolarizedTwoPathState): void {
-  if (disposed || applyingDocument || researchActive || mode !== 'polarized_two_path') return;
+  if (disposed || applyingDocument || researchActive || routingActive || mode !== 'polarized_two_path') return;
   element('pt-status').textContent = state.status; element('pt-status').dataset.status = state.status;
   element('pt-error').textContent = state.error ?? ''; element('pt-error').hidden = !state.error;
   element('pt-render-error').textContent = state.renderError ?? ''; element('pt-render-error').hidden = !state.renderError;
@@ -1576,7 +1591,7 @@ element('release-results').addEventListener('click', () => {
   ++resultAttachmentGeneration; applyingDocument = true;
   try {
     for (const actor of [controller, twoPathController, polarizationController, polarizedTwoPathController]) actor.releaseResults();
-    idealWorkspace?.releaseResults(); waveWorkspace?.releaseResults();
+    idealWorkspace?.releaseResults(); waveWorkspace?.releaseResults(); routingWorkspace?.releaseResults();
     scene?.releaseRetainedResults(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose();
     polarizationResources = null; polarizedTwoPathResources = null; polarizationPublished = null; polarizedTwoPathPublished = null;
     displayedResult = null; dualPublished = null; selectedPixel = null; dualSelectedPixel = null; polarizationSelectedPixel = null; polarizedTwoPathSelectedPixel = null;
@@ -1638,7 +1653,7 @@ function renderModeHelp(): void {
 function presentDocumentApplication(): void {
   // Presentation is subsequent to the coherent settings commit and fails separately.
   app!.dataset.mode = mode; element<HTMLSelectElement>('mode').value = mode;
-  waveWorkspace?.setActive(!researchActive && mode === 'sequential');
+  waveWorkspace?.setActive(!researchActive && !routingActive && mode === 'sequential');
   try {
     ++resultAttachmentGeneration; detachPolarizedTwoPathPresentation();
     detachPolarizationPresentation(); scene?.updateResult(null, limits); scene?.detachDualResult();
@@ -1716,7 +1731,7 @@ element('mode').addEventListener('change', () => {
   scene?.updateResult(null, limits); scene?.detachDualResult();
   const chosen = element<HTMLSelectElement>('mode').value;
   mode = chosen === 'polarized_two_path' ? 'polarized_two_path' : chosen === 'polarization' ? 'polarization' : chosen === 'two_path' ? 'two_path' : 'sequential'; app!.dataset.mode = mode;
-  waveWorkspace?.setActive(!researchActive && mode === 'sequential');
+  waveWorkspace?.setActive(!researchActive && !routingActive && mode === 'sequential');
   dualPublished = null; dualSelectedPixel = null; dualDisplayKey = ''; displayedResult = null; displayKey = '';
   dropResultCanvases(element('tp-result-area'));
   element('tp-current-content').replaceChildren(); element('tp-prior-images').replaceChildren(); priorDisplayKey = '';
@@ -1765,24 +1780,55 @@ waveController = new WaveFieldController(controller, { admit: admitIdeal,
 // The dock belongs to the existing three-column bench, not a second dashboard.
 app.querySelector<HTMLElement>('.workspace')!.append(element('w1-workspace'));
 waveController.subscribe(() => {
-  const active = waveController!.enabled && mode === 'sequential' && !researchActive;
+  const active = waveController!.enabled && mode === 'sequential' && !researchActive && !routingActive;
   app!.dataset.computedSections = String(active); element('w1-view').setAttribute('aria-pressed', String(active));
   if (active) { element('bench-label').textContent = waveController!.state.currentResult ? 'Computed Sections · Shared Range · Sparse Physical Planes' : 'No Field Attached · Press Simulate Explicitly'; }
-  else if (!researchActive && mode === 'sequential') element('bench-label').textContent = sequentialBenchLabel(controller.state);
+  else if (!researchActive && !routingActive && mode === 'sequential') element('bench-label').textContent = sequentialBenchLabel(controller.state);
 });
 waveWorkspace = new WaveFieldWorkspace(element('w1-workspace'), scene, waveController, { admit: admitIdeal,
   cursorHost: element('w1-bench-controls'), editorHost: element('inspector'),
   loadExample: () => { controller.select('source'); void controller.replaceCandidate(cloneExperiment(W1_EXAMPLE)); }, select: id => controller.select(id) });
 waveWorkspace.setActive(true);
-function switchWorkspace(research: boolean): void {
-  if (researchActive === research) return; researchActive = research; app!.dataset.workspace = research ? 'research' : 'ordinary';
-  element('research-workspace').classList.toggle('selected', research); element('ordinary-workspace').classList.toggle('selected', !research);
-  if (research) {
+app.querySelector<HTMLElement>('.workspace')!.append(element('w2-workspace'));
+function ensureRoutingWorkspace(): void {
+  if (routingWorkspace) return;
+  // Static module code/preset constants are not a browser-heap measurement.
+  // Instantiate and admit W2's owned state/DOM only when it is first requested.
+  admitIdeal(512 * 1024, 512 * 1024);
+  routingController = new GeometricRoutingController(W2_PRESETS.A, { gate: operationGate, admit: admitIdeal,
+    reserveOperation(persistent, transient) { admitIdeal(persistent, transient); scientificReservations = { persistent, transient }; } });
+  routingWorkspace = new GeometricRoutingWorkspace(element('w2-workspace'), routingController, scene, { admit: admitIdeal,
+    labelHost: element('bench'), navigationHost: element('w2-controls') });
+  routingController.subscribe(() => {
+    if (routingActive) element('bench-label').textContent = routingController!.state.currentResult
+      ? 'Computed Geometric Routes · Uniform SI Scale · Visibility-Aid Lines'
+      : 'No Current Route · Press Trace Explicitly';
+  });
+}
+function switchWorkspace(target: 'ordinary' | 'research' | 'geometric_routing'): void {
+  const previous = routingActive ? 'geometric_routing' : researchActive ? 'research' : 'ordinary';
+  if (previous === target) return;
+  if (target === 'geometric_routing') {
+    try { ensureRoutingWorkspace(); }
+    catch (error) { element('render-error').textContent = String(error); element('render-error').hidden = false; return; }
+  }
+  if (previous === 'geometric_routing') routingWorkspace!.setActive(false);
+  if (previous === 'research') idealWorkspace!.leave();
+  if (previous === 'ordinary') {
     waveWorkspace?.setActive(false);
     for (const actor of [controller, twoPathController, polarizationController, polarizedTwoPathController]) actor.deactivate();
-    polarizationPlayback.detach(); scene?.setFrameCallback(null); idealWorkspace!.enter();
-  } else {
-    idealWorkspace!.leave();
+    polarizationPlayback.detach(); scene?.setFrameCallback(null);
+  }
+  researchActive = target === 'research'; routingActive = target === 'geometric_routing'; app!.dataset.workspace = target;
+  const headerDetail = app!.querySelector<HTMLElement>('.header-detail')!;
+  headerDetail.firstChild!.nodeValue = routingActive ? 'Geometric Rays · Finite Ideal Surfaces' : 'Monochromatic · Scalar · Aligned Forward Optics';
+  headerDetail.querySelector('span')!.textContent = routingActive ? 'Relative Weights · Explicit Trace' : 'Local Operation / Explicit Submission';
+  element('research-workspace').classList.toggle('selected', researchActive);
+  element('geometric-routing-workspace').classList.toggle('selected', routingActive);
+  element('ordinary-workspace').classList.toggle('selected', target === 'ordinary');
+  if (researchActive) idealWorkspace!.enter();
+  else if (routingActive) { routingWorkspace!.setActive(true); element('bench-label').textContent = 'No Current Route · Press Trace Explicitly'; }
+  else {
     waveWorkspace?.setActive(mode === 'sequential');
     if (mode === 'sequential') { render(controller.state); void controller.validateInitial(); }
     else if (mode === 'two_path') { renderTwoPath(twoPathController.state); void twoPathController.activate(); }
@@ -1790,8 +1836,9 @@ function switchWorkspace(research: boolean): void {
     else { renderPolarizedTwoPath(polarizedTwoPathController.state); void polarizedTwoPathController.activate(); }
   }
 }
-element('research-workspace').addEventListener('click', () => switchWorkspace(true));
-element('ordinary-workspace').addEventListener('click', () => switchWorkspace(false));
+element('research-workspace').addEventListener('click', () => switchWorkspace('research'));
+element('ordinary-workspace').addEventListener('click', () => switchWorkspace('ordinary'));
+element('geometric-routing-workspace').addEventListener('click', () => switchWorkspace('geometric_routing'));
 void controller.validateInitial();
 
 function stateSnapshot(): object {
@@ -1803,7 +1850,8 @@ function stateSnapshot(): object {
   } : null;
   return {
     mode,
-    workspace: researchActive ? 'research' : 'ordinary',
+    workspace: routingActive ? 'geometric_routing' : researchActive ? 'research' : 'ordinary',
+    geometricRouting: routingWorkspace?.snapshot() ?? null,
     idealPolarization: idealWorkspace?.snapshot() ?? null,
     waveField: waveWorkspace?.snapshot() ?? null,
     candidate: cloneExperiment(state.candidate), validatedDraft: state.validatedDraft ? cloneExperiment(state.validatedDraft) : null,
@@ -1839,4 +1887,4 @@ Object.defineProperty(window, '__benchDebug', { value: Object.freeze({
   dualPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.dualPixelWorld(port, row, column) ?? null,
   polarizedTwoPathPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.polarizedTwoPathPixelWorld(port, row, column) ?? null,
 }), writable: false, configurable: false });
-window.addEventListener('pagehide', () => { disposed = true; waveWorkspace?.dispose(); idealWorkspace?.dispose(); documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });
+window.addEventListener('pagehide', () => { disposed = true; routingWorkspace?.dispose(); waveWorkspace?.dispose(); idealWorkspace?.dispose(); documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });

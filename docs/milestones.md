@@ -1383,6 +1383,46 @@ document/bundle contracts and historical evidence remain unchanged.
 
 ---
 
+## W2 — Computed geometric optical routing
+
+**Status:** implementation and reported validation completed; awaiting user
+visual review. W2 is not accepted or published. Stop at the uncommitted
+checkpoint. No stage, commit or push is authorized in this pass.
+
+Accepted parent `721156cef44bc76425d7d437cc258b6481acf204`; the approved envelope
+is exactly42 paths (9 modifications,33 creations). A separate Geometric Routing
+workspace reuses the laboratory service, renderer and single actual-worker-
+lifetime gate. One source ray encounters at most16 finite ideal mirror,
+half-splitter, stop and receiver faces. Computed intersections, deterministic
+branches, finite misses and terminal relative-weight accounting are distinct
+from the unchanged wave and polarization models.
+
+The [W2 handoff](handoffs/w2/implementation_summary.md) freezes poses, numeric
+error propagation, exact transport and cap precedence before integration.
+Independent high-precision geometry and complete32-stage enclosure checks,
+focused faults, restored full suites, genuine browser regressions, ownership
+controls, three desktop sizes, actual200% zoom and a normal-speed30–60second
+recording are required. Current baseline is3653passed/1existing Windows
+symlink skip and445frontend units; exact raw output is retained in the fresh
+ignored implementation evidence. Final results must be recorded separately.
+
+Dated implementation checkpoint, 2026-10-21: current Python 3910 passed with
+the one unchanged symlink skip; 495 frontend units, typecheck and production
+build passed. Final browser groups completed 113 passing invocations and eight
+declared controlled-only exclusions across 101 unique IDs / 121 isolated
+invocations; all 19 fresh legacy controlled scenarios passed. Genuine screenshots
+and a 36-second computed interaction recording, independent 32-stage enclosure
+evidence, focused negative controls and actual ownership qualifications are in
+[tests and evidence](handoffs/w2/tests_and_evidence.md). Exactly 42 approved
+paths remain unstaged/uncommitted; 429 protected tracked files and the frozen
+planning/environment identities are unchanged. Required failures and their
+scoped corrections remain recorded. No task-owned review service remains.
+
+No refraction, coherent folded-wave coupling, calibrated radiometry, scene
+persistence, hardware, Figure2a reconciliation or later milestone is included.
+All earlier states, measurements, acceptance limitations and historical
+evidence above retain their original meaning.
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.
