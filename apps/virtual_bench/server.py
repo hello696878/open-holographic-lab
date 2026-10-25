@@ -44,6 +44,7 @@ from . import polarized_two_path_adapter, polarized_two_path_protocol
 from . import r03_fig2a_adapter, r03_fig2a_protocol
 from . import wave_field_adapter, wave_field_protocol
 from . import geometric_routing_adapter, geometric_routing_protocol
+from . import refractive_routing_adapter, refractive_routing_protocol
 
 Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission |
               two_path_adapter.ValidatedSweepSubmission |
@@ -53,7 +54,8 @@ Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission 
               polarized_two_path_adapter.ValidatedPolarizedTwoPathSweepSubmission |
               r03_fig2a_adapter.ValidatedIdealSubmission |
               wave_field_adapter.ValidatedWaveFieldSubmission |
-              geometric_routing_adapter.ValidatedGeometricSubmission)
+              geometric_routing_adapter.ValidatedGeometricSubmission |
+              refractive_routing_adapter.ValidatedRefractiveSubmission)
 WorkerResult = bytes | SweepReply | polarization_protocol.SweepReply | polarized_two_path_protocol.SweepReply
 
 HOST = "127.0.0.1"
@@ -83,6 +85,19 @@ def _error(status: int, code: str, message: str,
                          "request_id": request_id,
                          "error": {"code": code, "message": message[:300]}},
                         status_code=status)
+
+
+def _boundary_error(scope: Scope, status: int, code: str, message: str) -> Response:
+    """Keep the two W3 API paths closed even before their body is trusted.
+
+    Shared legacy HTTP errors retain their original bytes and headers. W3 has
+    no trusted request UUID at this boundary and maps admission errors to its
+    declared invalid_scene code while preserving the actual HTTP status.
+    """
+    if scope.get("path") in {"/api/w3/validate", "/api/w3/trace"}:
+        return Response(refractive_routing_protocol.error_reply(None, "invalid_scene", message),
+                        status_code=status, media_type="application/json", headers=_SECURITY_HEADERS)
+    return _error(status, code, message)
 
 
 class BusyError(RuntimeError):
@@ -167,18 +182,18 @@ class LocalBoundary:
             name = raw_name.lower()
             if (not _HEADER_TOKEN.fullmatch(raw_name) or name in headers or
                     any(byte < 32 and byte != 9 or byte == 127 for byte in value)):
-                await _error(400, "invalid_headers", "Malformed or duplicate HTTP headers")(
+                await _boundary_error(scope, 400, "invalid_headers", "Malformed or duplicate HTTP headers")(
                     scope, receive, send)
                 return
             headers[name] = value
         if headers.get(b"host") != AUTHORITY.encode("ascii"):
-            await _error(400, "invalid_host", "Expected local bench Host")(
+            await _boundary_error(scope, 400, "invalid_host", "Expected local bench Host")(
                 scope, receive, send)
             return
         origin = headers.get(b"origin")
         if (origin is not None and origin != ORIGIN.encode("ascii")) or (
                 scope["method"] == "POST" and origin != ORIGIN.encode("ascii")):
-            await _error(403, "invalid_origin", "Expected the same local bench Origin")(
+            await _boundary_error(scope, 403, "invalid_origin", "Expected the same local bench Origin")(
                 scope, receive, send)
             return
 
@@ -349,6 +364,7 @@ def create_app(*, assets_dir: Path | None = None,
                r03_ideal_worker: Callable[[r03_fig2a_adapter.ValidatedIdealSubmission], bytes] | None = None,
                wave_field_worker: Callable[[wave_field_adapter.ValidatedWaveFieldSubmission], bytes] | None = None,
                geometric_routing_worker: Callable[[geometric_routing_adapter.ValidatedGeometricSubmission], bytes] | None = None,
+               refractive_routing_worker: Callable[[refractive_routing_adapter.ValidatedRefractiveSubmission], bytes] | None = None,
                executor: Executor | None = None) -> Starlette:
     """Create the local service; no numerical work or network listeners start.
 
@@ -360,6 +376,9 @@ always uses this checkout's fixed built directory and public numerical adapters.
     if not index_path or index_stat is None or not stat.S_ISREG(index_stat.st_mode):
         raise RuntimeError("Build V1 frontend assets before starting the bench")
     def dispatch(submission: Submission) -> WorkerResult:
+        if isinstance(submission, refractive_routing_adapter.ValidatedRefractiveSubmission):
+            return (refractive_routing_worker if refractive_routing_worker is not None
+                    else refractive_routing_adapter.trace_submission)(submission)
         if isinstance(submission, geometric_routing_adapter.ValidatedGeometricSubmission):
             return (geometric_routing_worker if geometric_routing_worker is not None
                     else geometric_routing_adapter.trace_submission)(submission)
@@ -451,7 +470,7 @@ always uses this checkout's fixed built directory and public numerical adapters.
         return Response(encoded, media_type="application/octet-stream")
 
     async def http_error(request: Request, exception: HTTPException) -> Response:
-        return _error(exception.status_code, "http_error", "Request path or method is unavailable")
+        return _boundary_error(request.scope, exception.status_code, "http_error", "Request path or method is unavailable")
 
     def two_path_error(status: int, code: str, message: str,
                        request_id: str | None = None) -> JSONResponse:
@@ -823,6 +842,60 @@ always uses this checkout's fixed built directory and public numerical adapters.
             return routing_error(500, "response_too_large", "Trace response encoding failed or exceeded its bound", request_id)
         return Response(encoded, media_type="application/json")
 
+    def refractive_error(status: int, code: str, message: str,
+                      request_id: str | None = None) -> Response:
+        return Response(refractive_routing_protocol.error_reply(request_id, code, message),
+                        status_code=status, media_type="application/json")
+
+    async def refractive_validate(request: Request) -> Response:
+        return await refractive_process(request, trace=False)
+
+    async def refractive_trace(request: Request) -> Response:
+        return await refractive_process(request, trace=True)
+
+    async def refractive_process(request: Request, *, trace: bool) -> Response:
+        request_id = None
+        try:
+            payload = await _read_json(request, parser=refractive_routing_protocol.strict_json_loads)
+            request_id = _parsed_id(payload)
+            submission = refractive_routing_adapter.validate_submission(payload, trace=trace)
+        except BodyError as exc:
+            code = "request_body_too_large" if exc.status == 413 else "invalid_scene"
+            return refractive_error(exc.status, code, str(exc), request_id)
+        except ClientDisconnect:
+            return refractive_error(499, "disconnected", "Client disconnected before submission", request_id)
+        except refractive_routing_adapter.RefractiveNumericalError as exc:
+            return refractive_error(422, exc.code, str(exc), request_id)
+        except (ValueError, TypeError, OverflowError) as exc:
+            return refractive_error(422, "invalid_scene", str(exc), request_id)
+        if not trace:
+            try:
+                return Response(refractive_routing_adapter.validation_reply(submission),
+                                media_type="application/json")
+            except Exception:
+                return refractive_error(500, "encoding_failed", "Scene validation encoding failed", request_id)
+        try:
+            future = gate.submit(submission)
+        except BusyError:
+            return refractive_error(409, "busy", "A Python computation is still running; submit deliberately later", request_id)
+        except Exception:
+            return refractive_error(500, "submission_failed", "Could not submit the trace", request_id)
+        try:
+            encoded = await _worker_response(request, future)
+        except asyncio.CancelledError:
+            raise
+        except CancelledBeforeStart:
+            return refractive_error(503, "cancelled_before_start", "Trace did not start; no result was produced", request_id)
+        except refractive_routing_adapter.RefractiveNumericalError as exc:
+            return refractive_error(422, exc.code, str(exc), request_id)
+        except Exception:
+            return refractive_error(500, "trace_failed", "Trace computation or result encoding failed", request_id)
+        if encoded is None:
+            return refractive_error(499, "disconnected", "Client disconnected; backend completion is unknown", request_id)
+        if not isinstance(encoded, bytes) or not 2 <= len(encoded) <= refractive_routing_protocol.MAX_RESPONSE_BYTES:
+            return refractive_error(500, "response_too_large", "Trace response encoding failed or exceeded its bound", request_id)
+        return Response(encoded, media_type="application/json")
+
     async def unavailable_api(request: Request) -> Response:
         status = 405 if request.url.path in {
             "/api/v1/health", "/api/v1/validate", "/api/v1/simulate",
@@ -831,8 +904,9 @@ always uses this checkout's fixed built directory and public numerical adapters.
             "/api/v2g/validate", "/api/v2g/simulate", "/api/v2g/sweep",
             "/api/research/r03-fig2a/validate", "/api/research/r03-fig2a/simulate",
             "/api/v2e/documents/validate", "/api/w1/simulate",
-            "/api/w2/validate", "/api/w2/trace"} else 404
-        return _error(status, "http_error", "Request path or method is unavailable")
+            "/api/w2/validate", "/api/w2/trace",
+            "/api/w3/validate", "/api/w3/trace"} else 404
+        return _boundary_error(request.scope, status, "http_error", "Request path or method is unavailable")
 
     app = Starlette(routes=[Route("/api/v1/health", health, methods=["GET"]),
                             Route("/api/v1/validate", validate, methods=["POST"]),
@@ -852,6 +926,8 @@ always uses this checkout's fixed built directory and public numerical adapters.
                             Route("/api/w1/simulate", wave_field_simulate, methods=["POST"]),
                             Route("/api/w2/validate", routing_validate, methods=["POST"]),
                             Route("/api/w2/trace", routing_trace, methods=["POST"]),
+                            Route("/api/w3/validate", refractive_validate, methods=["POST"]),
+                            Route("/api/w3/trace", refractive_trace, methods=["POST"]),
                             Route("/api/{path:path}", unavailable_api,
                                   methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"]),
                             Mount("/", app=assets)],

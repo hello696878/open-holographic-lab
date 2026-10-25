@@ -27,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BENCH = ROOT / "frontend/bench"
 NODE = Path(r"C:\Program Files\nodejs\node.exe")
 CHROME = Path(r"C:\Program Files\Google\Chrome\Application\chrome.exe")
-PREFIXES = ("R03_", "V1_", "V2B_", "V2D_", "V2E_", "V2G_", "W1_", "W2_", "ENGLISH_", "PLAYWRIGHT_")
+PREFIXES = ("R03_", "V1_", "V2B_", "V2D_", "V2E_", "V2G_", "W1_", "W2_", "W3_", "ENGLISH_", "PLAYWRIGHT_")
 LEGACY_FILES = ["tests/bench.browser.spec.ts", "tests/two_path.browser.spec.ts",
     "tests/polarization.browser.spec.ts", "tests/polarized_two_path.browser.spec.ts",
     "tests/experiment_documents.browser.spec.ts", "tests/polarized_two_path_documents.browser.spec.ts",
@@ -151,7 +151,8 @@ def source_inventory(assets: Path, files: list[Path], inputs: dict[str, str]) ->
              BENCH / "package.json", BENCH / "package-lock.json", NODE, CHROME, *files}
     paths.update(ROOT / "scripts" / name for name in (
         "v2d_controlled_acceptance_server.py", "v2g_controlled_acceptance_server.py",
-        "w1_controlled_acceptance_server.py", "w2_controlled_acceptance_server.py"))
+        "w1_controlled_acceptance_server.py", "w2_controlled_acceptance_server.py",
+        "w3_controlled_acceptance_server.py", "w3_acceptance.py"))
     for directory in (ROOT / "src/ohlab", ROOT / "apps/virtual_bench", BENCH / "src", BENCH / "tests/support", assets):
         paths.update(p for p in directory.rglob("*") if p.is_file() and "__pycache__" not in p.parts)
     for key, value in inputs.items():

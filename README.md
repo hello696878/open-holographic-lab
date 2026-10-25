@@ -51,6 +51,25 @@ and [limitations](docs/handoffs/w2/known_limitations.md). W2 remains an
 uncommitted implementation candidate awaiting visual review; publication is
 not authorized by this implementation pass.
 
+## Ideal refractive routing candidate (W3)
+
+Inside **Geometric Routing**, the separate **Ideal Refractive Routing** model
+adds a mounted finite block or right triangular prism. Load **Parallel Slab**,
+**Prism Deviation** or **Prism with Internal TIR**, edit supported body shape,
+pose or interior/exterior index, then press **Trace**. Actual finite boundaries
+produce incident/internal/emergent segments with authoritative medium and event
+inspection. Edits detach current paths and event details; viewing and opacity
+never trace. W2 remains a separate unchanged model.
+
+**Ideal route weights; Fresnel losses are not modeled.** This is constant-index
+single-ray geometry, not calibrated power, dispersion or a folded W1 wave field.
+No routing persistence is added. The [W3 contract](docs/handoffs/w3/implementation_summary.md),
+[validation status](docs/handoffs/w3/tests_and_evidence.md) and
+[limitations](docs/handoffs/w3/known_limitations.md) define the current candidate.
+This W3 pass authorizes implementation and validation only; the complete
+candidate remains unstaged/uncommitted for visual review. No commit or push.
+Historical W2 checkpoint prose above remains its original dated evidence.
+
 ## Current goal
 
 A CGH simulator that can:

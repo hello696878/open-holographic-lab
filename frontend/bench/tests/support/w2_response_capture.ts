@@ -7,10 +7,13 @@ export interface W2CaptureRecord {
   contextId: string; pageId: string; token: string; request: any;
   responseStatus: number; byteLength: number; base64: string;
 }
+export interface RoutingCaptureOptions { endpoint?: string; modelContract?: string; messageType?: string; cap?: number }
 
 /** Self-contained factory so its exact code can be installed before page startup. */
-export function createW2ResponseCapture(original: typeof fetch, owner: { contextId: string; pageId: string }) {
-  const cap = 524288;
+export function createW2ResponseCapture(original: typeof fetch, owner: { contextId: string; pageId: string }, options: RoutingCaptureOptions = {}) {
+  const cap = options.cap ?? 524288, endpoint = options.endpoint ?? '/api/w2/trace';
+  const modelContract = options.modelContract ?? 'w2_ideal_geometric_routing_v1', messageType = options.messageType ?? 'trace_result';
+  if (!Number.isSafeInteger(cap) || cap < 2 || cap > 524288 || !endpoint.startsWith('/api/') || !modelContract || !messageType) throw new Error('Invalid bounded routing capture configuration');
   let armed: W2CaptureIdentity | null = null;
   let pending: Promise<W2CaptureRecord> | null = null;
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -27,7 +30,7 @@ export function createW2ResponseCapture(original: typeof fetch, owner: { context
     const promise = original(input, init); // Same Promise; never an async replacement or second HTTP.
     const url = typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
     const path = url.startsWith('http') ? new URL(url).pathname : url;
-    if (path !== '/api/w2/trace' || (init?.method ?? 'GET').toUpperCase() !== 'POST') return promise;
+    if (path !== endpoint || (init?.method ?? 'GET').toUpperCase() !== 'POST') return promise;
     ++traceCount;
     if (!armed || disposed || pending) return promise;
     const identity = armed, epoch = generation; armed = null;
@@ -36,7 +39,7 @@ export function createW2ResponseCapture(original: typeof fetch, owner: { context
       if (!request || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(request.request_id)
           || identity.requestId && identity.requestId !== request.request_id
           || request.scene_sha256 !== identity.sceneSha256 || !equal(request.scene, identity.scene)
-          || request.scene?.model_contract !== 'w2_ideal_geometric_routing_v1') throw new Error('Capture request identity mismatch');
+          || request.scene?.model_contract !== modelContract) throw new Error('Capture request identity mismatch');
       const response = await promise;
       if (disposed || epoch !== generation) throw new Error('Capture was disposed');
       if (!response.ok) throw new Error(`Capture original HTTP ${response.status}`);
@@ -65,8 +68,8 @@ export function createW2ResponseCapture(original: typeof fetch, owner: { context
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
       chunks.length = 0;
       const body = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-      if (body.protocol_version !== 1 || body.message_type !== 'trace_result'
-          || body.model_contract !== 'w2_ideal_geometric_routing_v1'
+      if (body.protocol_version !== 1 || body.message_type !== messageType
+          || body.model_contract !== modelContract
           || body.request_id !== request.request_id || body.scene_sha256 !== request.scene_sha256
           || !equal(body.scene, request.scene)) throw new Error('Capture original response identity mismatch');
       const parts: string[] = [];

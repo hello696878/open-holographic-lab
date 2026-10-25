@@ -57,6 +57,7 @@ export class GeometricRoutingWorkspace {
   private selectedBranch: string | null = null; private selectedHitIdentity: GeometricRoutingHitIdentity | null = null; private editorIdentity = '';
   private resultIdentity: GeometricTraceResult | null = null; private resultCurrent = false; private readonly navigation: HTMLElement;
   private readonly unsubscribe: () => void; private readonly unsubscribeGate: () => void;
+  private modelChoice: HTMLLabelElement | null = null;
   constructor(readonly host: HTMLElement, readonly controller: GeometricRoutingController, private readonly scene: GeometricRoutingScenePort | null,
       private readonly options: GeometricRoutingWorkspaceOptions) {
     host.classList.add('w2-workspace'); host.hidden = true;
@@ -108,6 +109,15 @@ export class GeometricRoutingWorkspace {
   private tab(tab: 'inspector' | 'data'): void {
     for (const item of ['inspector', 'data'] as const) { const selected = item === tab, button = this.node<HTMLButtonElement>(`w2-tab-${item}`);
       button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1; this.host.querySelector<HTMLElement>(`#w2-panel-${item}`)!.hidden = !selected; }
+  }
+  /** Shared workspace chrome only; W2 scene, actor and result contracts stay closed. */
+  addModelSelector(change: (model: 'w2' | 'w3') => void): HTMLSelectElement {
+    if (this.modelChoice) throw new Error('Routing model selector already exists');
+    const label = document.createElement('label'); label.className = 'routing-model-choice'; label.textContent = 'Model';
+    const select = document.createElement('select'); select.dataset.testid = 'routing-model'; select.setAttribute('aria-label', 'Geometric routing model');
+    for (const [value, title] of [['w2', 'Ideal Surface Routing'], ['w3', 'Ideal Refractive Routing']]) { const option = document.createElement('option'); option.value = value; option.textContent = title; select.append(option); }
+    select.addEventListener('change', () => change(select.value as 'w2' | 'w3')); label.append(select);
+    (this.options.navigationHost ?? this.navigation.parentElement)!.prepend(label); this.modelChoice = label; return select;
   }
   setActive(active: boolean): void {
     if (this.disposed || this.active === active) return; this.active = active; this.host.hidden = !active;
@@ -266,7 +276,7 @@ export class GeometricRoutingWorkspace {
   }
   numericalOwners(): readonly (GeometricTraceResult | null)[] { return this.controller.numericalOwners(); }
   ownedNumericalBytes(): number { return this.controller.ownedNumericalBytes(); }
-  ownedDOMBytes(): number { return measureRoutingDOMReservation([this.host, this.navigation]) + this.fields.reduce((sum, field) => sum + 256 + field.path.length * 2 + field.input.value.length * 2, 0); }
+  ownedDOMBytes(): number { return measureRoutingDOMReservation([this.host, this.navigation, ...(this.modelChoice ? [this.modelChoice] : [])]) + this.fields.reduce((sum, field) => sum + 256 + field.path.length * 2 + field.input.value.length * 2, 0); }
   ownedRenderingBytes(): number { return this.ownedDOMBytes() + (this.selectedHitIdentity ? routingMetadataReservation(this.selectedHitIdentity) : 0) + (this.apparatus?.ownedBytes ?? 0) + [...this.displays].reduce((sum, resource) => sum + resource.ownedBytes, 0); }
   ownedBytes(): number { return this.ownedNumericalBytes() + this.ownedRenderingBytes() + this.controller.ownedStateBytes(); }
   releaseResults(): boolean {
@@ -285,6 +295,6 @@ export class GeometricRoutingWorkspace {
   dispose(): void {
     if (this.disposed) return; this.disposed = true; this.unsubscribe(); this.unsubscribeGate(); this.controller.bindPresentation(null);
     if (this.mounted) this.scene?.hideGeometricRoutingApparatus(); this.scene?.setGeometricRoutingLabelUpdater(null);
-    for (const resource of this.displays) resource.dispose(); this.displays.clear(); this.resource = null; this.apparatus?.dispose(); this.apparatus = null; this.navigation.remove(); this.host.replaceChildren();
+    for (const resource of this.displays) resource.dispose(); this.displays.clear(); this.resource = null; this.apparatus?.dispose(); this.apparatus = null; this.modelChoice?.remove(); this.navigation.remove(); this.host.replaceChildren();
   }
 }

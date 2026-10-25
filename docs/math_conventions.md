@@ -5,7 +5,7 @@ a bug. Changing a convention requires updating this file, the affected code,
 the affected tests, and adding a Change Log entry at the bottom — in the same
 change.
 
-**Version:** 0.16 — 2026-10-21
+**Version:** 0.17 — 2026-10-23
 
 ---
 
@@ -25,6 +25,10 @@ Everything in this repository assumes:
 The refractive index is fixed at `n = 1` in version 0.1. It is **not** a free
 parameter and does not appear in any function signature. Introducing it later
 is a convention change requiring a Change Log entry.
+
+W3 (§3.24) separately permits two ideal constant refractive indices for
+direction-only closed-body geometric routing; it does not change the scalar
+n=1 wave model or add material wave propagation.
 
 The preceding assumptions remain the scalar-model contract. Separately approved
 V2c (§3.19) adds two transverse Jones components and uniform ideal element action
@@ -2097,6 +2101,113 @@ app-owned budgets remain 16 MiB persistent/32 MiB transient; W2's additional
 2/4 MiB reservations require measured representation and preparation checks.
 These reservations do not claim total browser heap or GPU memory ownership.
 
+### 3.24 W3 finite closed-body ideal refractive routing
+
+This distinct model, `w3_ideal_refractive_routing_v1`, adds direction-only
+Snell refraction and certified total internal reflection to the existing
+Geometric Routing workspace. It changes neither §3.23 W2 nor any scalar,
+Jones, wave-field, settings-document or M5 bundle contract. The normative
+closed request/result/error fields and exact precedence are in the
+[W3 contract](handoffs/w3/implementation_summary.md).
+
+One nominal-unit source is certified outside at most one homogeneous convex
+body in a homogeneous exterior. Refractive indices are ideal positive constant
+parameters in [1,2.5], not material names or dispersion. Body dimensions are
+[1e-4,0.25]m; pose/source component limits are ten metres. The block is centered
+with six finite quadrilateral faces. The right triangular prism satisfies
+x>=0,z>=0,x/leg_x+z/leg_z<=1,|y|<=height/2; its origin is the midpoint of the
+right-angle extrusion edge, and its two Y-end faces are true triangles.
+Canonical face IDs and shape keys are frozen in the W3 contract.
+
+World SI/right-handed+Y-up and active column-vector RzRyRx poses are shared
+with W2; rendering uses uniform scale10. The closed body's exact target is
+the affine image of canonical local vertices/halfspaces under the exact stored
+binary64 matrix B. Shared construction and certified B^-T covectors preserve
+closed geometry; independently rounded planes or display triangles do not
+define it. Signed world edge halfspaces decide finite polygon inclusion and
+reciprocal-Gram coordinates define UV without assuming stored B exactly
+orthogonal. Outward normals are normalized covectors for returned inspection;
+this normalization never repairs a ray. Existing W2 disk/rectangle rules and
+private arithmetic owners remain unchanged behind a narrow public seam.
+
+With incoming propagation d, outward covector m and incident-oriented a=m
+for entry or -m for exit, certify d.a<0. Let A=a.a, S=d.d,
+rho=n_incident/n_transmitted, q=d-a*(d.a)/A and K=S-rho^2*(q.q).
+The transmitted direction is rho*q-sqrt(K/A)*a, permitted only when the
+propagated enclosure has lower(K)>0. Upper(K)<0 permits
+reflection d-2*a*(d.a)/A. Both preserve inherited squared magnitude S
+algebraically; no nominal normalization, clamp or origin nudge is allowed.
+An enclosure spanning0, grazing signs, relevant edge/vertex/order ambiguity,
+or inconsistent geometric medium state is an error. Indices equal exactly
+permit a direction/enclosure identity after nongrazing geometric admission;
+medium IDs still distinguish crossing boundaries.
+
+Every segment owns its actual medium ID/index. Entry changes exterior to
+body:<id>, exit reverses this, and TIR retains the incident medium even for
+high-index exterior incidence. A missed finite face never changes medium.
+The preceding known zero departure root alone may be omitted with a certified
+side proof; later face returns remain eligible. Old W2 finite elements may
+coexist only wholly exterior under the declared conservative separating-body
+halfspace/sphere test. Touching, intersecting, embedded or unresolved
+configurations are rejected, not moved. Complete bodies/apertures must be
+strictly inside the source-centred one-metre trace sphere.
+
+Binary64/outward arithmetic assumptions remain those of §3.23. Carry intervals
+through the index ratio, projection, discriminant, sqrt, reflected/transmitted
+direction, finite intersection and actual geometric/cumulative lengths.
+Input nominal norm tolerance is32epsilon, output128epsilon. Body-present
+component interval widths above1e-8m for position or1e-8 for direction are
+unsupported arithmetic, never absorption or resource truncation. Those are
+support limits, not accuracy claims. Exact stored-input/B comparisons and
+ideal real-angle comparisons are separate; residuals alone do not prove bounds.
+The preserved alternating-interface algebra stress exceeds the planned width
+at operation14 and reaches an interval division across0 at32. This is not a
+realizable32-event single-body trajectory or a universal hard14 cap. Required
+shipped-code reproduction retains that distinction and does not relax bounds.
+
+For exactly equal stored indices, use the algebraic identity
+`K=(d·a)^2/(a·a)` before the same strict-positive sign decision: the normal and
+tangential orthogonal decomposition gives `S=q·q+(d·a)^2/A` and `rho=1`.
+Evaluate this identity with the propagated direction/normal enclosures. It
+avoids dependency inflation from subtracting two correlated quantities; it
+does not replace an enclosure with a nominal value. A zero-containing result
+still fails closed. Only after positive certification may the exact equal-index
+direction identity preserve the incoming direction and its existing enclosure;
+the geometric entry/exit still updates the medium identity.
+
+Body-present resource caps are32 inherited interactions,31 ever-created
+branches including root/parents,128 combined segment+event records,
+64events/128segments,16totalfaces (block<=10old elements, prism<=11), a1m
+sphere and10m cumulative geometric length. Record/pair reservations are atomic;
+exact capacity is permitted. Receiver/stop at event32 wins; other continuing
+events are processed then truncate at that point with outgoing medium. Global
+caps account all queued leaves. No-body W3 delegates public W2 exactly with
+its63/256/128/256 caps, original diagnostics and literal s0000/h0000 IDs;
+no new body width policy applies. Its explicit ten-core-key lossless
+projection is distinct from the intentionally different W3 wire envelope.
+
+Only terminal leaves enter the ideal weight ledger. Refraction/TIR keep weight;
+the approved ideal splitter divides it. Retain signed residual without pruning
+or renormalizing. Always state: **Ideal route weights; Fresnel losses are not
+modeled.** There is no partial Fresnel branch, coating claim, calibrated power,
+polarization or dispersion. Angles are returned radians and displayed degrees;
+a TIR outgoing angle is the actual reflected angle, not a fabricated transmitted
+angle. No finite critical angle or transmitted direction is invented.
+
+Version1 W3 endpoints `/api/w3/validate` and `/api/w3/trace` retain32KiB requests,
+512KiB replies, strict identities/graphs and atomic encoding failure. Validation
+never traces. Explicit Trace uses the same actual-worker-lifetime gate through
+encoding; passive camera/selection/transparency and manual display recovery
+never compute. Editing detaches both paths and current event details.
+Global app ownership16MiB persistent/32MiB transient and old W2local2/4MiB stay
+unchanged. New W3local4/8MiB must pass actual metadata/DOM/geometry/old-new
+preparation-overlap accounting, without automatic eviction or cap increase.
+These ownership budgets do not claim whole-process/browser/GPU memory.
+
+Fresnel/polarization branching, curved/nested/overlapping/imported bodies,
+source bundles, material databases, persistence, OPL/phase/groupdelay,
+wave-field coupling, hardware and deployment remain outside this slice.
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -2144,6 +2255,7 @@ historical scope. It adds no polarized propagation or general 3D scene.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.17 | 2026-10-23 | **§3.24 added** — distinct finite closed-body direction-only Snell/TIR model, authoritative media, affine covectors, conservative propagated decisions, exact W2 compatibility and bounded ownership. | Approved46-path implementation/validation only; unstaged/uncommitted visual-review checkpoint. No Fresnel/polarization/dispersion/wave coupling or publication. |
 | 0.16 | 2026-10-21 | **§3.23 added** — separate finite ideal geometric routing, Y-up active poses, conservative propagated intervals, nearest finite faces, deterministic branching and explicit termination/weight budgets. | Approved W2 implementation/validation only; scalar/Jones/wave implementations, old settings/bundles and historical evidence remain unchanged. Publication requires separate approval. |
 | 0.15 | 2026-10-18 | **§3.22 added** — bounded event-aware wave-field section observation, original V0 terminal ownership, explicit anchor propagation, raw shared-scale intensity and app-owned resource limits. | Approved W1 integrated visualization; existing optical implementations, conventions, old wire/settings/bundle contracts and historical evidence preserved. |
 | 0.14 | 2026-10-17 | **§3.21 added** — declared probability-weighted uncentered second moment, signed Stokes/dark-state/domain policy and one bounded seeded Gaussian finite ensemble. | Approved A-only independent theoretical workspace. Existing scalar/Jones/interference implementations, conventions and historical evidence are preserved; Figure 2a comparison remains separately gated. |

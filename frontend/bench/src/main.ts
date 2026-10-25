@@ -30,6 +30,9 @@ import { W1_EXAMPLE } from './wave_field_contracts';
 import { GeometricRoutingController } from './geometric_routing_state';
 import { GeometricRoutingWorkspace } from './geometric_routing_workspace';
 import { W2_PRESETS } from './geometric_routing_contracts';
+import { RefractiveRoutingController } from './refractive_routing_state';
+import { RefractiveRoutingPanels } from './refractive_routing_panels';
+import { W3_PRESETS } from './refractive_routing_contracts';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Application container is missing.');
@@ -90,6 +93,7 @@ app.innerHTML = `
     <section id="w2-controls" data-testid="w2-controls" hidden></section>
     <section class="workspace">
       <section id="w2-workspace" data-testid="w2-workspace" hidden></section>
+      <section id="w3-workspace" data-testid="w3-workspace" hidden></section>
       <aside class="panel components"><h2>Optical Train</h2><p class="muted">Elements act in the listed order. Distinct IDs are preserved at shared positions.</p>
         <div id="components" data-testid="components"></div>
         <div class="add-controls"><select id="add-kind" data-testid="add-kind" aria-label="Element Type to Add">
@@ -241,6 +245,11 @@ let waveWorkspace: WaveFieldWorkspace | null = null;
 let routingActive = false;
 let routingController: GeometricRoutingController | null = null;
 let routingWorkspace: GeometricRoutingWorkspace | null = null;
+let refractiveController: RefractiveRoutingController | null = null;
+let refractivePanels: RefractiveRoutingPanels | null = null;
+let routingModel: 'w2' | 'w3' = 'w2';
+const activeRoutingController = () => routingModel === 'w3' ? refractiveController : routingController;
+const activeRoutingPanels = () => routingModel === 'w3' ? refractivePanels : routingWorkspace;
 let mode: SupportedBenchMode = 'sequential';
 app.dataset.mode = mode;
 let scene: BenchScene | null = null;
@@ -290,7 +299,7 @@ function dropResultCanvases(host: ParentNode): void {
 
 function reportPresentation(error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
-  if (routingActive) { routingController?.reportPresentationFailure(message); return; }
+  if (routingActive) { activeRoutingController()?.reportPresentationFailure(message); return; }
   if (researchActive) { if (idealController.state.renderError !== message) idealController.reportRenderFailure(message); return; }
   if (mode === 'sequential' && waveController?.enabled) { waveController.reportPresentationFailure(message); return; }
   if (mode === 'polarized_two_path') { if (polarizedTwoPathController.state.renderError !== message) polarizedTwoPathController.reportRenderFailure(message); }
@@ -303,7 +312,7 @@ function reportPresentation(error: unknown): void {
 try {
   scene = new BenchScene(element('bench'), {
     select(ids) {
-      if (routingActive) { routingController?.select(ids[0]); return; }
+      if (routingActive) { activeRoutingController()?.select(ids[0]); return; }
       if (researchActive) { idealController.select(ids[0]); return; }
       if (mode === 'polarized_two_path') { polarizedTwoPathController.select(ids[0]); return; }
       if (mode === 'polarization') { polarizationController.select(ids[0]); return; }
@@ -334,8 +343,8 @@ try {
     },
     notice,
     presentationFailure(message) {
-      if (routingActive) { if (message) routingController?.invalidatePresentation(message);
-        else routingController?.reportPresentationFailure('WebGL2 has recovered. Restore the calculated display explicitly; tracing will not be repeated.'); return; }
+      if (routingActive) { if (message) activeRoutingController()?.invalidatePresentation(message);
+        else activeRoutingController()?.reportPresentationFailure('WebGL2 has recovered. Restore the calculated display explicitly; tracing will not be repeated.'); return; }
       if (researchActive) { if (message) idealController.invalidatePresentation(message);
         else idealController.reportRenderFailure(idealController.canRetryPresentation ? 'WebGL2 has recovered. Explicitly restore the calculated display; no computation will be repeated.' : null); return; }
       if (mode === 'sequential' && waveController?.enabled) {
@@ -946,7 +955,8 @@ function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathRes
   const sharedGeometryAliasBytes = (idealApparatus?.borrowedGeometryCount ?? 0) > 0
     ? waveWorkspace?.borrowedGeometryBytes() ?? 0 : 0;
   const waveFieldBytes = (waveWorkspace?.ownedBytes() ?? 0) - sharedGeometryAliasBytes;
-  const geometricRoutingBytes = (routingController?.ownedNumericalBytes() ?? 0) + (routingController?.ownedStateBytes() ?? 0) + (routingWorkspace?.ownedRenderingBytes() ?? 0);
+  const geometricRoutingBytes = (routingController?.ownedNumericalBytes() ?? 0) + (routingController?.ownedStateBytes() ?? 0) + (routingWorkspace?.ownedRenderingBytes() ?? 0)
+    + (refractiveController?.ownedNumericalBytes() ?? 0) + (refractiveController?.ownedStateBytes() ?? 0) + (refractivePanels?.ownedRenderingBytes() ?? 0);
   return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes, idealWorkspaceBytes, waveFieldBytes, geometricRoutingBytes, sharedGeometryAliasBytes,
     retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes + documentBytes + idealWorkspaceBytes + waveFieldBytes + geometricRoutingBytes };
 }
@@ -1591,7 +1601,7 @@ element('release-results').addEventListener('click', () => {
   ++resultAttachmentGeneration; applyingDocument = true;
   try {
     for (const actor of [controller, twoPathController, polarizationController, polarizedTwoPathController]) actor.releaseResults();
-    idealWorkspace?.releaseResults(); waveWorkspace?.releaseResults(); routingWorkspace?.releaseResults();
+    idealWorkspace?.releaseResults(); waveWorkspace?.releaseResults(); routingWorkspace?.releaseResults(); refractivePanels?.releaseResults();
     scene?.releaseRetainedResults(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose();
     polarizationResources = null; polarizedTwoPathResources = null; polarizationPublished = null; polarizedTwoPathPublished = null;
     displayedResult = null; dualPublished = null; selectedPixel = null; dualSelectedPixel = null; polarizationSelectedPixel = null; polarizedTwoPathSelectedPixel = null;
@@ -1790,6 +1800,31 @@ waveWorkspace = new WaveFieldWorkspace(element('w1-workspace'), scene, waveContr
   loadExample: () => { controller.select('source'); void controller.replaceCandidate(cloneExperiment(W1_EXAMPLE)); }, select: id => controller.select(id) });
 waveWorkspace.setActive(true);
 app.querySelector<HTMLElement>('.workspace')!.append(element('w2-workspace'));
+app.querySelector<HTMLElement>('.workspace')!.append(element('w3-workspace'));
+function updateRoutingLabel(): void {
+  if (!routingActive) return;
+  element('bench-label').textContent = activeRoutingController()?.state.currentResult
+    ? routingModel === 'w3' ? 'Computed Refractive Routes · Actual Media and Finite Faces' : 'Computed Geometric Routes · Uniform SI Scale · Visibility-Aid Lines'
+    : 'No Current Route · Press Trace Explicitly';
+}
+function ensureRefractivePanels(): void {
+  if (refractivePanels) return;
+  admitIdeal(768 * 1024, 768 * 1024);
+  refractiveController = new RefractiveRoutingController(W3_PRESETS.A, { gate: operationGate, admit: admitIdeal,
+    reserveOperation(persistent, transient) { admitIdeal(persistent, transient); scientificReservations = { persistent, transient }; } });
+  refractivePanels = new RefractiveRoutingPanels(element('w3-workspace'), refractiveController, scene,
+    { admit: admitIdeal, labelHost: element('bench'), navigationHost: element('w2-controls') });
+  refractiveController.subscribe(updateRoutingLabel);
+}
+function switchRoutingModel(next: 'w2' | 'w3'): void {
+  if (next === routingModel) return;
+  try { if (next === 'w3') ensureRefractivePanels(); }
+  catch (error) { element<HTMLSelectElement>('routing-model').value = routingModel; reportPresentation(error); return; }
+  if (routingActive) activeRoutingPanels()?.setActive(false);
+  routingModel = next;
+  if (routingActive) activeRoutingPanels()?.setActive(true);
+  app!.dataset.routingModel = next; updateRoutingLabel();
+}
 function ensureRoutingWorkspace(): void {
   if (routingWorkspace) return;
   // Static module code/preset constants are not a browser-heap measurement.
@@ -1799,11 +1834,9 @@ function ensureRoutingWorkspace(): void {
     reserveOperation(persistent, transient) { admitIdeal(persistent, transient); scientificReservations = { persistent, transient }; } });
   routingWorkspace = new GeometricRoutingWorkspace(element('w2-workspace'), routingController, scene, { admit: admitIdeal,
     labelHost: element('bench'), navigationHost: element('w2-controls') });
-  routingController.subscribe(() => {
-    if (routingActive) element('bench-label').textContent = routingController!.state.currentResult
-      ? 'Computed Geometric Routes · Uniform SI Scale · Visibility-Aid Lines'
-      : 'No Current Route · Press Trace Explicitly';
-  });
+  const model = routingWorkspace.addModelSelector(switchRoutingModel); model.id = 'routing-model';
+  app!.dataset.routingModel = routingModel;
+  routingController.subscribe(updateRoutingLabel);
 }
 function switchWorkspace(target: 'ordinary' | 'research' | 'geometric_routing'): void {
   const previous = routingActive ? 'geometric_routing' : researchActive ? 'research' : 'ordinary';
@@ -1812,7 +1845,7 @@ function switchWorkspace(target: 'ordinary' | 'research' | 'geometric_routing'):
     try { ensureRoutingWorkspace(); }
     catch (error) { element('render-error').textContent = String(error); element('render-error').hidden = false; return; }
   }
-  if (previous === 'geometric_routing') routingWorkspace!.setActive(false);
+  if (previous === 'geometric_routing') activeRoutingPanels()?.setActive(false);
   if (previous === 'research') idealWorkspace!.leave();
   if (previous === 'ordinary') {
     waveWorkspace?.setActive(false);
@@ -1827,7 +1860,7 @@ function switchWorkspace(target: 'ordinary' | 'research' | 'geometric_routing'):
   element('geometric-routing-workspace').classList.toggle('selected', routingActive);
   element('ordinary-workspace').classList.toggle('selected', target === 'ordinary');
   if (researchActive) idealWorkspace!.enter();
-  else if (routingActive) { routingWorkspace!.setActive(true); element('bench-label').textContent = 'No Current Route · Press Trace Explicitly'; }
+  else if (routingActive) { activeRoutingPanels()?.setActive(true); updateRoutingLabel(); }
   else {
     waveWorkspace?.setActive(mode === 'sequential');
     if (mode === 'sequential') { render(controller.state); void controller.validateInitial(); }
@@ -1852,6 +1885,7 @@ function stateSnapshot(): object {
     mode,
     workspace: routingActive ? 'geometric_routing' : researchActive ? 'research' : 'ordinary',
     geometricRouting: routingWorkspace?.snapshot() ?? null,
+    routingModel, refractiveRouting: refractivePanels?.snapshot() ?? null,
     idealPolarization: idealWorkspace?.snapshot() ?? null,
     waveField: waveWorkspace?.snapshot() ?? null,
     candidate: cloneExperiment(state.candidate), validatedDraft: state.validatedDraft ? cloneExperiment(state.validatedDraft) : null,
@@ -1887,4 +1921,4 @@ Object.defineProperty(window, '__benchDebug', { value: Object.freeze({
   dualPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.dualPixelWorld(port, row, column) ?? null,
   polarizedTwoPathPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.polarizedTwoPathPixelWorld(port, row, column) ?? null,
 }), writable: false, configurable: false });
-window.addEventListener('pagehide', () => { disposed = true; routingWorkspace?.dispose(); waveWorkspace?.dispose(); idealWorkspace?.dispose(); documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });
+window.addEventListener('pagehide', () => { disposed = true; routingWorkspace?.dispose(); refractivePanels?.dispose(); refractiveController?.dispose(); waveWorkspace?.dispose(); idealWorkspace?.dispose(); documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });

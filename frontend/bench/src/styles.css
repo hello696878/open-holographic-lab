@@ -534,6 +534,30 @@ body:has(#app[data-workspace="geometric_routing"]) { overflow: hidden; }
 .w2-right pre, .w2-right .w2-identity { display: block; max-width: 100%; overflow: auto; white-space: pre; font: 12px/1.7 ui-monospace,monospace; background: #edf4f5; padding: 8px; }
 .w2-status, .w2-feedback { flex-basis: 100%; max-height: 55px; overflow: auto; margin: 0; font-size: 13px; }
 .w2-stale { background: #fff4df; border-left: 3px solid #cb9438; padding: 10px; font-size: 13px; line-height: 1.6; }
+/* W3 remains a child of the existing shared routing bench. */
+#w3-workspace[hidden], #w3-workspace [hidden], .w2-controls > .w2-navigation[hidden] { display: none !important; }
+#app[data-workspace="geometric_routing"] #w3-workspace { display: contents; }
+.routing-model-choice { display: flex; flex-direction: row; align-items: center; gap: 9px; margin: 0; font-size: 12px; }
+.routing-model-choice select { min-width: 215px; }
+.w3-navigation .w2-heading { min-width: 210px; }
+.w3-navigation .w2-legend { max-width: 100%; }
+/* Keep W3 status beside its heading when desktop space permits; retain the stacked zoom layout. */
+@media (min-width: 1151px) and (min-height: 621px) {
+  .w3-navigation .w2-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+  .w3-navigation .w2-heading > div { flex: 1 1 300px; }
+  .w3-navigation .w2-heading > .w2-status { flex: 0 1 auto; max-width: 200px; }
+}
+.w3-view-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 6px 9px; border: 1px solid #c7dedb; border-radius: 5px; background: #edf7f4; }
+.w3-view-controls label { display: flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; font-size: 12px; }
+.w3-view-controls input[type="checkbox"] { width: 14px; height: 14px; margin: 0; }
+.w3-view-controls input[type="range"] { width: 90px; height: 18px; padding: 0; }
+.w3-workspace .w3-index-note { grid-column: 1 / -1; font-size: 12px; line-height: 1.6; color: #52717b; }
+.w3-workspace .w2-selection-details h3 { font-size: 14px; line-height: 1.6; color: #08757a; overflow-wrap: anywhere; }
+.w3-workspace .w2-selection-details .w2-table-scroll { max-height: 340px; overscroll-behavior: contain; }
+.w3-workspace [data-testid="w3-events"] :is(th,td):first-child { position: static; }
+.w3-workspace .w2-selection-details p { margin: 6px 0; font: 12px/1.7 ui-monospace,monospace; white-space: nowrap; overflow-wrap: normal; }
+.w3-event-label { pointer-events: none; border-color: #83d6c2; color: #d5fff1; background: #154a45e8; white-space: normal; font-size: 11px; line-height: 1.5; }
+.w3-body-label { border-color: #71d6c4; }
 @media (max-width: 1150px), (max-height: 620px) {
   body:has(#app[data-workspace="geometric_routing"]) { overflow: auto; }
   #app[data-workspace="geometric_routing"], #app[data-workspace="geometric_routing"] main { height: auto; min-height: 100dvh; }

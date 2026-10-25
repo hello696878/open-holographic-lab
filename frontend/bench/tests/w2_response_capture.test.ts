@@ -13,6 +13,30 @@ function fixture(response = new Response(JSON.stringify(body))) {
   capture.arm(identity); return { capture, promise, calls: () => calls };
 }
 describe('bounded original W2 response capture instrumentation', () => {
+  it('configures W3 exact endpoint model message and cap without changing original-fetch ownership', async () => {
+    const w3scene = { ...scene, model_contract: 'w3_ideal_refractive_routing_v1' }, w3request = { ...request, scene: w3scene };
+    const body = { protocol_version: 1, message_type: 'refractive_trace_result', model_contract: w3scene.model_contract, ...w3request };
+    const promise = Promise.resolve(new Response(JSON.stringify(body))); let count = 0;
+    const c = createW2ResponseCapture((() => { ++count; return promise; }) as typeof fetch, { contextId: 'context', pageId: 'page' },
+      { endpoint: '/api/w3/trace', modelContract: w3scene.model_contract, messageType: 'refractive_trace_result', cap: 4096 });
+    c.arm({ ...identity, scene: w3scene });
+    expect(c.fetch('/api/w3/trace', { method: 'POST', body: JSON.stringify(w3request) })).toBe(promise);
+    expect(Buffer.from((await c.consume('token')).base64, 'base64').toString()).toBe(JSON.stringify(body));
+    expect(count).toBe(1); expect(c.snapshot()).toMatchObject({ traceCount: 1, cloneCount: 1, bytesOwned: 0 }); c.dispose();
+  });
+  it('leaves nonselected endpoints untouched and rejects W3 message/model and configured byte overflow', async () => {
+    const w3scene = { ...scene, model_contract: 'w3_ideal_refractive_routing_v1' }, w3request = { ...request, scene: w3scene };
+    for (const fault of ['model', 'message', 'cap']) {
+      const response = new Response(JSON.stringify({ ...body, ...w3request, model_contract: fault === 'model' ? 'wrong' : w3scene.model_contract, message_type: fault === 'message' ? 'trace_result' : 'refractive_trace_result' }));
+      const promise = Promise.resolve(response); let calls = 0;
+      const c = createW2ResponseCapture((() => { ++calls; return promise; }) as typeof fetch, { contextId: 'context', pageId: 'page' },
+        { endpoint: '/api/w3/trace', modelContract: w3scene.model_contract, messageType: 'refractive_trace_result', cap: fault === 'cap' ? 2 : 4096 });
+      expect(c.fetch(...args)).toBe(promise); expect(c.snapshot().traceCount).toBe(0);
+      c.arm({ ...identity, scene: w3scene }); c.fetch('/api/w3/trace', { method: 'POST', body: JSON.stringify(w3request) });
+      await expect(c.consume('token')).rejects.toThrow(fault === 'cap' ? 'size exceeds cap' : 'identity');
+      expect(calls).toBe(2); expect((await promise).status).toBe(200); c.dispose();
+    }
+  });
   it('returns the exact original Promise, invokes fetch once and consumes exact bytes once', async () => {
     const x = fixture(); expect(x.capture.fetch(...args)).toBe(x.promise);
     const record = await x.capture.consume('token'); expect(x.calls()).toBe(1);

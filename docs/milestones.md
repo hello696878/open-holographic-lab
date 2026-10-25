@@ -1423,6 +1423,51 @@ persistence, hardware, Figure2a reconciliation or later milestone is included.
 All earlier states, measurements, acceptance limitations and historical
 evidence above retain their original meaning.
 
+## W3 — Ideal refractive routing through closed bodies
+
+**Status:** implemented and validated within the documented scope; awaiting
+the user's visual review. The accepted starting commit remains
+`828c7ff9080b174d5eae73b36f2c43608a4c94d7`. The exact46-path candidate
+(13 modifications,33 creations) remains unstaged and uncommitted. No stage,
+commit or push is authorized.
+
+The existing English Geometric Routing workspace has separate W2/W3 drafts.
+W3 adds one finite closed block/right triangular prism, explicit Trace,
+certified refraction/internal TIR, medium-aware paths and event inspection.
+Every finite side/end face is optical. Ideal route weights omit Fresnel losses;
+W1 fields are not attached to folded geometric routes. W2's original numerical
+implementation and published behavior/caps, all four prior bench modes, R03,
+W1/W1.1, settingsv1/v2, M5 and historical evidence retain their boundaries.
+
+The [W3 contract](handoffs/w3/implementation_summary.md) freezes exact
+schema, API, medium, error and resource rules. Independent validation covers
+14 reference cases including all five fixed finite receivers, exact stored
+inputs versus ideal angles, reciprocity, finite side/end faces and uncertainty.
+The original alternating-interface fixture first exceeds the unchanged width
+bound at operation14; that is not a universal hard event cap or a promise of
+support through32 events. Numerical failure is neither absorption nor ordinary
+resource truncation.
+
+Actual final checks: Python4202 passed/one unchanged Windows symlink-privilege
+skip; frontend569 passed across35 files, typecheck and production build passed;
+136 browser invocations/119 distinct IDs passed with zero skips/retries.
+These include three desktop sizes, actual200% zoom, eleven-kind worker and
+disconnect controls, presentation recovery, old modes/documents and normal-speed
+recordings. The genuine W3 recording is42.56s. Ten screenshots and eight video
+samples were visually inspected; prism labels can overlap. User visual acceptance
+and publication have not occurred.
+
+The clean baseline was3910 Python passes/one original skip and498 frontend
+passes. Original startup, assertion, layout and certificate-validation failures
+and their scoped corrections remain preserved. Exact commands, raw output,
+measured bounds, resource scopes and qualifications are in
+[tests and evidence](handoffs/w3/tests_and_evidence.md) and
+[known limitations](handoffs/w3/known_limitations.md).
+
+No Fresnel/polarization branching, dispersion, curved/nested bodies, persistence,
+OPL or wave coupling, Figure2a comparison, hardware, deployment or teaching-state
+work began. Earlier W2 dated checkpoint prose/evidence is preserved.
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.
