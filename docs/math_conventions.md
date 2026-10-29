@@ -2208,6 +2208,120 @@ Fresnel/polarization branching, curved/nested/overlapping/imported bodies,
 source bundles, material databases, persistence, OPL/phase/groupdelay,
 wave-field coupling, hardware and deployment remain outside this slice.
 
+### 3.25 W4 — Fresnel power and carried three-dimensional polarization
+
+W4 is the distinct `w4_fresnel_polarized_routing_v1` geometric model. W2/W3
+and the sampled scalar/Jones/wave conventions retain their existing meanings.
+One source ray meets zero/one finite supported block or right triangular prism
+and at most four exterior receivers/stops. Interfaces are smooth, lossless,
+uncoated, isotropic and nonmagnetic; real constant indices retain the W3
+admitted range [1,2.5]. No metal mirror/splitter convention, coating, dielectric
+absorption, dispersion, curved/nested body, source bundle, persistence or
+coherent wave coupling is added. Positions are SI metres, angles radians,
+directions/frame components and source-relative power dimensionless.
+
+The source frame is fixed right-handed `(e1,e2,k)=(+X,+Y,+Z)`, policy
+`world_xy_forward_z_v1`, independent of the viewing camera. The closed origins
+are `(0,.08,-.04)` for the normal slab and `(.02,.08,-.04)` for prism presets.
+Only unpolarized, linear-e1, linear-e2 and linear45 presets are user inputs.
+Their exact four-real Hermitian power coherencies
+`(C00,C11,Re(C01),Im(C01))` are `(.5,.5,0,0)`, `(1,0,0,0)`, `(0,1,0,0)` and
+`(.5,.5,.5,0)`. Here `C=<u u^dagger>`; its trace is the actual cumulative
+source-relative ray power. A duplicate serialized power is checked against
+that trace and is never multiplied into C. Inputs/results own their immutable
+compact states; sampled JonesField arrays are neither required nor converted.
+
+Use the physical phasor `Re(E exp(i k.x-i omega t))`. With incident-facing
+covector a pointing into the incident medium, `ci=-d.a/sqrt((d.d)(a.a))`.
+The geometric d is never normalized or repaired. A separately certified unit
+khat is used for frame algebra: `s=normalize(a cross khat)`, `p_i=k_i cross s`,
+`p_o=k_o cross s`, keeping `(s,p,k)` right-handed on both outgoing branches.
+Only an opaque geometry-owner exact-normal relation permits s=incoming e1
+when the cross product is undefined. At reflection p changes with k; the
+normal-incidence signs `rp=-rs` in those axes do not imply a different physical
+world-vector response. A nominal zero cross, angle label or camera is no proof.
+
+For propagating transmission, the electric-field coefficients are
+`rs=(ni ci-nt ct)/(ni ci+nt ct)`,
+`rp=(nt ci-ni ct)/(nt ci+ni ct)`,
+`ts=2ni ci/(ni ci+nt ct)`, `tp=2ni ci/(nt ci+ni ct)`.
+Normal energy flux is `n cos(theta)|E|^2/(2 Z0)` through the same interface
+patch. Thus `Rj=|rj|^2`, `Tj=g|tj|^2`, `g=nt ct/(ni ci)`; no rendering radiance
+eta-squared factor belongs in ray power. With M rotating incoming e1/e2 into
+s/p, power operators are `Jr=diag(rs,rp)`, `Jt=sqrt(g)diag(ts,tp)` and
+`Cchild=J M Cin M^T J^dagger` in its own outgoing frame. Local fractions are
+the child trace divided by positive incident trace, whereas a child's trace
+is already its cumulative source-relative fraction. R+T is checked, never
+imposed by rescaling the observed outputs.
+
+TIR uses auxiliary `ct=+i gamma` with the stated harmonic convention. Only
+the propagating reflected child is traced, in the incident medium; complex
+s/p relative phase remains in C for later interactions. Transmitted direction,
+state, angle, field-coefficient display and flux factor are null; its power is
+zero, not dielectric absorption. No evanescent image/frustrated TIR or
+inter-path phase is modeled. Exactly equal stored indices use the certified
+crossing/nongrazing/discriminant identity: medium changes while d/frame/C and
+their inherited enclosures remain unchanged; R0/T1 and no traversed zero-R
+child. No ill-conditioned incidence-basis rotation is needed for that identity.
+
+Raw Stokes are `(trC,C00-C11,2ReC01,-2ImC01)`. Normalized displayed Stokes
+are `(1,S1/S0,S2/S0,S3/S0)` and DoP is `hypot(S1,S2,S3)/S0` for positive S0;
+at exact zero all normalized quantities are null. These diagnostics do not
+replace authoritative C. Do not project PSD, symmetrize input, clip DoP or
+eigenvalues, clamp fractions, prune weak branches, or normalize away loss.
+Materially invalid physical states are errors; explicitly bounded nominal
+roundoff is retained. Weak Brewster amplitudes use the exact stored-input
+rationalized numerator before bounded final conversion; a small positive
+representable state is not an exact zero. An exact-zero leg requires an
+algebraic certificate. Positive-to-zero or materially inaccurate subnormal
+arithmetic is unsupported, never a terminal absorption entry.
+
+Carry geometry, basis, coefficient, complex phase and C enclosures through all
+operations. Keep W3 point/direction width limits1e-8m/1e-8, input32epsilon and
+output128epsilon direction norm policies; added frame/coefficient/C component
+width ceilings are1e-8 dimensionless/source-relative. They are admission limits,
+not accuracy promises or a guarantee through eight interactions. Unresolved
+edge/nearest-hit/criticality, unproved normal relations or unusable arithmetic
+reject a successful trace atomically. No nudge, bound reset, nominal critical
+decision or hidden heuristic recovery is allowed. R/T have separate certified
+directions and opposite outgoing-side enclosures. Public additions in the W3
+geometry owner provide immutable actual affine faces, medium/departure proofs
+and exact-normal lineage without changing W3 traversal arithmetic.
+
+FIFO creates R then T. Limits are31ever-created branches including root,
+parents and one-child TIR/equal continuations, eight surface interactions per
+ancestry,32global surface events(including receivers/stops),64segments and
+96combined event+segment records; binary-tree positive terminal leaves<=16.
+Retain one-metre source-centred exit sphere, ten-metre cumulative distance,
+six body faces/ten total optical faces. A terminal on the last permitted hit
+wins; a continuing local-depth-capped child alone is unresolved, while global
+capacity stops all pending states. Reserve both positive children atomically;
+with insufficient branch slots neither is allocated and the parent power is
+unresolved once at that boundary. Exact zero does not consume a child slot;
+weak positive does. No split parent is counted as a terminal.
+
+Only terminal leaves enter detected/stopped/escaped/resource-unresolved sums.
+Retain signed residual `1-fsum(four categories)`. Any positive unresolved
+power means incomplete, including3.93e-9. Receiver totals are explicitly
+**incoherent/phase-averaged scalar path sums**; no cross-frame coherency or
+Jones-amplitude sum implies receiver polarization or coherent etalon fringes.
+For a symmetric normal slab with R=.04,T=.96, the first transmitted leaf is
+T^2=.9216. The analytic incoherent infinite sum `T^2/(1-R^2)` is a separate
+reference and is never injected to complete an unfinished finite traversal.
+
+W4 endpoints `/api/w4/validate` and `/api/w4/trace` have closed independent
+version1 identities/records,32KiB requests and384KiB atomic responses. Validation
+does not trace. The existing single actual-worker-lifetime gate extends to W4
+through encoding. App ownership remains16MiB persistent/32MiB transient;
+W4 reservations4/8MiB include matrix/frame/bounds/DOM/geometry/old-new overlap.
+Single-flight response ownership, bounded chunk collection, preallocation JSON
+shape checks and pending-read lifetime are required; no uncounted allocation
+or hidden eviction is authorized. These budgets are not whole-process/GPU
+claims. Camera/inspection/opacity/precision are noncomputing; stale identities
+cannot attach after edits or model switches; manual display recovery reuses
+completed numerics. Exact contracts and actual validation limitations are in
+[the W4 handoff](handoffs/w4/implementation_summary.md).
+
 ## 4. Symbol reference
 
 | Symbol | Code name | Meaning | Unit |
@@ -2255,6 +2369,7 @@ historical scope. It adds no polarized propagation or general 3D scene.
 
 | Version | Date | Change | Reason |
 |---|---|---|---|
+| 0.18 | 2026-10-26 | **§3.25 added** — distinct Fresnel electric/power operators, carried 3D coherency and frames, TIR phase, finite R/T branches, strict inherited numerical policies and explicitly incoherent leaf accounting. | Approved47-path W4 implementation/validation; unstaged/uncommitted visual-review checkpoint. Existing W2/W3/scalar/Jones/wave conventions and historical evidence preserved; publication remains unauthorized. |
 | 0.17 | 2026-10-23 | **§3.24 added** — distinct finite closed-body direction-only Snell/TIR model, authoritative media, affine covectors, conservative propagated decisions, exact W2 compatibility and bounded ownership. | Approved46-path implementation/validation only; unstaged/uncommitted visual-review checkpoint. No Fresnel/polarization/dispersion/wave coupling or publication. |
 | 0.16 | 2026-10-21 | **§3.23 added** — separate finite ideal geometric routing, Y-up active poses, conservative propagated intervals, nearest finite faces, deterministic branching and explicit termination/weight budgets. | Approved W2 implementation/validation only; scalar/Jones/wave implementations, old settings/bundles and historical evidence remain unchanged. Publication requires separate approval. |
 | 0.15 | 2026-10-18 | **§3.22 added** — bounded event-aware wave-field section observation, original V0 terminal ownership, explicit anchor propagation, raw shared-scale intensity and app-owned resource limits. | Approved W1 integrated visualization; existing optical implementations, conventions, old wire/settings/bundle contracts and historical evidence preserved. |

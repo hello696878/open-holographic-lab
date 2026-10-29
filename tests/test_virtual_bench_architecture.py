@@ -38,7 +38,9 @@ def test_backend_uses_public_optics_without_replacement_or_unrelated_science():
                     {"ohlab.optics.geometric_routing"}
                     if path.name == "geometric_routing_adapter.py" else set()) | (
                     {"ohlab.optics.refractive_routing"}
-                    if path.name == "refractive_routing_adapter.py" else set())
+                    if path.name == "refractive_routing_adapter.py" else set()) | (
+                    {"ohlab.optics.fresnel_routing"}
+                    if path.name == "fresnel_routing_adapter.py" else set())
                 assert name in permitted, (path, name)
             assert name.split(".")[0] not in {"streamlit", "matplotlib", "PIL", "scipy"}, (path, name)
         for node in ast.walk(tree):

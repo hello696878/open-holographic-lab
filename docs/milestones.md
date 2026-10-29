@@ -1468,6 +1468,78 @@ No Fresnel/polarization branching, dispersion, curved/nested bodies, persistence
 OPL or wave coupling, Figure2a comparison, hardware, deployment or teaching-state
 work began. Earlier W2 dated checkpoint prose/evidence is preserved.
 
+## W4 — Fresnel-weighted, polarization-aware geometric routing
+
+**Status (closeout2026-10-29, original evidence recorded2026-10-26):** implemented
+and validated within the recorded scope; awaiting the user's visual review.
+The accepted starting revision is `5f7f69fb6303402cffed830b3cfb9794a43b4fcf`.
+The approved envelope is exactly47 paths (11 modifications,36 creations).
+Leave the candidate unstaged and uncommitted. Staging, commit and push are not
+authorized. Recorded browser acceptance uses Chrome156.0.8078.47; current
+installed156.0.8078.48 acceptance is **NOT_RUN**, as qualified below.
+
+The existing English Geometric Routing workspace explicitly selects the new
+`w4_fresnel_polarized_routing_v1` model. One fixed-direction source, zero/one
+finite closed block/right triangular prism and at most four exterior receivers/
+stops support lossless uncoated constant-index dielectric reflection/refraction.
+Every ray carries a right-handed frame and full source-relative power-coherency
+matrix; its power is trace(C), never another multiplier. TIR retains reflected
+s/p phase and incident medium. Receiver totals are explicit incoherent scalar
+path sums; no receiver polarization, calibrated radiometry or etalon fringes
+are inferred. W2/W3 defaults and APIs, old bench modes, R03, W1/W1.1,
+settingsv1/v2, M5 bundles and historical evidence retain their meanings.
+
+The [W4 contract](handoffs/w4/implementation_summary.md) and
+[mathematics](handoffs/w4/math_used.md) describe finite geometry, stable signed
+weak amplitudes, accumulated enclosures, exact-zero/underflow distinctions,
+medium-aware reflected/transmitted traversal, atomic FIFO allocation and
+terminal-only conservation. Caps remain31 ever-created branches,8 ancestry
+surface interactions,32 global events,64 segments and384KiB encoded replies.
+Any positive unresolved terminal power means incomplete traversal. Numerical
+ambiguity is an error, never absorption or successful resource truncation.
+
+Recorded checks: the clean starting suite passed4202 cases/one existing Windows
+symlink-privilege skip; frontend569 passed. Final `python_03` passed **4616 cases,
+1 skipped in312.60s (0:05:12)** with the same skip. Earlier `python_01` remains
+its own4616/one-skip measurement in340.48s; interrupted `python_02` has no final
+summary and native status UNKNOWN, not a pass or inferred assertion failure.
+Frontend636 cases/39 files, post-B11 typecheck06 and source-unchanged production
+build06 passed. The existing greater-than500kB bundle warning remains. Focused
+independent physical references, all seven original weak cases,13 deliberate
+detecting faults and measured ownership samples are qualified in
+[tests and evidence](handoffs/w4/tests_and_evidence.md).
+
+The original160 conditions/134 discovered IDs passed on Chrome156.0.8078.47:
+24 W4,20 W3,23 W2,12 W1,55 legacy,7 English and19 legacy controlled. Required
+skips/retries/unexpected/flaky results are zero; each owned service exited0 and
+left8510 free. Three desktop sizes and actual200% zoom are included. One extra
+B11 invocation, under its separately discovered freeze08, passed after passive
+scrolling made the unresolved ledger and selected first.9216 leaf accessible.
+Only B11 changed; other test functions/shared helpers, production source and
+build06 assets are byte-identical. This is161 native0 invocations, not a claim
+that the original160 ran under the revised browser-test whole-file hash.
+Three genuine handoff PNGs and19 original responses retain byte identity;
+offline public replay and independent Decimal90 references pass without extra
+HTTP. The final genuine normal-speed recording is42.64s. Eight original-video
+frames and two screenshots were inspected; that is not continuous playback or
+user visual acceptance. The first visually incomplete42.6s recording is preserved.
+
+The resumed strict freeze comparison remains **FAIL** solely because installed
+Chrome externally changed from156.0.8078.47 to156.0.8078.48. The newer executable
+was inspected as a file, not launched; its acceptance is **NOT_RUN**. The separate
+recorded-evidence audit verifies the original.47 receipts without rewriting that
+failure. All189 other frozen source/test/tool identities,52 build sources,
+three assets,493 protected tracked files,163 plan files,53 Python distribution
+metadata trees and7 installed frontend manifests match. Main/HEAD/upstream remain
+the accepted baseline and the index is empty in that check. The final exact
+47-path diff/preservation export follows documentation closeout and is supplied
+as a separate review artifact; it is not inferred from this earlier audit.
+
+The immutable planning package and original failed attempts are preserved under
+their own evidence owners. No dependency changes, scene persistence, later optics,
+Figure2a comparison, hardware, publication or teaching-state changes are included.
+Earlier milestones and dated W2/W3 checkpoint statements above are unchanged.
+
 ## Open project decisions
 
 Deferred, non-blocking. Each needs a decision before the corresponding event.

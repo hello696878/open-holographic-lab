@@ -33,6 +33,9 @@ import { W2_PRESETS } from './geometric_routing_contracts';
 import { RefractiveRoutingController } from './refractive_routing_state';
 import { RefractiveRoutingPanels } from './refractive_routing_panels';
 import { W3_PRESETS } from './refractive_routing_contracts';
+import { FresnelRoutingController } from './fresnel_routing_state';
+import { FresnelRoutingPanels } from './fresnel_routing_panels';
+import { W4_PRESETS } from './fresnel_routing_contracts';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) throw new Error('Application container is missing.');
@@ -94,6 +97,7 @@ app.innerHTML = `
     <section class="workspace">
       <section id="w2-workspace" data-testid="w2-workspace" hidden></section>
       <section id="w3-workspace" data-testid="w3-workspace" hidden></section>
+      <section id="w4-workspace" data-testid="w4-workspace" hidden></section>
       <aside class="panel components"><h2>Optical Train</h2><p class="muted">Elements act in the listed order. Distinct IDs are preserved at shared positions.</p>
         <div id="components" data-testid="components"></div>
         <div class="add-controls"><select id="add-kind" data-testid="add-kind" aria-label="Element Type to Add">
@@ -247,9 +251,11 @@ let routingController: GeometricRoutingController | null = null;
 let routingWorkspace: GeometricRoutingWorkspace | null = null;
 let refractiveController: RefractiveRoutingController | null = null;
 let refractivePanels: RefractiveRoutingPanels | null = null;
-let routingModel: 'w2' | 'w3' = 'w2';
-const activeRoutingController = () => routingModel === 'w3' ? refractiveController : routingController;
-const activeRoutingPanels = () => routingModel === 'w3' ? refractivePanels : routingWorkspace;
+let fresnelController: FresnelRoutingController | null = null;
+let fresnelPanels: FresnelRoutingPanels | null = null;
+let routingModel: 'w2' | 'w3' | 'w4' = 'w2';
+const activeRoutingController = () => routingModel === 'w4' ? fresnelController : routingModel === 'w3' ? refractiveController : routingController;
+const activeRoutingPanels = () => routingModel === 'w4' ? fresnelPanels : routingModel === 'w3' ? refractivePanels : routingWorkspace;
 let mode: SupportedBenchMode = 'sequential';
 app.dataset.mode = mode;
 let scene: BenchScene | null = null;
@@ -733,7 +739,7 @@ function prepareDualPresentation(result: DecodedTwoPathResult): { commit(): void
   const imageBytes = 16 * result.experiment.grid.nx * result.experiment.grid.ny;
   if (numericalBytes + imageBytes + 128 * 1024 > OWNED_PERSISTENT_BUDGET_BYTES) throw new Error('Two-port preparation exceeds the app-owned persistent data budget.');
   const retained = ownedSnapshot().retainedBytes + 128 * 1024;
-  if (estimateDualOperationBytes(result.experiment.grid, retained).peakOwnedBytes > OWNED_TRANSIENT_BUDGET_BYTES) {
+  if (estimateDualOperationBytes(result.experiment.grid, retained).peakOwnedBytes + fresnelPendingReadBytes() > OWNED_TRANSIENT_BUDGET_BYTES) {
     throw new Error('Two-port preparation exceeds the app-owned transient data budget.');
   }
   const scenePrepared = scene.prepareTwoPathResult(result, dualLimits);
@@ -927,7 +933,7 @@ function twoPathSnapshot(): object {
 
 /** All modes share these ownership calculations. Aliased arrays are counted once. */
 function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathResult | DecodedPolarizedTwoPathResult | null = null): {
-  scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; documentBytes: number; idealWorkspaceBytes: number; waveFieldBytes: number; geometricRoutingBytes: number; sharedGeometryAliasBytes: number; retainedBytes: number;
+  scientificBytes: number; canvasBytes: number; textureBytes: number; trajectoryBytes: number; geometryBytes: number; documentBytes: number; idealWorkspaceBytes: number; waveFieldBytes: number; geometricRoutingBytes: number; sharedGeometryAliasBytes: number; pendingTransientBytes: number; retainedBytes: number;
 } {
   const sceneResults = scene?.ownedNumericalResults();
   const scientificBytes = ownedScientificBytes4({ sequential: [controller.state.lastResult, displayedResult, sceneResults?.sequential ?? null],
@@ -956,9 +962,14 @@ function ownedSnapshot(additional: DecodedPolarizationResult | DecodedTwoPathRes
     ? waveWorkspace?.borrowedGeometryBytes() ?? 0 : 0;
   const waveFieldBytes = (waveWorkspace?.ownedBytes() ?? 0) - sharedGeometryAliasBytes;
   const geometricRoutingBytes = (routingController?.ownedNumericalBytes() ?? 0) + (routingController?.ownedStateBytes() ?? 0) + (routingWorkspace?.ownedRenderingBytes() ?? 0)
-    + (refractiveController?.ownedNumericalBytes() ?? 0) + (refractiveController?.ownedStateBytes() ?? 0) + (refractivePanels?.ownedRenderingBytes() ?? 0);
-  return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes, idealWorkspaceBytes, waveFieldBytes, geometricRoutingBytes, sharedGeometryAliasBytes,
+    + (refractiveController?.ownedNumericalBytes() ?? 0) + (refractiveController?.ownedStateBytes() ?? 0) + (refractivePanels?.ownedRenderingBytes() ?? 0)
+    + (fresnelController?.ownedNumericalBytes() ?? 0) + (fresnelController?.ownedStateBytes() ?? 0) + (fresnelPanels?.ownedRenderingBytes() ?? 0);
+  return { scientificBytes, canvasBytes, textureBytes, trajectoryBytes, geometryBytes, documentBytes, idealWorkspaceBytes, waveFieldBytes, geometricRoutingBytes, sharedGeometryAliasBytes, pendingTransientBytes: fresnelPendingReadBytes(),
     retainedBytes: scientificBytes + canvasBytes + textureBytes + trajectoryBytes + geometryBytes + documentBytes + idealWorkspaceBytes + waveFieldBytes + geometricRoutingBytes };
+}
+/** Pending W4 reads outlive their panel; its active operation already reserves the same bytes. */
+function fresnelPendingReadBytes(): number {
+  return operationGate.active?.mode === 'fresnel_routing' ? 0 : fresnelController?.ownedPendingReadBytes() ?? 0;
 }
 function admitOperation(kind: SupportedBenchMode, grid: Experiment['grid'], operation: 'single' | 'sweep' = 'single', analyzerEnabled = false): void {
   const bytes = ownedSnapshot().retainedBytes, estimate = kind === 'polarized_two_path'
@@ -971,7 +982,7 @@ function admitOperation(kind: SupportedBenchMode, grid: Experiment['grid'], oper
     : bytes + (operation === 'sweep' ? 65536 : estimate.payloadBytes + 16384);
   const docReservation = documents?.ownershipSnapshot();
   assertOwnedBudgets(projectedPersistent + (docReservation?.projectedPersistentBytes ?? 0),
-    estimate.peakOwnedBytes + (docReservation?.transientReservedBytes ?? 0));
+    estimate.peakOwnedBytes + (docReservation?.transientReservedBytes ?? 0) + fresnelPendingReadBytes());
   scientificReservations = { persistent: projectedPersistent - bytes, transient: Math.max(0, estimate.peakOwnedBytes - bytes) };
 }
 
@@ -1065,7 +1076,7 @@ function preparePolarizationPresentation(result: DecodedPolarizationResult): { c
   if (!scene) throw new Error('Computation is complete; WebGL2 is unavailable. No recalculation was performed.');
   const estimate = estimateOwnedOperation('polarization', result.experiment.grid, ownedSnapshot().retainedBytes);
   const persistent = ownedSnapshot(result).retainedBytes + 16 * result.experiment.grid.nx * result.experiment.grid.ny + result.stages.length * 257 * 16;
-  assertOwnedBudgets(persistent, estimate.peakOwnedBytes);
+  assertOwnedBudgets(persistent, estimate.peakOwnedBytes + fresnelPendingReadBytes());
   const resources = preparePolarizationResources(result, polarizationLimits, polarizationScale, polarizationGain);
   let content: HTMLDivElement, prepared: ReturnType<BenchScene['preparePolarizationResult']>;
   try { content = polarizationContent(result, resources); prepared = scene.preparePolarizationResult(result, resources.textures); }
@@ -1385,7 +1396,7 @@ function preparePolarizedTwoPathPresentation(result: DecodedPolarizedTwoPathResu
   if (!scene) throw new Error('Complete numerical measurements are available; WebGL2 display is unavailable. No recalculation was performed.');
   const generation = resultAttachmentGeneration, estimate = estimatePolarizedTwoPathOperation(result.experiment.grid, result.experiment.analyzer.enabled, ownedSnapshot().retainedBytes);
   const images = result.analyzedPorts ? 4 : 2;
-  assertOwnedBudgets(ownedSnapshot(result).retainedBytes + 8 * images * result.experiment.grid.nx * result.experiment.grid.ny + 131072, estimate.peakOwnedBytes);
+  assertOwnedBudgets(ownedSnapshot(result).retainedBytes + 8 * images * result.experiment.grid.nx * result.experiment.grid.ny + 131072, estimate.peakOwnedBytes + fresnelPendingReadBytes());
   const resources = preparePolarizedTwoPathResources(result, polarizedTwoPathLimits);
   let content: HTMLDivElement, prepared: ReturnType<BenchScene['preparePolarizedTwoPathResult']>;
   const view = result.analyzedPorts ? polarizedTwoPathController.state.viewSelection : 'raw';
@@ -1601,7 +1612,7 @@ element('release-results').addEventListener('click', () => {
   ++resultAttachmentGeneration; applyingDocument = true;
   try {
     for (const actor of [controller, twoPathController, polarizationController, polarizedTwoPathController]) actor.releaseResults();
-    idealWorkspace?.releaseResults(); waveWorkspace?.releaseResults(); routingWorkspace?.releaseResults(); refractivePanels?.releaseResults();
+    idealWorkspace?.releaseResults(); waveWorkspace?.releaseResults(); routingWorkspace?.releaseResults(); refractivePanels?.releaseResults(); fresnelPanels?.releaseResults();
     scene?.releaseRetainedResults(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose();
     polarizationResources = null; polarizedTwoPathResources = null; polarizationPublished = null; polarizedTwoPathPublished = null;
     displayedResult = null; dualPublished = null; selectedPixel = null; dualSelectedPixel = null; polarizationSelectedPixel = null; polarizedTwoPathSelectedPixel = null;
@@ -1718,7 +1729,7 @@ function renderDocuments(): void {
 }
 documents = new ExperimentDocumentController<SupportedBenchMode>({ context: documentContext, currentValidDraft: currentDocumentDraft,
   busy: () => operationGate.busy, prepareApply: prepareDocumentApplication,
-  reservedBytes: () => scientificReservations,
+  reservedBytes: () => ({ persistent: scientificReservations.persistent, transient: scientificReservations.transient + fresnelPendingReadBytes() }),
   retainedBytes: () => { const own = ownedSnapshot(); return own.retainedBytes - own.documentBytes; } });
 documents.subscribe(renderDocuments);
 for (const id of ['doc-title', 'doc-notes']) element(id).addEventListener('input', () => {
@@ -1780,7 +1791,13 @@ operationGate.subscribe(() => {
 function admitIdeal(extraPersistent: number, extraTransient: number): void {
   const own = ownedSnapshot().retainedBytes, reservation = documents?.ownershipSnapshot();
   assertOwnedBudgets(own + extraPersistent + (reservation?.projectedPersistentBytes ?? 0),
-    own + extraTransient + (reservation?.transientReservedBytes ?? 0));
+    own + extraTransient + (reservation?.transientReservedBytes ?? 0) + fresnelPendingReadBytes());
+}
+/** W4 validation may coexist with a foreign calculation, whose reservation remains owned. */
+function admitFresnel(extraPersistent: number, extraTransient: number): void {
+  const foreign = operationGate.active && operationGate.active.mode !== 'fresnel_routing';
+  admitIdeal(extraPersistent + (foreign ? scientificReservations.persistent : 0),
+    extraTransient + (foreign ? scientificReservations.transient : 0));
 }
 idealWorkspace = new R03Workspace(element('r03-workspace'), idealController, scene, { admit: admitIdeal,
   chrome: { navigation: app.querySelector<HTMLElement>('.workspace-navigation')!, releaseButton: element<HTMLButtonElement>('release-results'), releaseStatus: element('release-status') },
@@ -1801,10 +1818,14 @@ waveWorkspace = new WaveFieldWorkspace(element('w1-workspace'), scene, waveContr
 waveWorkspace.setActive(true);
 app.querySelector<HTMLElement>('.workspace')!.append(element('w2-workspace'));
 app.querySelector<HTMLElement>('.workspace')!.append(element('w3-workspace'));
+app.querySelector<HTMLElement>('.workspace')!.append(element('w4-workspace'));
 function updateRoutingLabel(): void {
   if (!routingActive) return;
+  app!.querySelector<HTMLElement>('.header-detail')!.querySelector('span')!.textContent = routingModel === 'w4'
+    ? 'Source-Relative Optical Power · Explicit Trace' : 'Relative Weights · Explicit Trace';
   element('bench-label').textContent = activeRoutingController()?.state.currentResult
-    ? routingModel === 'w3' ? 'Computed Refractive Routes · Actual Media and Finite Faces' : 'Computed Geometric Routes · Uniform SI Scale · Visibility-Aid Lines'
+    ? routingModel === 'w4' ? 'Computed Fresnel Routes · Carried Polarization · Source-Relative Power'
+      : routingModel === 'w3' ? 'Computed Refractive Routes · Actual Media and Finite Faces' : 'Computed Geometric Routes · Uniform SI Scale · Visibility-Aid Lines'
     : 'No Current Route · Press Trace Explicitly';
 }
 function ensureRefractivePanels(): void {
@@ -1816,9 +1837,18 @@ function ensureRefractivePanels(): void {
     { admit: admitIdeal, labelHost: element('bench'), navigationHost: element('w2-controls') });
   refractiveController.subscribe(updateRoutingLabel);
 }
-function switchRoutingModel(next: 'w2' | 'w3'): void {
+function ensureFresnelPanels(): void {
+  if (fresnelPanels) return;
+  admitFresnel(768 * 1024, 768 * 1024);
+  fresnelController = new FresnelRoutingController(W4_PRESETS.A, { gate: operationGate, admit: admitFresnel,
+    reserveOperation(persistent, transient) { admitFresnel(persistent, transient); scientificReservations = { persistent, transient }; } });
+  fresnelPanels = new FresnelRoutingPanels(element('w4-workspace'), fresnelController, scene,
+    { admit: admitFresnel, labelHost: element('bench'), navigationHost: element('w2-controls') });
+  fresnelController.subscribe(updateRoutingLabel);
+}
+function switchRoutingModel(next: 'w2' | 'w3' | 'w4'): void {
   if (next === routingModel) return;
-  try { if (next === 'w3') ensureRefractivePanels(); }
+  try { if (next === 'w3') ensureRefractivePanels(); else if (next === 'w4') ensureFresnelPanels(); }
   catch (error) { element<HTMLSelectElement>('routing-model').value = routingModel; reportPresentation(error); return; }
   if (routingActive) activeRoutingPanels()?.setActive(false);
   routingModel = next;
@@ -1885,7 +1915,7 @@ function stateSnapshot(): object {
     mode,
     workspace: routingActive ? 'geometric_routing' : researchActive ? 'research' : 'ordinary',
     geometricRouting: routingWorkspace?.snapshot() ?? null,
-    routingModel, refractiveRouting: refractivePanels?.snapshot() ?? null,
+    routingModel, refractiveRouting: refractivePanels?.snapshot() ?? null, fresnelRouting: fresnelPanels?.snapshot() ?? null,
     idealPolarization: idealWorkspace?.snapshot() ?? null,
     waveField: waveWorkspace?.snapshot() ?? null,
     candidate: cloneExperiment(state.candidate), validatedDraft: state.validatedDraft ? cloneExperiment(state.validatedDraft) : null,
@@ -1921,4 +1951,4 @@ Object.defineProperty(window, '__benchDebug', { value: Object.freeze({
   dualPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.dualPixelWorld(port, row, column) ?? null,
   polarizedTwoPathPixelWorld: (port: 0 | 1, row: number, column: number) => scene?.polarizedTwoPathPixelWorld(port, row, column) ?? null,
 }), writable: false, configurable: false });
-window.addEventListener('pagehide', () => { disposed = true; routingWorkspace?.dispose(); refractivePanels?.dispose(); refractiveController?.dispose(); waveWorkspace?.dispose(); idealWorkspace?.dispose(); documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });
+window.addEventListener('pagehide', () => { disposed = true; routingWorkspace?.dispose(); refractivePanels?.dispose(); refractiveController?.dispose(); fresnelPanels?.dispose(); fresnelController?.dispose(); waveWorkspace?.dispose(); idealWorkspace?.dispose(); documents?.dispose(); polarizationPlayback.detach(); polarizationResources?.dispose(); polarizedTwoPathResources?.dispose(); scene?.dispose(); }, { once: true });

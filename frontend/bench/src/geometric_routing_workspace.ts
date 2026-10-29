@@ -111,12 +111,12 @@ export class GeometricRoutingWorkspace {
       button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1; this.host.querySelector<HTMLElement>(`#w2-panel-${item}`)!.hidden = !selected; }
   }
   /** Shared workspace chrome only; W2 scene, actor and result contracts stay closed. */
-  addModelSelector(change: (model: 'w2' | 'w3') => void): HTMLSelectElement {
+  addModelSelector(change: (model: 'w2' | 'w3' | 'w4') => void): HTMLSelectElement {
     if (this.modelChoice) throw new Error('Routing model selector already exists');
     const label = document.createElement('label'); label.className = 'routing-model-choice'; label.textContent = 'Model';
     const select = document.createElement('select'); select.dataset.testid = 'routing-model'; select.setAttribute('aria-label', 'Geometric routing model');
-    for (const [value, title] of [['w2', 'Ideal Surface Routing'], ['w3', 'Ideal Refractive Routing']]) { const option = document.createElement('option'); option.value = value; option.textContent = title; select.append(option); }
-    select.addEventListener('change', () => change(select.value as 'w2' | 'w3')); label.append(select);
+    for (const [value, title] of [['w2', 'Ideal Surface Routing'], ['w3', 'Ideal Refractive Routing'], ['w4', 'Fresnel Power Routing']]) { const option = document.createElement('option'); option.value = value; option.textContent = title; select.append(option); }
+    select.addEventListener('change', () => change(select.value as 'w2' | 'w3' | 'w4')); label.append(select);
     (this.options.navigationHost ?? this.navigation.parentElement)!.prepend(label); this.modelChoice = label; return select;
   }
   setActive(active: boolean): void {

@@ -70,6 +70,39 @@ This W3 pass authorizes implementation and validation only; the complete
 candidate remains unstaged/uncommitted for visual review. No commit or push.
 Historical W2 checkpoint prose above remains its original dated evidence.
 
+## Fresnel Power Routing candidate (W4)
+
+Inside **Geometric Routing**, explicitly select **Fresnel Power Routing** for
+the separate W4 model. Load **Normal Slab**, **Refracting Prism** or **TIR Prism**;
+choose unpolarized, source-e1, source-e2 or source-45-degree polarization, edit
+the supported body pose/index, and press **Trace**. Finite reflected and
+transmitted paths carry their own polarization coherency state. Deliberate
+inspection distinguishes local pure-s/p fractions, actual incident-state
+fractions, cumulative child power and terminal totals. Edits detach old routes
+and events; camera, opacity and inspection never trace.
+
+**Receiver total — incoherent path sum.** Values are dimensionless fractions
+of source optical power, not calibrated watts or detector irradiance. A positive
+unresolved fraction makes traversal **incomplete**, even when numerically small.
+TIR preserves reflected polarization phase without inventing a propagating
+transmitted ray. Path thickness, direction markers and mounts are display aids.
+No coatings, dispersion, coherent multipath, W1 wave coupling or routing
+persistence is introduced. W2 and W3 retain their separate meanings/defaults.
+
+The [W4 contract and launch instructions](docs/handoffs/w4/implementation_summary.md),
+[current validation status](docs/handoffs/w4/tests_and_evidence.md) and
+[limitations](docs/handoffs/w4/known_limitations.md) define this bounded candidate.
+Dated closeout (2026-10-29): implementation and recorded validation are complete
+within the reported scope:4616 Python passes/one existing skip,636 frontend
+passes, typecheck and build,160 browser conditions/134 IDs plus one focused
+42.64s recording. Browser evidence belongs to Chrome156.0.8078.47. The installed
+browser subsequently changed externally to156.0.8078.48; the strict current
+freeze comparison fails on that sole identity change, and .48 acceptance is
+**NOT_RUN**. Source/assets and recorded evidence remain verified. The candidate
+awaits the **user's visual review**, stays **unstaged and uncommitted**, and is
+not published. No staging, commit or push is authorized. Earlier W2/W3 checkpoint
+prose remains historical.
+
 ## Current goal
 
 A CGH simulator that can:

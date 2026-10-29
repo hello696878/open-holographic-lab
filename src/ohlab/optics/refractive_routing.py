@@ -675,3 +675,215 @@ def trace_routes(scene: RefractiveScene) -> RefractiveTraceResult:
     return RefractiveTraceResult(scene, WEIGHT_MODEL, scene.media, scene.body_faces, scene.legacy_surface_frames, scene.limits,
                                  "incomplete" if totals["truncated_weight"] else "complete", tuple(_freeze(x) for x in branches),
                                  tuple(_freeze(x) for x in segments), tuple(_freeze(x) for x in events), tuple(_freeze(x) for x in terminals), ledger, diagnostics)
+
+
+# Additive W4 geometry seam. Everything above retains W3's original arithmetic
+# and evaluation order. Polarization and Fresnel power are deliberately absent
+# from this owner: it certifies only finite geometry and direction relations.
+from ohlab.optics.geometric_routing import CertifiedPlanarHit
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class CertifiedNormalIncidence:
+    """Opaque exact direction lineage, re-proved against each actual affine face.
+
+    Only this module issues instances. A lineage is tied to an owner and the
+    actual certified vector object, not a nominal cardinal-axis label. The
+    ``face_id`` on an interaction proof identifies its exact normal relation;
+    outgoing lineages are not normal proofs until re-proved at the next face.
+    """
+
+    direction: CertifiedVector3
+    face_id: str | None
+    exact_direction: tuple[Fraction, ...]
+    incident_facing_covector: CertifiedVector3 | None
+    _owner: object = field(repr=False)
+
+    def __init__(self) -> None:
+        raise TypeError("normal relations are issued by the geometry owner")
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class CertifiedDielectricGeometry:
+    """Immutable actual finite handles and exact stored-affine owner data, SI.
+
+    ``faces`` are the actual certified faces, never reconstructed wire meshes.
+    Stored exact covectors target the same B and local witness as their face.
+    """
+
+    scene: RefractiveScene
+    faces: tuple[CertifiedPlanarFace, ...]
+    body_geometry: tuple[CertifiedPlanarFace, ...]
+    body_face_records: tuple[FrozenRecord, ...]
+    exact_covectors: tuple[tuple[Fraction, ...], ...]
+    _owner: object = field(repr=False)
+
+    def __init__(self) -> None:
+        raise TypeError("use certified_geometry")
+
+    def face_record(self, face: CertifiedPlanarFace) -> FrozenRecord | None:
+        """Return actual face metadata, rejecting a foreign handle."""
+        if not any(face is item for item in self.faces):
+            raise ValueError("foreign certified face")
+        for item, record in zip(self.body_geometry, self.body_face_records):
+            if face is item:
+                return record
+        return None
+
+    def halfspace_intervals(self, point: CertifiedVector3) -> tuple[CertifiedInterval, ...]:
+        """Signed outward distances in metres, retaining all point uncertainty."""
+        _admit_vector(point, position=True)
+        return tuple(_signed_distance(point, face)[1] for face in self.body_geometry)
+
+    def plane_residual_m(self, point: CertifiedVector3, face: CertifiedPlanarFace) -> float:
+        """Nominal signed plane residual, metres; this does not move the point."""
+        self.face_record(face)
+        return _signed_distance(point, face)[0]
+
+
+@dataclass(frozen=True, slots=True)
+class CertifiedDielectricDirections:
+    """Both physical departures and unchanged outward uncertainty certificates."""
+
+    classification: str
+    reflected: CertifiedVector3 | None
+    transmitted: CertifiedVector3 | None
+    incident_facing_covector: CertifiedVector3
+    discriminant: CertifiedInterval
+    incident_side: CertifiedInterval
+    reflected_side: CertifiedInterval | None
+    transmitted_side: CertifiedInterval | None
+    incident_medium_id: str
+    transmission_medium_id: str
+    incident_index: float
+    transmission_index: float
+    normal_relation: CertifiedNormalIncidence | None
+    reflected_relation: CertifiedNormalIncidence | None
+    transmitted_relation: CertifiedNormalIncidence | None
+    body_halfspaces: tuple[CertifiedInterval, ...]
+
+
+def _seam_record(cls: Any, **values: Any) -> Any:
+    result = object.__new__(cls)
+    for key, value in values.items():
+        object.__setattr__(result, key, value)
+    return result
+
+
+def certified_geometry(scene: RefractiveScene) -> CertifiedDielectricGeometry:
+    """Own a public immutable view of an already validated W3 geometry scene.
+
+    No trace is run. The exact affine covector target is computed from the
+    owner's stored B, its rational inverse and the unchanged local covectors.
+    """
+    if not isinstance(scene, RefractiveScene):
+        raise TypeError("certified_geometry requires RefractiveScene")
+    count = len(scene.body_faces)
+    exact = []
+    if scene.bodies:
+        body = scene.bodies[0]
+        pose = certify_pose_frame(body["pose"]["rotation_xyz_rad"])
+        inverse = _inverse(tuple(tuple(Fraction.from_float(x) for x in row) for row in pose.nominal_matrix))
+        shape = body["shape"]
+        for record in scene.body_faces:
+            name = record["face_id"]
+            cardinal = {"x_min": (-1,0,0), "x_max": (1,0,0), "y_min": (0,-1,0),
+                        "y_max": (0,1,0), "z_min": (0,0,-1), "z_max": (0,0,1)}
+            local = (Fraction.from_float(shape["leg_z_m"]), Fraction(0), Fraction.from_float(shape["leg_x_m"])) if name == "hypotenuse" else tuple(map(Fraction, cardinal[name]))
+            exact.append(tuple(sum((inverse[j][i]*local[j] for j in range(3)), Fraction(0)) for i in range(3)))
+    return _seam_record(CertifiedDielectricGeometry, scene=scene, faces=scene._faces,
+                        body_geometry=scene._faces[:count], body_face_records=scene.body_faces,
+                        exact_covectors=tuple(exact), _owner=object())
+
+
+def _seam_lineage(geometry: CertifiedDielectricGeometry, direction: CertifiedVector3,
+                  exact: tuple[Fraction, ...], face_id: str | None = None,
+                  covector: CertifiedVector3 | None = None) -> CertifiedNormalIncidence:
+    if not all(Fraction.from_float(interval.lo) <= value <= Fraction.from_float(interval.hi) for value, interval in zip(exact, direction.bounds)):
+        raise UnsupportedNumericalInputError("exact direction lineage leaves inherited geometry enclosure")
+    return _seam_record(CertifiedNormalIncidence, direction=direction, exact_direction=exact,
+                        face_id=face_id, incident_facing_covector=covector, _owner=geometry._owner)
+
+
+def certified_dielectric_directions(geometry: CertifiedDielectricGeometry, ray: CertifiedRay,
+                                   hit: CertifiedPlanarHit, medium: str,
+                                   normal_relation: CertifiedNormalIncidence | None = None) -> CertifiedDielectricDirections:
+    """Certify both R/T directions at the actual closed-body crossing.
+
+    Subcritical reflection uses the same covector algebra as the owner's TIR
+    branch. No direction, point or enclosure is normalized/reset. A normal
+    proof uses exact stored-affine parallelism and an owner-issued lineage;
+    arbitrary nominal zero crosses and caller booleans are never accepted.
+    """
+    if not isinstance(geometry, CertifiedDielectricGeometry) or not isinstance(ray, CertifiedRay):
+        raise TypeError("directions require certified geometry and ray")
+    if not isinstance(hit,CertifiedPlanarHit):
+        raise TypeError("directions require an actual CertifiedPlanarHit")
+    if not isinstance(medium,str):
+        raise TypeError("incident medium must be str")
+    # CertifiedPlanarHit is intentionally opaque in the shared geometry API.
+    face = hit.face
+    record = geometry.face_record(face)
+    if record is None:
+        raise ValueError("dielectric directions require an actual body face")
+    if normal_relation is not None and (not isinstance(normal_relation, CertifiedNormalIncidence)
+            or normal_relation._owner is not geometry._owner or normal_relation.direction is not ray.direction):
+        raise ValueError("foreign, stale or forged direction relation")
+    interior = geometry.scene.bodies[0]["interior_medium"]
+    exterior = geometry.scene.exterior_medium
+    if medium not in (exterior["id"], interior["id"]):
+        raise MediumStateAmbiguityError("unknown incident medium")
+    entering = medium == exterior["id"]
+    current, other = (exterior, interior) if entering else (interior, exterior)
+    halfspaces = geometry.halfspace_intervals(hit.position)
+    if any(side.hi >= 0 for other_face, side in zip(geometry.body_geometry, halfspaces) if other_face is not face):
+        raise MediumStateAmbiguityError("body crossing is not strictly inside every other halfspace")
+    outgoing, kind, ki, side, out_side = _dielectric_direction(ray.direction, face.plane_covector,
+                                            current["refractive_index"], other["refractive_index"], entering)
+    a = face.plane_covector if entering else certified_vector_scale(face.plane_covector, -1., CertifiedInterval.point(-1.))
+    da, dai = certified_dot(ray.direction, a)
+    aa, _ = certified_dot(a, a)
+    aai = _squared(a)
+    equal = current["refractive_index"] == other["refractive_index"]
+    if equal:
+        reflected, transmitted = None, outgoing
+        rside, tside = None, certified_dot(transmitted, a)[1]
+        classification = "equal_index_identity"
+    else:
+        reflected = outgoing if kind == "total_internal_reflection" else certified_vector_subtract(
+            ray.direction, certified_vector_scale(a, 2.*da/aa, CertifiedInterval.point(2.)*dai/aai))
+        _admit_vector(reflected)
+        rside = certified_dot(reflected, a)[1]
+        if rside.lo <= 0:
+            raise MediumStateAmbiguityError("reflected departure is not strictly in incident medium")
+        transmitted = None if kind == "total_internal_reflection" else outgoing
+        tside = None if transmitted is None else certified_dot(transmitted, a)[1]
+        if tside is not None and tside.hi >= 0:
+            raise MediumStateAmbiguityError("transmitted departure is not strictly in transmission medium")
+        classification = "total_internal_reflection" if transmitted is None else "dielectric_split"
+    lineage = normal_relation
+    if lineage is None and ray.cumulative_length_m == 0. and ray.previous_face_id is None:
+        source = geometry.scene.source
+        if ray.origin.nominal == tuple(source["origin_m"]) and ray.direction.nominal == tuple(source["direction"]) and all(
+                interval.lo == value == interval.hi for value, interval in zip(ray.direction.nominal, ray.direction.bounds)):
+            lineage = _seam_lineage(geometry, ray.direction, tuple(map(Fraction.from_float, ray.direction.nominal)))
+    exact_a = geometry.exact_covectors[geometry.body_geometry.index(face)]
+    if not entering:
+        exact_a = tuple(-x for x in exact_a)
+    normal = None
+    reflected_relation = transmitted_relation = None
+    if lineage is not None:
+        d = lineage.exact_direction
+        cross = tuple(d[j]*exact_a[k]-d[k]*exact_a[j] for j, k in ((1,2),(2,0),(0,1)))
+        if all(x == 0 for x in cross):
+            normal = _seam_lineage(geometry, ray.direction, d, face.face_id,a)
+        da_exact = sum((x*y for x,y in zip(d, exact_a)), Fraction(0))
+        aa_exact = sum((x*x for x in exact_a), Fraction(0))
+        if reflected is not None:
+            r_exact = tuple(x-2*da_exact*y/aa_exact for x,y in zip(d, exact_a))
+            reflected_relation = _seam_lineage(geometry, reflected, r_exact)
+        if transmitted is not None and (equal or normal is not None):
+            transmitted_relation = _seam_lineage(geometry, transmitted, d)
+    return CertifiedDielectricDirections(classification, reflected, transmitted, a, ki, certified_dot(ray.direction,a)[1],
+        rside, tside, current["id"], other["id"], current["refractive_index"], other["refractive_index"],
+        normal, reflected_relation, transmitted_relation, halfspaces)

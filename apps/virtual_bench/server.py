@@ -45,6 +45,7 @@ from . import r03_fig2a_adapter, r03_fig2a_protocol
 from . import wave_field_adapter, wave_field_protocol
 from . import geometric_routing_adapter, geometric_routing_protocol
 from . import refractive_routing_adapter, refractive_routing_protocol
+from . import fresnel_routing_adapter, fresnel_routing_protocol
 
 Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission |
               two_path_adapter.ValidatedSweepSubmission |
@@ -55,7 +56,8 @@ Submission = (ValidatedSubmission | two_path_adapter.ValidatedTwoPathSubmission 
               r03_fig2a_adapter.ValidatedIdealSubmission |
               wave_field_adapter.ValidatedWaveFieldSubmission |
               geometric_routing_adapter.ValidatedGeometricSubmission |
-              refractive_routing_adapter.ValidatedRefractiveSubmission)
+              refractive_routing_adapter.ValidatedRefractiveSubmission |
+              fresnel_routing_adapter.ValidatedFresnelSubmission)
 WorkerResult = bytes | SweepReply | polarization_protocol.SweepReply | polarized_two_path_protocol.SweepReply
 
 HOST = "127.0.0.1"
@@ -96,6 +98,9 @@ def _boundary_error(scope: Scope, status: int, code: str, message: str) -> Respo
     """
     if scope.get("path") in {"/api/w3/validate", "/api/w3/trace"}:
         return Response(refractive_routing_protocol.error_reply(None, "invalid_scene", message),
+                        status_code=status, media_type="application/json", headers=_SECURITY_HEADERS)
+    if scope.get("path") in {"/api/w4/validate", "/api/w4/trace"}:
+        return Response(fresnel_routing_protocol.error_reply(None, "invalid_scene", message),
                         status_code=status, media_type="application/json", headers=_SECURITY_HEADERS)
     return _error(status, code, message)
 
@@ -365,6 +370,7 @@ def create_app(*, assets_dir: Path | None = None,
                wave_field_worker: Callable[[wave_field_adapter.ValidatedWaveFieldSubmission], bytes] | None = None,
                geometric_routing_worker: Callable[[geometric_routing_adapter.ValidatedGeometricSubmission], bytes] | None = None,
                refractive_routing_worker: Callable[[refractive_routing_adapter.ValidatedRefractiveSubmission], bytes] | None = None,
+               fresnel_routing_worker: Callable[[fresnel_routing_adapter.ValidatedFresnelSubmission], bytes] | None = None,
                executor: Executor | None = None) -> Starlette:
     """Create the local service; no numerical work or network listeners start.
 
@@ -376,6 +382,9 @@ always uses this checkout's fixed built directory and public numerical adapters.
     if not index_path or index_stat is None or not stat.S_ISREG(index_stat.st_mode):
         raise RuntimeError("Build V1 frontend assets before starting the bench")
     def dispatch(submission: Submission) -> WorkerResult:
+        if isinstance(submission, fresnel_routing_adapter.ValidatedFresnelSubmission):
+            return (fresnel_routing_worker if fresnel_routing_worker is not None
+                    else fresnel_routing_adapter.trace_submission)(submission)
         if isinstance(submission, refractive_routing_adapter.ValidatedRefractiveSubmission):
             return (refractive_routing_worker if refractive_routing_worker is not None
                     else refractive_routing_adapter.trace_submission)(submission)
@@ -896,6 +905,60 @@ always uses this checkout's fixed built directory and public numerical adapters.
             return refractive_error(500, "response_too_large", "Trace response encoding failed or exceeded its bound", request_id)
         return Response(encoded, media_type="application/json")
 
+    def fresnel_error(status: int, code: str, message: str,
+                      request_id: str | None = None, scene_sha256: str | None = None) -> Response:
+        return Response(fresnel_routing_protocol.error_reply(request_id, code, message, scene_sha256),
+                        status_code=status, media_type="application/json")
+
+    async def fresnel_validate(request: Request) -> Response:
+        return await fresnel_process(request, trace=False)
+
+    async def fresnel_trace(request: Request) -> Response:
+        return await fresnel_process(request, trace=True)
+
+    async def fresnel_process(request: Request, *, trace: bool) -> Response:
+        request_id, digest = None, None
+        try:
+            payload = await _read_json(request, parser=fresnel_routing_protocol.strict_json_loads)
+            request_id = _parsed_id(payload)
+            submission = fresnel_routing_adapter.validate_submission(payload, trace=trace)
+            digest = submission.scene_sha256
+        except BodyError as exc:
+            code = "request_body_too_large" if exc.status == 413 else "invalid_scene"
+            return fresnel_error(exc.status, code, str(exc), request_id)
+        except ClientDisconnect:
+            return fresnel_error(499, "disconnected", "Client disconnected before submission", request_id)
+        except fresnel_routing_adapter.FresnelNumericalError as exc:
+            return fresnel_error(422, exc.code, str(exc), request_id)
+        except (ValueError, TypeError, OverflowError) as exc:
+            return fresnel_error(422, "invalid_scene", str(exc), request_id)
+        if not trace:
+            try:
+                return Response(fresnel_routing_adapter.validation_reply(submission), media_type="application/json")
+            except Exception:
+                return fresnel_error(500, "encoding_failed", "Scene validation encoding failed", request_id, digest)
+        try:
+            future = gate.submit(submission)
+        except BusyError:
+            return fresnel_error(409, "busy", "A Python computation is still running; submit deliberately later", request_id, digest)
+        except Exception:
+            return fresnel_error(500, "submission_failed", "Could not submit the trace", request_id, digest)
+        try:
+            encoded = await _worker_response(request, future)
+        except asyncio.CancelledError:
+            raise
+        except CancelledBeforeStart:
+            return fresnel_error(503, "cancelled_before_start", "Trace did not start; no result was produced", request_id, digest)
+        except fresnel_routing_adapter.FresnelNumericalError as exc:
+            return fresnel_error(422, exc.code, str(exc), request_id, digest)
+        except Exception:
+            return fresnel_error(500, "trace_failed", "Trace computation or result encoding failed", request_id, digest)
+        if encoded is None:
+            return fresnel_error(499, "disconnected", "Client disconnected; backend completion is unknown", request_id, digest)
+        if not isinstance(encoded, bytes) or not 2 <= len(encoded) <= fresnel_routing_protocol.MAX_RESPONSE_BYTES:
+            return fresnel_error(500, "response_too_large", "Trace response encoding failed or exceeded its bound", request_id, digest)
+        return Response(encoded, media_type="application/json")
+
     async def unavailable_api(request: Request) -> Response:
         status = 405 if request.url.path in {
             "/api/v1/health", "/api/v1/validate", "/api/v1/simulate",
@@ -905,7 +968,8 @@ always uses this checkout's fixed built directory and public numerical adapters.
             "/api/research/r03-fig2a/validate", "/api/research/r03-fig2a/simulate",
             "/api/v2e/documents/validate", "/api/w1/simulate",
             "/api/w2/validate", "/api/w2/trace",
-            "/api/w3/validate", "/api/w3/trace"} else 404
+            "/api/w3/validate", "/api/w3/trace",
+            "/api/w4/validate", "/api/w4/trace"} else 404
         return _boundary_error(request.scope, status, "http_error", "Request path or method is unavailable")
 
     app = Starlette(routes=[Route("/api/v1/health", health, methods=["GET"]),
@@ -928,6 +992,8 @@ always uses this checkout's fixed built directory and public numerical adapters.
                             Route("/api/w2/trace", routing_trace, methods=["POST"]),
                             Route("/api/w3/validate", refractive_validate, methods=["POST"]),
                             Route("/api/w3/trace", refractive_trace, methods=["POST"]),
+                            Route("/api/w4/validate", fresnel_validate, methods=["POST"]),
+                            Route("/api/w4/trace", fresnel_trace, methods=["POST"]),
                             Route("/api/{path:path}", unavailable_api,
                                   methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE"]),
                             Mount("/", app=assets)],
